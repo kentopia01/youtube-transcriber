@@ -32,7 +32,7 @@
         <input id="sidebar-drawer" type="checkbox" class="drawer-toggle" />
 
         <!-- Main content -->
-        <div class="drawer-content">
+        <div class="drawer-content lg:ml-64">
             <main class="p-6 lg:p-8 min-h-screen">
                 {% block content %}{% endblock %}
             </main>
@@ -41,7 +41,7 @@
         <!-- Sidebar -->
         <div class="drawer-side z-40">
             <label for="sidebar-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
-            <aside class="bg-base-100 border-r border-base-300 w-64 min-h-screen flex flex-col">
+            <aside class="bg-base-100 border-r border-base-300 w-64 h-screen flex flex-col lg:fixed lg:left-0 lg:top-0">
                 <!-- Logo -->
                 <div class="px-6 py-5 border-b border-base-200">
                     <a href="/" class="flex items-center gap-3">

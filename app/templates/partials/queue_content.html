@@ -43,7 +43,10 @@
             </div>
             <div class="flex items-center gap-1">
                 <a href="/jobs/{{ job.id }}" class="link link-primary text-xs">View</a>
-                <form hx-post="/api/jobs/{{ job.id }}/cancel" hx-target="#queue-content" hx-swap="innerHTML" class="inline">
+                <form hx-post="/api/jobs/{{ job.id }}/cancel"
+                      hx-swap="none"
+                      hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
+                      class="inline">
                     <button class="btn btn-ghost btn-xs text-error">Cancel</button>
                 </form>
             </div>
@@ -82,7 +85,15 @@
                 {% for job in failed_jobs %}
                 <div class="flex items-center justify-between text-sm">
                     <span>{{ job.job_type }}</span>
-                    <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
+                    <div class="flex items-center gap-2">
+                        <form hx-post="/api/jobs/{{ job.id }}/retry"
+                              hx-swap="none"
+                              hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
+                              class="inline">
+                            <button class="btn btn-ghost btn-xs text-warning">Retry</button>
+                        </form>
+                        <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
+                    </div>
                 </div>
                 {% endfor %}
             </div>

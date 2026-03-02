@@ -78,8 +78,16 @@
             {% endif %}
 
             {% if job.status in ['pending', 'queued'] %}
-            <form hx-post="/api/jobs/{{ job.id }}/cancel" hx-target="#job-status-container" hx-swap="innerHTML">
+            <form hx-post="/api/jobs/{{ job.id }}/cancel"
+                  hx-swap="none"
+                  hx-on::after-request="htmx.ajax('GET', '/jobs/{{ job.id }}', {target: '#job-status-container', swap: 'innerHTML'})">
                 <button class="btn btn-error btn-outline btn-sm">Cancel Job</button>
+            </form>
+            {% endif %}
+
+            {% if job.status == 'failed' %}
+            <form hx-post="/api/jobs/{{ job.id }}/retry" hx-swap="none">
+                <button class="btn btn-warning btn-sm">Retry Job</button>
             </form>
             {% endif %}
         </div>
