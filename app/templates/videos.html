@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Videos - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Videos <small>({{ total }})</small></h1>
+
+<div id="video-list-container"
+     hx-get="/videos?page={{ page }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+     hx-trigger="load"
+     hx-target="#video-list-content"
+     hx-select="#video-list-content"
+     hx-push-url="true">
+
+    <div id="video-list-content">
+        {% include "partials/video_list.html" %}
+    </div>
+</div>
+{% endblock %}

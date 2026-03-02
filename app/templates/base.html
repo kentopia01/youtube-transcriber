@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}YouTube Transcriber{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong><a href="/">YT Transcriber</a></strong></li>
+        </ul>
+        <ul>
+            <li><a href="/submit">Submit</a></li>
+            <li><a href="/videos">Videos</a></li>
+            <li><a href="/channels">Channels</a></li>
+            <li><a href="/search">Search</a></li>
+            <li><a href="/queue">Queue</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container">
+        <hr>
+        <small>YouTube Transcriber &mdash; Powered by faster-whisper, Claude, and pgvector</small>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

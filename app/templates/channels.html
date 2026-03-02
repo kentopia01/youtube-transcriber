@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Channels - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Channels</h1>
+
+{% if channels %}
+<div class="channel-grid">
+    {% for channel in channels %}
+    <a href="/channels/{{ channel.id }}" style="text-decoration: none; color: inherit;">
+        <div class="channel-card">
+            {% if channel.thumbnail_url %}
+            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
+            {% else %}
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: #333; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                <span style="font-size: 2rem;">{{ channel.name[0] }}</span>
+            </div>
+            {% endif %}
+            <h4>{{ channel.name }}</h4>
+            <small>{{ channel.video_count }} videos</small>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p>No channels imported yet. <a href="/submit">Import a channel</a> to get started.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Job {{ job.id }} - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/queue">Queue</a></li>
+        <li>Job Details</li>
+    </ul>
+</nav>
+
+<div id="job-status-container"
+     hx-get="/jobs/{{ job.id }}"
+     hx-trigger="{% if job.status in ['running', 'queued', 'pending'] %}load delay:2s{% endif %}"
+     hx-target="#job-status-container"
+     hx-swap="innerHTML">
+    {% include "partials/job_status.html" %}
+</div>
+{% endblock %}

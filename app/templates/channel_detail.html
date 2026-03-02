@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ channel.name }} - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/channels">Channels</a></li>
+        <li>{{ channel.name }}</li>
+    </ul>
+</nav>
+
+<article>
+    <header>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            {% if channel.thumbnail_url %}
+            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}"
+                 style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover;">
+            {% endif %}
+            <div>
+                <h1 style="margin: 0;">{{ channel.name }}</h1>
+                <small>{{ channel.video_count }} videos
+                    {% if channel.last_synced_at %}
+                    &middot; Last synced {{ channel.last_synced_at.strftime('%b %d, %Y %H:%M') }}
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+    </header>
+
+    {% if channel.description %}
+    <p>{{ channel.description[:500] }}</p>
+    {% endif %}
+
+    <a href="{{ channel.url }}" target="_blank" rel="noopener" role="button" class="secondary outline">View on YouTube</a>
+</article>
+
+<h2>Videos ({{ videos|length }})</h2>
+
+<div>
+    <a href="/videos?channel_id={{ channel.id }}" role="button" class="outline">View as grid</a>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Duration</th>
+            <th>Status</th>
+            <th>Date</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for video in videos %}
+        <tr>
+            <td><a href="/videos/{{ video.id }}">{{ video.title }}</a></td>
+            <td>{{ video.duration_seconds|format_duration }}</td>
+            <td><span class="badge badge-{{ video.status }}">{{ video.status }}</span></td>
+            <td><small>{{ video.published_at.strftime('%b %d, %Y') if video.published_at else '--' }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

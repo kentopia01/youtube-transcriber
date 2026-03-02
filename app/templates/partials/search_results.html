@@ -1,0 +1,22 @@
+{% if results %}
+<p><small>Found {{ results|length }} results for "{{ query }}"</small></p>
+
+{% for result in results %}
+<div class="search-result">
+    <div style="display: flex; justify-content: space-between; align-items: start;">
+        <h4 style="margin: 0 0 0.5rem;">
+            <a href="/videos/{{ result.video_id }}">{{ result.video_title }}</a>
+        </h4>
+        <span class="similarity">{{ "%.1f"|format(result.similarity * 100) }}% match</span>
+    </div>
+    {% if result.start_time is not none %}
+    <small style="color: var(--pico-muted-color);">
+        {{ result.start_time|format_timestamp }} - {{ result.end_time|format_timestamp }}
+    </small>
+    {% endif %}
+    <p style="margin: 0.5rem 0 0;">{{ result.chunk_text[:500] }}{% if result.chunk_text|length > 500 %}...{% endif %}</p>
+</div>
+{% endfor %}
+{% elif query %}
+<p>No results found for "{{ query }}"</p>
+{% endif %}

@@ -1,0 +1,82 @@
+================================================================================
+YouTube Transcriber — Test & Verification Results
+Date: 2026-03-02
+================================================================================
+
+## 1. Docker Build Verification
+
+### Web Image
+Command: docker compose build web
+Result: SUCCESS — Built youtube-transcriber-web
+
+### Worker Image
+Command: docker compose build worker
+Result: SUCCESS — Built youtube-transcriber-worker (includes ffmpeg, faster-whisper, sentence-transformers)
+
+## 2. Database Verification
+
+### PostgreSQL + Extensions
+Command: docker compose exec postgres psql -U transcriber -c "SELECT extname FROM pg_extension;"
+Result:
+  extname
+-----------
+ plpgsql
+ uuid-ossp
+ vector
+(3 rows)
+
+### Alembic Migration
+Command: docker compose run --rm web alembic upgrade head
+Result: INFO [alembic.runtime.migration] Running upgrade -> 001, Initial schema with all tables
+
+### Tables Created
+Command: docker compose exec postgres psql -U transcriber -c "\dt"
+Result: 9 tables (alembic_version, batches, channels, embedding_chunks, jobs, summaries, transcription_segments, transcriptions, videos)
+
+## 3. Web Server Verification
+
+### Page Routes (all HTTP 200)
+- GET /         → 200 (Dashboard)
+- GET /submit   → 200 (Submit page)
+- GET /videos   → 200 (Video list)
+- GET /channels → 200 (Channel list)
+- GET /search   → 200 (Search page)
+- GET /queue    → 200 (Processing queue)
+
+### API Routes
+- GET /api/jobs/{invalid-uuid} → 404 {"detail": "Job not found"}
+
+### HTML Rendering
+Dashboard renders with:
+- Pico CSS (dark theme)
+- HTMX v2.0.4
+- Navigation bar (Submit, Videos, Channels, Search, Queue)
+- Stats cards (Total Videos, Completed, Active Jobs)
+- Quick submit form
+- Active jobs widget
+- Recent jobs table
+
+## 4. Unit Tests
+
+Command: python -m pytest tests/ -v
+Result: 12 passed in 0.05s
+
+tests/test_embedding_service.py::test_chunk_text_splitting PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_standard_url PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_short_url PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_embed_url PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_shorts_url PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_url_with_params PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_invalid_url PASSED
+tests/test_youtube_service.py::TestExtractVideoId::test_empty_string PASSED
+tests/test_youtube_service.py::TestIsChannelUrl::test_channel_handle PASSED
+tests/test_youtube_service.py::TestIsChannelUrl::test_channel_id PASSED
+tests/test_youtube_service.py::TestIsChannelUrl::test_channel_c PASSED
+tests/test_youtube_service.py::TestIsChannelUrl::test_video_url PASSED
+
+## 5. Known Limitations
+
+1. Search endpoint returns 503 on web container (sentence-transformers not installed in web image)
+2. End-to-end pipeline test requires actual YouTube video download (not tested in CI)
+3. Worker image not started in this test run (would need GPU or sufficient CPU for faster-whisper)
+4. Flower monitoring not tested (requires worker to be running)

@@ -1,0 +1,323 @@
+/* Custom styles for YouTube Transcriber */
+
+:root {
+    --primary-color: #ff0000;
+    --bg-dark: #0f0f0f;
+    --surface-dark: #1a1a1a;
+    --text-primary: #f1f1f1;
+    --text-secondary: #aaa;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    font-size: 0.75em;
+    font-weight: 600;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge-pending { background: #555; color: #eee; }
+.badge-queued { background: #1565c0; color: white; }
+.badge-running { background: #e65100; color: white; }
+.badge-downloading { background: #4a148c; color: white; }
+.badge-downloaded { background: #1b5e20; color: white; }
+.badge-transcribing { background: #e65100; color: white; }
+.badge-transcribed { background: #2e7d32; color: white; }
+.badge-summarizing { background: #f57f17; color: white; }
+.badge-summarized { background: #388e3c; color: white; }
+.badge-completed { background: #2e7d32; color: white; }
+.badge-failed { background: #b71c1c; color: white; }
+.badge-cancelled { background: #616161; color: white; }
+
+/* Progress bar */
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5em 0;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #1565c0, #42a5f5);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.progress-bar-fill.complete {
+    background: linear-gradient(90deg, #2e7d32, #66bb6a);
+}
+
+.progress-bar-fill.failed {
+    background: linear-gradient(90deg, #b71c1c, #ef5350);
+}
+
+/* Video grid */
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.video-card {
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.video-card:hover {
+    transform: translateY(-2px);
+}
+
+.video-card img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+}
+
+.video-card-body {
+    padding: 1rem;
+}
+
+.video-card-body h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+    line-height: 1.3;
+}
+
+.video-card-body .meta {
+    color: var(--pico-muted-color);
+    font-size: 0.8rem;
+}
+
+/* Channel grid */
+.channel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.channel-card {
+    text-align: center;
+    padding: 1.5rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 8px;
+}
+
+.channel-card img {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 1rem;
+}
+
+/* Transcript segments */
+.segment {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.segment:last-child {
+    border-bottom: none;
+}
+
+.segment-time {
+    flex-shrink: 0;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--pico-primary);
+    cursor: pointer;
+    min-width: 5rem;
+}
+
+.segment-time:hover {
+    text-decoration: underline;
+}
+
+.segment-text {
+    flex: 1;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* Search results */
+.search-result {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 8px;
+}
+
+.search-result .similarity {
+    font-size: 0.8rem;
+    color: var(--pico-muted-color);
+}
+
+/* Pipeline steps */
+.pipeline-steps {
+    display: flex;
+    gap: 0;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+}
+
+.pipeline-step {
+    flex: 1;
+    text-align: center;
+    padding: 0.75rem 0.5rem;
+    position: relative;
+    min-width: 120px;
+}
+
+.pipeline-step::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -1px;
+    width: 2px;
+    height: 60%;
+    transform: translateY(-50%);
+    background: var(--pico-muted-border-color);
+}
+
+.pipeline-step:last-child::after {
+    display: none;
+}
+
+.pipeline-step .step-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    background: #333;
+    color: #999;
+}
+
+.pipeline-step.active .step-icon {
+    background: #1565c0;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+.pipeline-step.completed .step-icon {
+    background: #2e7d32;
+    color: white;
+}
+
+.pipeline-step.failed .step-icon {
+    background: #b71c1c;
+    color: white;
+}
+
+.pipeline-step .step-label {
+    font-size: 0.75rem;
+    color: var(--pico-muted-color);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Stats cards */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    text-align: center;
+    padding: 1.5rem;
+    border-radius: 8px;
+    background: var(--pico-card-background-color);
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    font-size: 0.8rem;
+    color: var(--pico-muted-color);
+    margin-top: 0.5rem;
+}
+
+/* Queue table */
+.queue-table td {
+    vertical-align: middle;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin: 2rem 0;
+    list-style: none;
+    padding: 0;
+}
+
+.pagination a {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.pagination a.active {
+    background: var(--pico-primary);
+    color: white;
+    border-color: var(--pico-primary);
+}
+
+/* HTMX loading indicator */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}
+
+/* Checkbox list for channel videos */
+.video-select-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 8px;
+}
+
+.video-select-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.video-select-item:last-child {
+    border-bottom: none;
+}
+
+.video-select-item label {
+    flex: 1;
+    cursor: pointer;
+    margin: 0;
+}

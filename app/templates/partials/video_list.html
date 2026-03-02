@@ -1,0 +1,56 @@
+<div id="video-list-content">
+    <div class="video-grid">
+        {% for video in videos %}
+        <a href="/videos/{{ video.id }}" style="text-decoration: none; color: inherit;">
+            <div class="video-card">
+                {% if video.thumbnail_url %}
+                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy">
+                {% else %}
+                <div style="width: 100%; aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center;">
+                    <span style="color: #666;">No thumbnail</span>
+                </div>
+                {% endif %}
+                <div class="video-card-body">
+                    <h4>{{ video.title }}</h4>
+                    <div class="meta">
+                        <span class="badge badge-{{ video.status }}">{{ video.status }}</span>
+                        {% if video.duration_seconds %}
+                        &middot; {{ video.duration_seconds|format_duration }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if not videos %}
+    <p>No videos yet. <a href="/submit">Submit one</a> to get started.</p>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <nav class="pagination">
+        {% if page > 1 %}
+        <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true">&laquo; Prev</a>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+        <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true"
+           class="{% if p == page %}active{% endif %}">{{ p }}</a>
+        {% endfor %}
+
+        {% if page < total_pages %}
+        <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true">Next &raquo;</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+</div>

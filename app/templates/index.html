@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_videos }}</div>
+        <div class="stat-label">Total Videos</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ completed_videos }}</div>
+        <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ active_jobs|length }}</div>
+        <div class="stat-label">Active Jobs</div>
+    </div>
+</div>
+
+<div class="grid">
+    <div>
+        <article>
+            <header>Quick Submit</header>
+            <form hx-post="/api/videos" hx-target="#submit-result" hx-swap="innerHTML">
+                <input type="text" name="url" placeholder="Paste YouTube URL..." required>
+                <button type="submit">Process</button>
+            </form>
+            <div id="submit-result"></div>
+        </article>
+    </div>
+    <div>
+        <article>
+            <header>
+                Active Jobs
+                {% if active_jobs %}
+                <span class="badge badge-running">{{ active_jobs|length }}</span>
+                {% endif %}
+            </header>
+            <div hx-get="/queue" hx-trigger="load delay:3s" hx-target="#active-jobs-list" hx-select="#queue-summary" hx-swap="innerHTML">
+                <div id="active-jobs-list">
+                    {% if active_jobs %}
+                        {% for job in active_jobs %}
+                        <div style="margin-bottom: 0.75rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <a href="/jobs/{{ job.id }}">
+                                    <small>{{ job.job_type }}</small>
+                                </a>
+                                <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
+                            </div>
+                            {% if job.progress_message %}
+                            <small style="color: var(--pico-muted-color);">{{ job.progress_message }}</small>
+                            {% endif %}
+                            <div class="progress-bar">
+                                <div class="progress-bar-fill {% if job.status == 'completed' %}complete{% elif job.status == 'failed' %}failed{% endif %}"
+                                     style="width: {{ job.progress_pct }}%"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p><small>No active jobs</small></p>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+    </div>
+</div>
+
+<h2>Recent Jobs</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Progress</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.job_type }}</td>
+            <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
+            <td>
+                <div class="progress-bar" style="width: 150px;">
+                    <div class="progress-bar-fill {% if job.status == 'completed' %}complete{% elif job.status == 'failed' %}failed{% endif %}"
+                         style="width: {{ job.progress_pct }}%"></div>
+                </div>
+            </td>
+            <td><small>{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</small></td>
+            <td><a href="/jobs/{{ job.id }}">Details</a></td>
+        </tr>
+        {% endfor %}
+        {% if not jobs %}
+        <tr><td colspan="5">No jobs yet. Submit a video to get started!</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail.pathInfo.requestPath === '/api/videos' && evt.detail.successful) {
+        const data = JSON.parse(evt.detail.xhr.responseText);
+        const target = document.getElementById('submit-result');
+        if (data.job_id) {
+            target.innerHTML = '<p>Video queued! <a href="/jobs/' + data.job_id + '">Track progress</a></p>';
+        }
+    }
+});
+</script>
+{% endblock %}

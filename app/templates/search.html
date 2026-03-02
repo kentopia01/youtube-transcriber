@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Search - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Semantic Search</h1>
+
+<p>Search across all transcribed video content using natural language.</p>
+
+<form hx-post="/api/search"
+      hx-target="#search-results"
+      hx-trigger="submit"
+      hx-indicator="#search-loading">
+    <div class="grid">
+        <input type="text" name="query" placeholder="What are you looking for?"
+               hx-post="/api/search"
+               hx-target="#search-results"
+               hx-trigger="keyup changed delay:500ms"
+               hx-include="[name='query']"
+               autofocus>
+        <button type="submit" style="width: auto;">Search</button>
+    </div>
+</form>
+
+<span id="search-loading" class="htmx-indicator" aria-busy="true">Searching...</span>
+
+<div id="search-results"></div>
+{% endblock %}

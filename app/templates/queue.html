@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Processing Queue - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Processing Queue</h1>
+
+<div id="queue-content"
+     hx-get="/queue"
+     hx-trigger="load delay:3s"
+     hx-target="#queue-content"
+     hx-swap="innerHTML">
+    {% include "partials/queue_content.html" %}
+</div>
+{% endblock %}

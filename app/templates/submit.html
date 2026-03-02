@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Submit - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<h1>Submit Video or Channel</h1>
+
+<div class="grid">
+    <article>
+        <header>Single Video</header>
+        <p>Paste a YouTube video URL to download, transcribe, summarize, and index it.</p>
+        <form id="video-form">
+            <label for="video-url">YouTube Video URL</label>
+            <input type="url" id="video-url" name="url"
+                   placeholder="https://www.youtube.com/watch?v=..."
+                   required>
+            <button type="submit">Process Video</button>
+        </form>
+        <div id="video-result"></div>
+    </article>
+
+    <article>
+        <header>Channel Import</header>
+        <p>Paste a YouTube channel URL to discover all videos. You'll choose which ones to process.</p>
+        <form id="channel-form">
+            <label for="channel-url">YouTube Channel URL</label>
+            <input type="url" id="channel-url" name="url"
+                   placeholder="https://www.youtube.com/@channelname"
+                   required>
+            <button type="submit">Discover Videos</button>
+        </form>
+        <div id="channel-result"></div>
+    </article>
+</div>
+
+<!-- Channel video selection modal -->
+<dialog id="channel-confirm-dialog">
+    <article style="max-width: 800px; max-height: 80vh;">
+        <header>
+            <button aria-label="Close" rel="prev" onclick="document.getElementById('channel-confirm-dialog').close()"></button>
+            <h3 id="channel-dialog-title">Select Videos to Process</h3>
+        </header>
+        <div style="margin-bottom: 1rem;">
+            <label>
+                <input type="checkbox" id="select-all" checked>
+                Select All (<span id="video-count">0</span> videos)
+            </label>
+        </div>
+        <div id="channel-video-list" class="video-select-list"></div>
+        <footer>
+            <button class="secondary" onclick="document.getElementById('channel-confirm-dialog').close()">Cancel</button>
+            <button id="confirm-process-btn">Process Selected</button>
+        </footer>
+    </article>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Video submission
+document.getElementById('video-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('video-url').value;
+    const result = document.getElementById('video-result');
+    result.innerHTML = '<p aria-busy="true">Processing...</p>';
+
+    try {
+        const resp = await fetch('/api/videos', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            result.innerHTML = '<p>Video queued! <a href="/jobs/' + data.job_id + '">Track progress</a></p>';
+        } else {
+            result.innerHTML = '<p style="color: var(--pico-del-color);">' + (data.detail || 'Error') + '</p>';
+        }
+    } catch (err) {
+        result.innerHTML = '<p style="color: var(--pico-del-color);">Network error</p>';
+    }
+});
+
+// Channel submission
+let channelId = null;
+let discoveredVideos = [];
+
+document.getElementById('channel-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('channel-url').value;
+    const result = document.getElementById('channel-result');
+    result.innerHTML = '<p aria-busy="true">Discovering videos... This may take a moment.</p>';
+
+    try {
+        const resp = await fetch('/api/channels', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            channelId = data.channel_id;
+            discoveredVideos = data.videos || [];
+            showChannelConfirmDialog(data.channel_name, discoveredVideos);
+            result.innerHTML = '<p>Found ' + discoveredVideos.length + ' videos in ' + data.channel_name + '</p>';
+        } else {
+            result.innerHTML = '<p style="color: var(--pico-del-color);">' + (data.detail || 'Error') + '</p>';
+        }
+    } catch (err) {
+        result.innerHTML = '<p style="color: var(--pico-del-color);">Network error</p>';
+    }
+});
+
+function showChannelConfirmDialog(channelName, videos) {
+    document.getElementById('channel-dialog-title').textContent = 'Select Videos from ' + channelName;
+    document.getElementById('video-count').textContent = videos.length;
+
+    const list = document.getElementById('channel-video-list');
+    list.innerHTML = videos.map((v, i) => `
+        <div class="video-select-item">
+            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="channel-video-cb">
+            <label for="vid-${i}">
+                <strong>${v.title}</strong>
+                <br><small>${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</small>
+            </label>
+        </div>
+    `).join('');
+
+    document.getElementById('channel-confirm-dialog').showModal();
+}
+
+// Select all toggle
+document.getElementById('select-all').addEventListener('change', (e) => {
+    document.querySelectorAll('.channel-video-cb').forEach(cb => cb.checked = e.target.checked);
+});
+
+// Process selected
+document.getElementById('confirm-process-btn').addEventListener('click', async () => {
+    const selected = Array.from(document.querySelectorAll('.channel-video-cb:checked')).map(cb => cb.value);
+    if (!selected.length) { alert('Select at least one video'); return; }
+
+    document.getElementById('confirm-process-btn').setAttribute('aria-busy', 'true');
+
+    try {
+        const resp = await fetch(`/api/channels/${channelId}/process`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({video_ids: selected})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            document.getElementById('channel-confirm-dialog').close();
+            document.getElementById('channel-result').innerHTML =
+                '<p>Queued ' + data.total_videos + ' videos in ' + data.total_batches + ' batch(es). <a href="/queue">View Queue</a></p>';
+        } else {
+            alert(data.detail || 'Error processing videos');
+        }
+    } catch (err) {
+        alert('Network error');
+    } finally {
+        document.getElementById('confirm-process-btn').removeAttribute('aria-busy');
+    }
+});
+</script>
+{% endblock %}
