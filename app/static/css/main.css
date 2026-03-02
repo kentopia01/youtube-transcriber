@@ -34,6 +34,92 @@
     font-size: 0.92rem;
 }
 
+.app-utility-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    border: 1px solid var(--app-border);
+    border-radius: 0.9rem;
+    background: #fff;
+    padding: 0.55rem 0.6rem;
+}
+
+.app-utility-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.app-utility-link {
+    padding: 0.38rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    color: #3d4656;
+    border: 1px solid transparent;
+}
+
+.app-utility-link:hover {
+    background: #f7f9fb;
+    color: #1f2530;
+}
+
+.app-utility-link.is-active {
+    background: #fff3e8;
+    border-color: #ffd5b0;
+    color: #8f4605;
+    font-weight: 700;
+}
+
+.app-utility-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.app-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+
+.app-meta-card {
+    border: 1px solid var(--app-border);
+    border-radius: 0.75rem;
+    background: #fff;
+    padding: 0.7rem 0.8rem;
+}
+
+.app-meta-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--app-muted);
+}
+
+.app-meta-value {
+    margin-top: 0.2rem;
+    font-weight: 700;
+    color: #1c212d;
+}
+
+.app-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.app-chip {
+    border: 1px solid #e2e6ee;
+    border-radius: 999px;
+    padding: 0.3rem 0.62rem;
+    font-size: 0.74rem;
+    color: #3a4252;
+    background: #fff;
+}
+
 .drawer {
     position: relative;
     z-index: 1;
@@ -227,6 +313,10 @@
     text-transform: uppercase;
 }
 
+.app-shell .table-zebra tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
 .app-shell .input,
 .app-shell .select,
 .app-shell .textarea {
@@ -272,5 +362,13 @@
 @media (max-width: 767px) {
     .app-hero-card {
         padding: 1rem;
+    }
+
+    .app-meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .app-utility-bar {
+        padding: 0.5rem;
     }
 }

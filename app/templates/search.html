@@ -10,12 +10,19 @@
 
 <div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
     <div class="card-body p-5">
+        <p class="text-sm text-base-content/60 mb-3">Try concrete intent queries to get better matches:</p>
+        <div class="app-chip-row mb-4">
+            <span class="app-chip">deployment steps</span>
+            <span class="app-chip">pricing breakdown</span>
+            <span class="app-chip">api authentication</span>
+            <span class="app-chip">incident response</span>
+        </div>
         <form hx-post="/api/search"
               hx-target="#search-results"
               hx-trigger="submit"
               hx-indicator="#search-loading">
             <div class="flex gap-2">
-                <input type="text" name="query" placeholder="What are you looking for?"
+                <input type="text" id="search-query" name="query" placeholder="What are you looking for?"
                        hx-post="/api/search"
                        hx-target="#search-results"
                        hx-trigger="keyup changed delay:500ms"
@@ -33,5 +40,23 @@
     <span class="text-sm text-base-content/60">Searching...</span>
 </span>
 
-<div id="search-results"></div>
+<div id="search-results" class="space-y-4"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const qs = new URLSearchParams(window.location.search);
+const q = qs.get('q');
+if (q) {
+    const input = document.getElementById('search-query');
+    if (input) {
+        input.value = q;
+        htmx.ajax('POST', '/api/search', {
+            values: {query: q},
+            target: '#search-results',
+            swap: 'innerHTML'
+        });
+    }
+}
+</script>
 {% endblock %}

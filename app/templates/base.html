@@ -35,6 +35,19 @@
 
         <div class="drawer-content lg:ml-72">
             <main class="p-4 md:p-6 lg:p-8 min-h-screen max-w-[1300px]">
+                <section class="app-utility-bar mb-6">
+                    <div class="app-utility-nav">
+                        <a href="/" class="app-utility-link {% if request.url.path == '/' %}is-active{% endif %}">Home</a>
+                        <a href="/queue" class="app-utility-link {% if '/queue' in request.url.path or '/jobs' in request.url.path %}is-active{% endif %}">Queue</a>
+                        <a href="/library" class="app-utility-link {% if '/library' in request.url.path %}is-active{% endif %}">Library</a>
+                        <a href="/videos" class="app-utility-link {% if '/videos' in request.url.path and '/library' not in request.url.path %}is-active{% endif %}">Videos</a>
+                        <a href="/channels" class="app-utility-link {% if '/channels' in request.url.path %}is-active{% endif %}">Channels</a>
+                    </div>
+                    <div class="app-utility-actions">
+                        <a href="/search" class="btn btn-sm btn-ghost">Search</a>
+                        <a href="/submit" class="btn btn-sm app-btn-primary">Submit New</a>
+                    </div>
+                </section>
                 {% block content %}{% endblock %}
             </main>
         </div>

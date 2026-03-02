@@ -42,11 +42,22 @@
     </div>
 </div>
 
-<h2 class="text-2xl font-semibold mb-4">Videos ({{ videos|length }})</h2>
+<div class="app-meta-grid">
+    <div class="app-meta-card">
+        <p class="app-meta-label">Videos Listed</p>
+        <p class="app-meta-value">{{ videos|length }}</p>
+    </div>
+    <div class="app-meta-card">
+        <p class="app-meta-label">Channel URL</p>
+        <p class="app-meta-value text-sm truncate">{{ channel.url or '--' }}</p>
+    </div>
+</div>
+
+<h2 class="text-2xl font-semibold mb-4 app-heading">Videos ({{ videos|length }})</h2>
 
 <div class="card bg-base-100 shadow-sm border border-base-200">
     <div class="overflow-x-auto">
-        <table class="table">
+        <table class="table table-zebra">
             <thead>
                 <tr>
                     <th>Title</th>

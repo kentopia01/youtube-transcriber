@@ -10,6 +10,17 @@
     </div>
 </div>
 
+<div class="app-meta-grid">
+    <div class="app-meta-card">
+        <p class="app-meta-label">Video Assets</p>
+        <p class="app-meta-value">{{ video_count }}</p>
+    </div>
+    <div class="app-meta-card">
+        <p class="app-meta-label">Tracked Channels</p>
+        <p class="app-meta-value">{{ channels|length }}</p>
+    </div>
+</div>
+
 <!-- Tabs -->
 <div class="tabs tabs-bordered mb-6">
     <a href="/library?tab=videos"
@@ -61,10 +72,16 @@
         {% endfor %}
     </div>
 
-    {% if not videos %}
-    <div class="text-center py-16">
-        <p class="text-base-content/40 mb-2">No videos yet.</p>
-        <a href="/" class="link link-primary text-sm">Submit a video from the Dashboard</a>
+{% if not videos %}
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body text-center py-12">
+            <h3 class="text-xl app-heading">No videos in library yet</h3>
+            <p class="text-sm text-base-content/60 mb-4">Queue your first video to start building searchable content.</p>
+            <div class="flex items-center justify-center gap-2">
+                <a href="/submit" class="btn btn-sm app-btn-primary">Submit New</a>
+                <a href="/queue" class="btn btn-sm btn-ghost">Open Queue</a>
+            </div>
+        </div>
     </div>
     {% endif %}
 
@@ -114,8 +131,8 @@
 </div>
 {% else %}
 <div class="text-center py-16">
-    <p class="text-base-content/40 mb-2">No channels imported yet.</p>
-    <a href="/" class="link link-primary text-sm">Import a channel from the Dashboard</a>
+    <p class="text-base-content/50 mb-2">No channels imported yet.</p>
+    <a href="/submit" class="btn btn-sm app-btn-primary">Import Channel</a>
 </div>
 {% endif %}
 {% endif %}

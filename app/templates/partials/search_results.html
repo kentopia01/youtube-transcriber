@@ -22,7 +22,15 @@
     {% endfor %}
 </div>
 {% elif query %}
-<div class="text-center py-12 text-base-content/50">
-    <p>No results found for "{{ query }}"</p>
+<div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body text-center py-10">
+        <h3 class="text-lg app-heading">No results for "{{ query }}"</h3>
+        <p class="text-sm text-base-content/60 mt-1 mb-4">Try a narrower phrase or switch to a term likely spoken verbatim in the transcript.</p>
+        <div class="app-chip-row justify-center">
+            <a href="/search?q=summary" class="app-chip">try: summary</a>
+            <a href="/search?q=deployment" class="app-chip">try: deployment</a>
+            <a href="/search?q=pricing" class="app-chip">try: pricing</a>
+        </div>
+    </div>
 </div>
 {% endif %}
