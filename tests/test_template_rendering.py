@@ -1,0 +1,551 @@
+"""Tests that every page template renders without errors under the new design system.
+
+All page routes are tested with a mock DB to verify:
+1. HTTP 200 status for each page
+2. Key structural elements of the new design (top-nav, Iconoir, design tokens)
+3. No daisyUI remnants in rendered output
+4. HTMX attributes are present where expected
+5. Correct Jinja2 variable interpolation
+"""
+import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from fastapi.testclient import TestClient
+
+from app.dependencies import get_db
+from app.main import create_app
+
+# ---------------------------------------------------------------------------
+# Fake DB layer
+# ---------------------------------------------------------------------------
+
+_NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _make_job(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        channel_id=None,
+        batch_id=None,
+        celery_task_id="celery-abc",
+        job_type="pipeline",
+        status="completed",
+        progress_pct=100.0,
+        progress_message="Done",
+        error_message=None,
+        started_at=_NOW,
+        completed_at=_NOW,
+        created_at=_NOW,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_video(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        youtube_video_id="dQw4w9WgXcQ",
+        channel_id=None,
+        title="Test Video Title",
+        description="A test video description",
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        duration_seconds=180.0,
+        published_at=_NOW,
+        thumbnail_url="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+        audio_file_path=None,
+        status="completed",
+        error_message=None,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_channel(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        youtube_channel_id="UC_channel_id",
+        name="Test Channel",
+        url="https://www.youtube.com/@testchannel",
+        description="A test channel",
+        thumbnail_url="https://yt3.ggpht.com/thumb.jpg",
+        video_count=5,
+        last_synced_at=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_batch(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        channel_id=uuid.uuid4(),
+        batch_number=1,
+        total_batches=2,
+        total_videos=5,
+        completed_videos=3,
+        failed_videos=0,
+        status="running",
+        created_at=_NOW,
+        completed_at=None,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_transcription(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        full_text="This is the full transcript text of the video.",
+        language="en",
+        model_size="base",
+        word_count=150,
+        processing_time_seconds=12.5,
+        created_at=_NOW,
+        segments=[],
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_segment(idx=0, **overrides):
+    defaults = dict(
+        segment_index=idx,
+        start_time=idx * 5.0,
+        end_time=(idx + 1) * 5.0,
+        text=f"Segment {idx} text content.",
+        confidence=0.95,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _make_summary(**overrides):
+    defaults = dict(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        content="This is a summary of the video content.",
+        model="claude-sonnet-4-20250514",
+        prompt_tokens=500,
+        completion_tokens=200,
+        created_at=_NOW,
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+class _FakeScalarsResult:
+    def __init__(self, items):
+        self._items = items
+
+    def all(self):
+        return self._items
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+
+class _FakeResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+    def scalars(self):
+        if isinstance(self._value, list):
+            return _FakeScalarsResult(self._value)
+        return _FakeScalarsResult([self._value] if self._value else [])
+
+
+class MockDB:
+    """A mock async DB that returns predictable data for page rendering."""
+
+    def __init__(self, **kwargs):
+        self._data = kwargs
+        self._execute_count = 0
+
+    async def execute(self, *args, **kwargs):
+        self._execute_count += 1
+        key = f"execute_{self._execute_count}"
+        if key in self._data:
+            return _FakeResult(self._data[key])
+        return _FakeResult(self._data.get("default", []))
+
+    async def scalar(self, *args, **kwargs):
+        return self._data.get("scalar", 0)
+
+    async def commit(self):
+        pass
+
+    async def flush(self):
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+DAISY_PATTERNS = [
+    "badge-success", "badge-error", "badge-warning", "badge-info", "badge-ghost",
+    "card-title", "drawer-content", "drawer-side", "modal-box",
+    "collapse-arrow", "table-zebra", "tabs-bordered", "tab-active",
+    "bg-base-100", "text-base-content", "daisyui",
+]
+
+NEW_DESIGN_MARKERS = [
+    "top-nav",          # New nav layout
+    "Playfair Display", # Headline font
+    "JetBrains Mono",   # Mono font
+    "iconoir",          # Icon system
+    "htmx.org@2.0.4",  # HTMX preserved
+]
+
+
+def _assert_no_daisyui(html: str):
+    for pattern in DAISY_PATTERNS:
+        assert pattern not in html, f"Found daisyUI remnant: {pattern}"
+
+
+def _assert_new_design(html: str):
+    for marker in NEW_DESIGN_MARKERS:
+        assert marker in html, f"Missing new design marker: {marker}"
+
+
+def _build_client(db_override=None):
+    app = create_app()
+
+    async def _override():
+        yield db_override or MockDB()
+
+    app.dependency_overrides[get_db] = _override
+    return TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Base layout
+# ---------------------------------------------------------------------------
+
+
+class TestBaseLayout:
+    def test_base_has_top_nav(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert resp.status_code == 200
+        html = resp.text
+        assert '<nav class="top-nav">' in html
+        assert "nav-brand" in html
+        assert "YT Transcriber" in html
+
+    def test_base_has_iconoir_cdn(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert "iconoir" in resp.text
+
+    def test_base_has_new_fonts(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        html = resp.text
+        assert "Playfair+Display" in html
+        assert "Inter" in html
+        assert "JetBrains+Mono" in html
+
+    def test_base_has_no_daisyui_cdn(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert "daisyui" not in resp.text
+
+    def test_base_has_footer(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert "Powered by faster-whisper" in resp.text
+
+    def test_nav_links_present(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        html = resp.text
+        assert 'href="/"' in html
+        assert 'href="/queue"' in html
+        assert 'href="/library"' in html
+        assert 'href="/videos"' in html
+        assert 'href="/channels"' in html
+
+    def test_search_nav_active_state(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        # The search page doesn't mark any nav-link as active (it's an action button)
+        # but the page should still render fine
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Tests: Dashboard (index.html)
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardPage:
+    def _build_dashboard_db(self):
+        jobs = [
+            _make_job(status="completed"),
+            _make_job(status="running", progress_pct=50),
+        ]
+        active_jobs = [_make_job(status="running", progress_pct=50)]
+        pending_jobs = [_make_job(status="queued", progress_pct=0)]
+        completed_jobs = [_make_job(status="completed")]
+        failed_jobs = [_make_job(status="failed", error_message="Download error")]
+        active_batches = [_make_batch()]
+        return MockDB(
+            execute_1=jobs,           # recent jobs
+            execute_2=active_jobs,    # active jobs
+            scalar=3,                 # counts (total_videos, completed, channels)
+            execute_3=pending_jobs,
+            execute_4=completed_jobs,
+            execute_5=failed_jobs,
+            execute_6=active_batches,
+            default=[],
+        )
+
+    def test_dashboard_renders(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        assert resp.status_code == 200
+
+    def test_dashboard_has_hero(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert "Operations Hub" in html
+        assert "Transcribe videos without babysitting jobs" in html
+        assert "bracket-accent" in html
+
+    def test_dashboard_has_stat_cards(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert "stat-card" in html
+        assert "Total Videos" in html
+        assert "Completed" in html
+        assert "Channels" in html
+        assert "Active Jobs" in html
+
+    def test_dashboard_has_video_form(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="video-form"' in html
+        assert 'id="video-url"' in html
+        assert "Start Transcription Job" in html
+
+    def test_dashboard_has_channel_form(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="channel-form"' in html
+        assert 'id="channel-url"' in html
+
+    def test_dashboard_has_queue_polling(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert 'hx-get="/queue"' in html
+        assert 'hx-trigger="load delay:3s"' in html
+        assert 'hx-target="#queue-content"' in html
+
+    def test_dashboard_has_jobs_table(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert "Recent Jobs" in html
+        assert "data-table" in html
+
+    def test_dashboard_has_modal(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="channel-confirm-dialog"' in html
+        assert "modal-dialog" in html
+
+    def test_dashboard_no_daisyui(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        _assert_no_daisyui(resp.text)
+
+    def test_dashboard_has_new_design(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        _assert_new_design(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Search page
+# ---------------------------------------------------------------------------
+
+
+class TestSearchPage:
+    def test_search_page_renders(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert resp.status_code == 200
+
+    def test_search_has_input_with_debounce(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        html = resp.text
+        assert 'hx-trigger="keyup changed delay:500ms"' in html
+        assert 'name="query"' in html
+
+    def test_search_has_htmx_form(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        html = resp.text
+        assert 'hx-post="/api/search"' in html
+        assert 'hx-target="#search-results"' in html
+
+    def test_search_has_suggestion_chips(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        html = resp.text
+        assert "deployment steps" in html
+        assert "pricing breakdown" in html
+
+    def test_search_has_loading_indicator(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert 'id="search-loading"' in resp.text
+        assert "htmx-indicator" in resp.text
+
+    def test_search_has_prefill_script(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        assert "URLSearchParams" in resp.text
+        assert "qs.get('q')" in resp.text
+
+    def test_search_no_daisyui(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/search")
+        _assert_no_daisyui(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Queue page
+# ---------------------------------------------------------------------------
+
+
+class TestQueuePage:
+    def _build_queue_db(self):
+        return MockDB(
+            execute_1=[_make_job(status="running", progress_pct=60)],
+            execute_2=[_make_job(status="queued")],
+            execute_3=[_make_job(status="completed")],
+            execute_4=[],
+            execute_5=[],
+            default=[],
+        )
+
+    def test_queue_page_renders(self):
+        client = _build_client(self._build_queue_db())
+        resp = client.get("/queue")
+        assert resp.status_code == 200
+
+    def test_queue_has_title(self):
+        client = _build_client(self._build_queue_db())
+        resp = client.get("/queue")
+        assert "Processing Queue" in resp.text
+
+    def test_queue_has_polling(self):
+        client = _build_client(self._build_queue_db())
+        resp = client.get("/queue")
+        html = resp.text
+        assert 'hx-get="/queue"' in html
+        assert 'hx-trigger="load delay:3s"' in html
+
+    def test_queue_htmx_returns_partial(self):
+        client = _build_client(self._build_queue_db())
+        resp = client.get("/queue", headers={"HX-Request": "true"})
+        assert resp.status_code == 200
+        # Partial should not contain full page layout
+        assert "<html" not in resp.text
+        assert "queue-summary" in resp.text
+
+    def test_queue_no_daisyui(self):
+        client = _build_client(self._build_queue_db())
+        resp = client.get("/queue")
+        _assert_no_daisyui(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Error page
+# ---------------------------------------------------------------------------
+
+
+class TestErrorPage:
+    def test_error_renders_404(self):
+        """Accessing a non-existent video should render error page."""
+        fake_vid = uuid.uuid4()
+        client = _build_client(MockDB(execute_1=None, default=None))
+        resp = client.get(f"/videos/{fake_vid}")
+        assert resp.status_code == 404
+        html = resp.text
+        assert "Error" in html
+        assert "Video not found" in html
+        assert "iconoir-warning-triangle" in html
+        assert "Back to Dashboard" in html
+
+
+# ---------------------------------------------------------------------------
+# Tests: Legacy redirects
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyRedirects:
+    def test_submit_redirects_to_dashboard(self):
+        client = _build_client(MockDB())
+        resp = client.get("/submit", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/"
+
+    def test_channels_redirects_to_library(self):
+        client = _build_client(MockDB(scalar=0, default=[]))
+        resp = client.get("/channels", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/library?tab=channels"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Videos page
+# ---------------------------------------------------------------------------
+
+
+class TestVideosPage:
+    def _build_videos_db(self):
+        videos = [_make_video(), _make_video(title="Second Video")]
+        return MockDB(scalar=2, execute_1=videos, default=[])
+
+    def test_videos_page_renders(self):
+        client = _build_client(self._build_videos_db())
+        resp = client.get("/videos")
+        assert resp.status_code == 200
+
+    def test_videos_has_title(self):
+        client = _build_client(self._build_videos_db())
+        resp = client.get("/videos")
+        assert "Videos" in resp.text
+
+    def test_videos_has_htmx_container(self):
+        client = _build_client(self._build_videos_db())
+        resp = client.get("/videos")
+        html = resp.text
+        assert 'id="video-list-container"' in html
+        assert 'hx-push-url="true"' in html
+
+    def test_videos_no_daisyui(self):
+        client = _build_client(self._build_videos_db())
+        resp = client.get("/videos")
+        _assert_no_daisyui(resp.text)

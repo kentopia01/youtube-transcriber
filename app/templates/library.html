@@ -5,33 +5,37 @@
 {% block content %}
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
     <div>
-        <h1 class="app-page-title">Library</h1>
-        <p class="app-page-subtitle">Browse your videos and channels</p>
+        <p class="kicker mb-1">Collection</p>
+        <h1 class="page-title">Library</h1>
+        <p class="page-subtitle">Browse your videos and channels</p>
     </div>
 </div>
 
-<div class="app-meta-grid">
-    <div class="app-meta-card">
-        <p class="app-meta-label">Video Assets</p>
-        <p class="app-meta-value">{{ video_count }}</p>
+<!-- Meta Grid -->
+<div class="meta-grid">
+    <div class="meta-card">
+        <p class="meta-label">Video Assets</p>
+        <p class="meta-value">{{ video_count }}</p>
     </div>
-    <div class="app-meta-card">
-        <p class="app-meta-label">Tracked Channels</p>
-        <p class="app-meta-value">{{ channels|length }}</p>
+    <div class="meta-card">
+        <p class="meta-label">Tracked Channels</p>
+        <p class="meta-value">{{ channels|length }}</p>
     </div>
 </div>
 
 <!-- Tabs -->
-<div class="tabs tabs-bordered mb-6">
+<div class="tab-bar">
     <a href="/library?tab=videos"
-       class="tab tab-lg {% if tab == 'videos' %}tab-active font-semibold{% endif %}">
+       class="tab-item {% if tab == 'videos' %}is-active{% endif %}">
+        <i class="iconoir-video-camera" style="font-size:0.95rem"></i>
         Videos
-        <span class="badge badge-sm badge-ghost ml-2">{{ video_count }}</span>
+        <span class="tab-count">{{ video_count }}</span>
     </a>
     <a href="/library?tab=channels"
-       class="tab tab-lg {% if tab == 'channels' %}tab-active font-semibold{% endif %}">
+       class="tab-item {% if tab == 'channels' %}is-active{% endif %}">
+        <i class="iconoir-community" style="font-size:0.95rem"></i>
         Channels
-        <span class="badge badge-sm badge-ghost ml-2">{{ channels|length }}</span>
+        <span class="tab-count">{{ channels|length }}</span>
     </a>
 </div>
 
@@ -40,31 +44,23 @@
 <div id="video-list-content">
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
+        <a href="/videos/{{ video.id }}" class="video-card">
             {% if video.thumbnail_url %}
-            <figure>
-                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy"
-                     class="w-full aspect-video object-cover">
-            </figure>
+            <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
             {% else %}
-            <figure>
-                <div class="w-full aspect-video bg-base-300 flex items-center justify-center">
-                    <span class="text-base-content/20 text-sm">No thumbnail</span>
-                </div>
-            </figure>
+            <div class="video-card-placeholder">
+                <i class="iconoir-video-camera" style="font-size:1.25rem"></i> No thumbnail
+            </div>
             {% endif %}
-            <div class="card-body p-4">
+            <div class="video-card-body">
                 <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
                 <div class="flex items-center gap-2 mt-2">
-                    <span class="badge badge-xs
-                        {% if video.status == 'completed' %}badge-success
-                        {% elif video.status == 'failed' %}badge-error
-                        {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                        {% elif video.status == 'queued' %}badge-info
-                        {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
-                        {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+                    <span class="status-pill status-{{ video.status }}">
+                        <span class="dot"></span>
+                        {{ video.status }}
+                    </span>
                     {% if video.duration_seconds %}
-                    <span class="text-xs text-base-content/40">{{ video.duration_seconds|format_duration }}</span>
+                    <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
                     {% endif %}
                 </div>
             </div>
@@ -72,33 +68,32 @@
         {% endfor %}
     </div>
 
-{% if not videos %}
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-        <div class="card-body text-center py-12">
-            <h3 class="text-xl app-heading">No videos in library yet</h3>
-            <p class="text-sm text-base-content/60 mb-4">Queue your first video to start building searchable content.</p>
+    {% if not videos %}
+    <div class="surface mt-4">
+        <div class="surface-body text-center py-12">
+            <i class="iconoir-video-camera" style="font-size:2rem; color: var(--text-tertiary); display: block; margin-bottom: 0.75rem;"></i>
+            <h3 class="section-title mb-1">No videos in library yet</h3>
+            <p class="text-sm mb-4" style="color: var(--text-secondary);">Queue your first video to start building searchable content.</p>
             <div class="flex items-center justify-center gap-2">
-                <a href="/submit" class="btn btn-sm app-btn-primary">Submit New</a>
-                <a href="/queue" class="btn btn-sm btn-ghost">Open Queue</a>
+                <a href="/" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Submit New</a>
+                <a href="/queue" class="btn btn-ghost btn-sm">Open Queue</a>
             </div>
         </div>
     </div>
     {% endif %}
 
     {% if total_pages > 1 %}
-    <div class="flex justify-center mt-8">
-        <div class="join">
-            {% if page > 1 %}
-            <a href="/library?tab=videos&page={{ page - 1 }}" class="join-item btn btn-sm">&laquo;</a>
-            {% endif %}
-            {% for p in range(1, total_pages + 1) %}
-            <a href="/library?tab=videos&page={{ p }}"
-               class="join-item btn btn-sm {% if p == page %}app-btn-primary{% endif %}">{{ p }}</a>
-            {% endfor %}
-            {% if page < total_pages %}
-            <a href="/library?tab=videos&page={{ page + 1 }}" class="join-item btn btn-sm">&raquo;</a>
-            {% endif %}
-        </div>
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/library?tab=videos&page={{ page - 1 }}" class="page-btn">&laquo;</a>
+        {% endif %}
+        {% for p in range(1, total_pages + 1) %}
+        <a href="/library?tab=videos&page={{ p }}"
+           class="page-btn {% if p == page %}is-active{% endif %}">{{ p }}</a>
+        {% endfor %}
+        {% if page < total_pages %}
+        <a href="/library?tab=videos&page={{ page + 1 }}" class="page-btn">&raquo;</a>
+        {% endif %}
     </div>
     {% endif %}
 </div>
@@ -108,31 +103,24 @@
 {% if channels %}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
     {% for channel in channels %}
-    <a href="/channels/{{ channel.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
-        <div class="card-body items-center text-center p-5">
+    <a href="/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow">
+        <div class="surface-body flex flex-col items-center text-center py-6">
             {% if channel.thumbnail_url %}
-            <div class="avatar">
-                <div class="w-16 rounded-full">
-                    <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
-                </div>
-            </div>
+            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar mb-3">
             {% else %}
-            <div class="avatar placeholder">
-                <div class="bg-neutral text-neutral-content w-16 rounded-full">
-                    <span class="text-xl">{{ channel.name[0] }}</span>
-                </div>
-            </div>
+            <div class="channel-avatar-placeholder mb-3">{{ channel.name[0] }}</div>
             {% endif %}
-            <h4 class="text-sm font-medium mt-2">{{ channel.name }}</h4>
-            <p class="text-xs text-base-content/40">{{ channel.video_count }} videos</p>
+            <h4 class="text-sm font-medium">{{ channel.name }}</h4>
+            <p class="text-xs text-faint mt-1">{{ channel.video_count }} videos</p>
         </div>
     </a>
     {% endfor %}
 </div>
 {% else %}
 <div class="text-center py-16">
-    <p class="text-base-content/50 mb-2">No channels imported yet.</p>
-    <a href="/submit" class="btn btn-sm app-btn-primary">Import Channel</a>
+    <i class="iconoir-community" style="font-size:2rem; color: var(--text-tertiary); display: block; margin-bottom: 0.75rem;"></i>
+    <p class="text-muted mb-3">No channels imported yet.</p>
+    <a href="/" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Import Channel</a>
 </div>
 {% endif %}
 {% endif %}

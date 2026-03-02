@@ -1,31 +1,23 @@
 <div id="video-list-content">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
+        <a href="/videos/{{ video.id }}" class="video-card">
             {% if video.thumbnail_url %}
-            <figure>
-                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy"
-                     class="w-full aspect-video object-cover">
-            </figure>
+            <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
             {% else %}
-            <figure>
-                <div class="w-full aspect-video bg-base-300 flex items-center justify-center">
-                    <span class="text-base-content/30 text-sm">No thumbnail</span>
-                </div>
-            </figure>
+            <div class="video-card-placeholder">
+                <i class="iconoir-video-camera" style="font-size:1.25rem"></i> No thumbnail
+            </div>
             {% endif %}
-            <div class="card-body p-4">
-                <h4 class="card-title text-sm leading-snug line-clamp-2">{{ video.title }}</h4>
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="badge badge-sm
-                        {% if video.status == 'completed' %}badge-success
-                        {% elif video.status == 'failed' %}badge-error
-                        {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                        {% elif video.status == 'queued' %}badge-info
-                        {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
-                        {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+            <div class="video-card-body">
+                <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
+                <div class="flex items-center gap-2 mt-2">
+                    <span class="status-pill status-{{ video.status }}">
+                        <span class="dot"></span>
+                        {{ video.status }}
+                    </span>
                     {% if video.duration_seconds %}
-                    <span class="text-xs text-base-content/50">{{ video.duration_seconds|format_duration }}</span>
+                    <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
                     {% endif %}
                 </div>
             </div>
@@ -34,38 +26,37 @@
     </div>
 
     {% if not videos %}
-    <div class="text-center py-12 text-base-content/50">
-        <p>No videos yet. <a href="/submit" class="link link-primary">Submit one</a> to get started.</p>
+    <div class="text-center py-12">
+        <i class="iconoir-video-camera" style="font-size:1.5rem; color: var(--text-tertiary); display:block; margin-bottom:0.5rem;"></i>
+        <p class="text-faint">No videos yet. <a href="/" class="link">Submit one</a> to get started.</p>
     </div>
     {% endif %}
 
     {% if total_pages > 1 %}
-    <div class="flex justify-center mt-8">
-        <div class="join">
-            {% if page > 1 %}
-            <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-target="#video-list-content"
-               hx-push-url="true"
-               class="join-item btn btn-sm">&laquo; Prev</a>
-            {% endif %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true"
+           class="page-btn">&laquo; Prev</a>
+        {% endif %}
 
-            {% for p in range(1, total_pages + 1) %}
-            <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-target="#video-list-content"
-               hx-push-url="true"
-               class="join-item btn btn-sm {% if p == page %}app-btn-primary{% endif %}">{{ p }}</a>
-            {% endfor %}
+        {% for p in range(1, total_pages + 1) %}
+        <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true"
+           class="page-btn {% if p == page %}is-active{% endif %}">{{ p }}</a>
+        {% endfor %}
 
-            {% if page < total_pages %}
-            <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-               hx-target="#video-list-content"
-               hx-push-url="true"
-               class="join-item btn btn-sm">Next &raquo;</a>
-            {% endif %}
-        </div>
+        {% if page < total_pages %}
+        <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+           hx-target="#video-list-content"
+           hx-push-url="true"
+           class="page-btn">Next &raquo;</a>
+        {% endif %}
     </div>
     {% endif %}
 </div>

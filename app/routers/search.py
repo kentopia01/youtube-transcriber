@@ -20,8 +20,11 @@ async def search(
     """Semantic search across all transcripts. Accepts form data (HTMX) or JSON."""
     # Handle both form-encoded (HTMX) and JSON requests
     if query is None:
-        body = await request.json()
-        query = body.get("query", "")
+        try:
+            body = await request.json()
+            query = body.get("query", "")
+        except Exception:
+            query = ""
 
     query = query.strip()
     if not query:

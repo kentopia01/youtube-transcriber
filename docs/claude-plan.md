@@ -1,52 +1,42 @@
-# YouTube Transcriber — Implementation Plan
+# Plan: Full Frontend UI Rebuild (Phase 9)
 
 ## Goal
-Build a full-stack application that downloads YouTube audio (single video or entire channel), transcribes it locally with faster-whisper, summarises via Claude API, and provides a searchable web portal with semantic search via pgvector.
+Complete visual rebuild of all frontend templates and CSS from daisyUI v5 sidebar layout to a Cloudflare/Fin.ai-inspired design system with dark navy top navigation, orange accents, serif headlines, corner bracket accents, and Iconoir icons.
 
-## Tech Stack
-| Layer | Choice |
-|---|---|
-| Backend | Python 3.12 + FastAPI |
-| Frontend | Jinja2 + HTMX + daisyUI v5 + Tailwind CSS v4 (light theme, sidebar layout) |
-| Transcription | faster-whisper (CTranslate2, CPU) |
-| LLM | Claude API (sonnet) for summarisation |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 (384-dim) |
-| Search | PostgreSQL + pgvector (HNSW index) |
-| Task queue | Celery + Redis |
-| Infra | Docker Compose (postgres, redis, web, worker) |
+## Assumptions
+1. All backend Python code (routers, models, services, tasks) stays untouched
+2. All Jinja2 template variables remain identical
+3. All HTMX attributes (hx-get, hx-post, hx-trigger, hx-target, hx-swap, polling intervals) preserved verbatim
+4. All JavaScript form handlers preserved verbatim
+5. Existing tests are not affected (template-only changes)
 
-## Implementation Phases
+## Steps
 
-### Phase 1-6: Foundation through Polish (DONE)
-Full application built with all core features.
+### Phase 1: Foundation
+1. **Rewrite `app/static/css/main.css`** — Replace daisyUI-dependent CSS with new design tokens (CSS custom properties), component classes for navigation, cards, buttons, status pills, pipeline steps, pagination, modals, tables, forms, bracket accents
+2. **Rewrite `app/templates/base.html`** — Replace sidebar drawer layout with sticky top-nav bar (dark navy `#1a1a2e`), drop daisyUI CDN + Manrope/Public Sans fonts, add Iconoir CSS CDN + Playfair Display/Inter/JetBrains Mono fonts, keep Tailwind browser CDN + HTMX
 
-### Phase 7: UI Migration — Pico CSS → daisyUI + Tailwind CSS (DONE)
-- Replaced Pico CSS with daisyUI v5 + Tailwind CSS v4
-- Light-only theme with Inter font
+### Phase 2: Page Templates (11 files)
+3. `index.html` — Hero with bracket accents, stat cards, video/channel forms, queue widget, jobs table, channel confirm dialog
+4. `search.html` — Search input with debounce, result area, query pre-fill
+5. `queue.html` — Page title + polling container
+6. `library.html` — Tabs (Videos/Channels), video card grid, channel avatars, pagination
+7. `video_detail.html` — Breadcrumb, metadata, thumbnail, description collapsible, summary, transcript segments
+8. `channel_detail.html` — Breadcrumb, channel avatar, stats, video table
+9. `job_detail.html` — Breadcrumb, polling container
+10. `videos.html` — Page title + HTMX container
+11. `submit.html` — Two-column forms + channel confirm dialog
+12. `error.html` — Centered error card with icon
+13. `channels.html` — Channel avatar grid
 
-### Phase 8: Bug Fix + UI Restructuring (DONE)
-- [x] Fix transcription bug: `segment.avg_log_prob` → `segment.avg_logprob`
-- [x] Fix search endpoint to accept form data (HTMX compatibility)
-- [x] Replace top navbar with sidebar layout (Light Able dashboard aesthetic)
-- [x] Merge Submit + Queue into Dashboard page
-- [x] Merge Videos + Channels into Library page with tabs
-- [x] Add sidebar navigation: Dashboard, Library, Search
-- [x] Add stat cards with icons (Light Able style)
-- [x] Add consistent card borders (`border border-base-200`)
-- [x] Update breadcrumbs to point to Library/Dashboard
-- [x] Legacy routes (/submit, /channels) redirect to new locations
-- [x] Full pipeline validated end-to-end: download → transcribe → summarize → embed
-- [x] All routes verified returning 200
+### Phase 3: Partial Templates (4 files)
+14. `partials/queue_content.html` — Batch progress, active/pending/completed/failed sections, auto-refresh polling
+15. `partials/job_status.html` — Pipeline step visualization, progress bar, details table, action buttons, auto-poll
+16. `partials/video_list.html` — Video card grid + pagination with HTMX
+17. `partials/search_results.html` — Result cards + empty state
 
-## Navigation Structure (Current)
-```
-Sidebar:
-  Dashboard (/)     — Stats, Submit forms, Queue, Recent Jobs
-  Library (/library) — Videos tab | Channels tab
-  Search (/search)  — Semantic search
-
-Detail pages:
-  /videos/{id}      — Video detail with transcript + summary
-  /channels/{id}    — Channel detail with video list
-  /jobs/{id}        — Job detail with pipeline steps
-```
+## Design System Summary
+- **Colors**: Light-mode Cloudflare-inspired with dark navy top-nav contrast
+- **Typography**: Playfair Display (headlines), Inter (body), JetBrains Mono (data)
+- **Icons**: Iconoir (MIT, 1600+ icons via CDN)
+- **Key patterns**: Top navigation, corner bracket accents, status pills with dots, monospace kickers, surface cards with subtle shadows

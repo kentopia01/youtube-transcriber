@@ -3,116 +3,122 @@
 {% block title %}{{ video.title }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="breadcrumbs text-sm mb-4">
-    <ul>
-        <li><a href="/library">Library</a></li>
-        <li>{{ video.title[:50] }}{% if video.title|length > 50 %}...{% endif %}</li>
-    </ul>
-</div>
+<!-- Breadcrumb -->
+<nav class="breadcrumb">
+    <a href="/library"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
+    <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
+    <span>{{ video.title[:50] }}{% if video.title|length > 50 %}...{% endif %}</span>
+</nav>
 
-<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
-    <div class="card-body">
-        <h1 class="card-title text-2xl font-bold app-heading">{{ video.title }}</h1>
-        <div class="flex flex-wrap items-center gap-2 mt-1">
-            <span class="badge
-                {% if video.status == 'completed' %}badge-success
-                {% elif video.status == 'failed' %}badge-error
-                {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                {% elif video.status == 'queued' %}badge-info
-                {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
-                {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+<!-- Video Header Card -->
+<div class="surface mb-6">
+    <div class="surface-body">
+        <h1 class="page-title mb-2">{{ video.title }}</h1>
+        <div class="flex flex-wrap items-center gap-3 mt-1">
+            <span class="status-pill status-{{ video.status }}">
+                <span class="dot"></span>
+                {{ video.status }}
+            </span>
             {% if video.duration_seconds %}
-            <span class="text-sm text-base-content/50">{{ video.duration_seconds|format_duration }}</span>
+            <span class="font-mono text-sm text-faint">{{ video.duration_seconds|format_duration }}</span>
             {% endif %}
             {% if video.published_at %}
-            <span class="text-sm text-base-content/50">{{ video.published_at.strftime('%b %d, %Y') }}</span>
+            <span class="text-sm text-muted">{{ video.published_at.strftime('%b %d, %Y') }}</span>
             {% endif %}
-            <a href="{{ video.url }}" target="_blank" rel="noopener" class="link link-primary text-sm">Watch on YouTube</a>
+            <a href="{{ video.url }}" target="_blank" rel="noopener" class="link text-sm">
+                <i class="iconoir-open-new-window" style="font-size:0.8rem"></i> Watch on YouTube
+            </a>
         </div>
 
-        <div class="app-meta-grid mt-4">
-            <div class="app-meta-card">
-                <p class="app-meta-label">Current Status</p>
-                <p class="app-meta-value">{{ video.status }}</p>
+        <div class="meta-grid mt-4">
+            <div class="meta-card">
+                <p class="meta-label">Current Status</p>
+                <p class="meta-value">{{ video.status }}</p>
             </div>
-            <div class="app-meta-card">
-                <p class="app-meta-label">Video ID</p>
-                <p class="app-meta-value font-mono text-sm">{{ video.youtube_video_id or '--' }}</p>
+            <div class="meta-card">
+                <p class="meta-label">Video ID</p>
+                <p class="meta-value font-mono text-sm">{{ video.youtube_video_id or '--' }}</p>
             </div>
         </div>
 
         {% if video.thumbnail_url %}
         <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}"
-             class="rounded-lg mt-4 max-w-full lg:max-w-2xl">
+             class="rounded-lg mt-4 max-w-full lg:max-w-2xl" style="border: 1px solid var(--border-default);">
         {% endif %}
 
         {% if video.description %}
-        <div class="collapse collapse-arrow bg-base-200 mt-4">
-            <input type="checkbox">
-            <div class="collapse-title font-medium">Description</div>
-            <div class="collapse-content">
-                <p class="whitespace-pre-wrap text-sm">{{ video.description[:2000] }}</p>
+        <details class="collapsible mt-4">
+            <summary>
+                <span class="font-medium">Description</span>
+                <span class="chevron"><i class="iconoir-nav-arrow-down" style="font-size:0.9rem"></i></span>
+            </summary>
+            <div class="details-body">
+                <p class="whitespace-pre-wrap text-sm" style="color: var(--text-secondary);">{{ video.description[:2000] }}</p>
             </div>
-        </div>
+        </details>
         {% endif %}
     </div>
 </div>
 
 {% if summary %}
-<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
-    <div class="card-body">
-        <div class="flex items-center justify-between">
-            <h2 class="card-title text-xl app-heading">Summary</h2>
-            <span class="text-xs text-base-content/40">Generated by {{ summary.model or 'Claude' }}</span>
+<!-- Summary Card -->
+<div class="surface mb-6">
+    <div class="surface-body">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="section-title"><i class="iconoir-brain" style="font-size:1rem; color: var(--accent);"></i> Summary</h2>
+            <span class="font-mono text-xs text-faint">Generated by {{ summary.model or 'Claude' }}</span>
         </div>
-        <div class="prose prose-sm max-w-none mt-2">{{ summary.content | replace('\n', '<br>') | safe }}</div>
+        <div class="prose prose-sm max-w-none text-sm leading-relaxed" style="color: var(--text-secondary);">{{ summary.content | replace('\n', '<br>') | safe }}</div>
     </div>
 </div>
 {% endif %}
 
 {% if transcription %}
-<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
-    <div class="card-body">
-        <h2 class="card-title text-xl app-heading">Transcript</h2>
-        <div class="flex flex-wrap gap-3 text-sm text-base-content/60 mt-1">
-            <span>{{ transcription.word_count or 0 }} words</span>
+<!-- Transcript Card -->
+<div class="surface mb-6">
+    <div class="surface-body">
+        <h2 class="section-title mb-2"><i class="iconoir-page" style="font-size:1rem; color: var(--accent);"></i> Transcript</h2>
+        <div class="flex flex-wrap gap-3 text-sm text-muted mt-1">
+            <span class="font-mono">{{ transcription.word_count or 0 }} words</span>
             <span>{{ transcription.language or 'unknown' }}</span>
             {% if transcription.processing_time_seconds %}
-            <span>Processed in {{ "%.1f"|format(transcription.processing_time_seconds) }}s</span>
+            <span class="font-mono">Processed in {{ "%.1f"|format(transcription.processing_time_seconds) }}s</span>
             {% endif %}
         </div>
 
-        <div class="collapse collapse-arrow bg-base-200 mt-4">
-            <input type="checkbox">
-            <div class="collapse-title font-medium">Full text</div>
-            <div class="collapse-content">
-                <p class="whitespace-pre-wrap text-sm">{{ transcription.full_text }}</p>
+        <details class="collapsible mt-4">
+            <summary>
+                <span class="font-medium">Full text</span>
+                <span class="chevron"><i class="iconoir-nav-arrow-down" style="font-size:0.9rem"></i></span>
+            </summary>
+            <div class="details-body">
+                <p class="whitespace-pre-wrap text-sm" style="color: var(--text-secondary);">{{ transcription.full_text }}</p>
             </div>
-        </div>
+        </details>
 
-        <h3 class="text-lg font-semibold mt-6 mb-3">Segments</h3>
-        <div class="space-y-0 divide-y divide-base-200">
+        <h3 class="text-lg font-semibold mt-6 mb-3 font-headline">Segments</h3>
+        <div class="space-y-0 divide-y" style="border-color: var(--border-muted);">
             {% for segment in transcription.segments %}
             <div class="flex gap-4 py-3">
-                <span class="segment-time flex-shrink-0 font-mono text-sm app-accent-text min-w-[5rem]"
+                <span class="segment-time flex-shrink-0 min-w-[5rem]"
                       title="Click to copy timestamp">
                     {{ segment.start_time|format_timestamp }} - {{ segment.end_time|format_timestamp }}
                 </span>
-                <span class="flex-1 text-sm leading-relaxed">{{ segment.text }}</span>
+                <span class="flex-1 text-sm leading-relaxed" style="color: var(--text-secondary);">{{ segment.text }}</span>
             </div>
             {% endfor %}
         </div>
     </div>
 </div>
 {% elif video.status not in ['completed', 'transcribed', 'summarized', 'summarizing'] %}
-<div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body">
-        <p class="text-base-content/60">Transcript not yet available. Current status:
-            <span class="badge
-                {% if video.status == 'failed' %}badge-error
-                {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                {% elif video.status == 'queued' %}badge-info
-                {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+<div class="surface">
+    <div class="surface-body text-center py-8">
+        <i class="iconoir-clock" style="font-size:1.5rem; color: var(--text-tertiary); display:block; margin-bottom:0.5rem;"></i>
+        <p class="text-muted">Transcript not yet available. Current status:
+            <span class="status-pill status-{{ video.status }} ml-1">
+                <span class="dot"></span>
+                {{ video.status }}
+            </span>
         </p>
     </div>
 </div>

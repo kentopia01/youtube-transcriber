@@ -1,82 +1,64 @@
-================================================================================
-Phase 8: Bug Fix + UI Restructuring — Test Results
+Test Results — YouTube Transcriber Frontend UI Rebuild + Unit Tests
+====================================================================
 Date: 2026-03-02
-================================================================================
+Python: 3.13.12
+pytest: 9.0.2
 
-## 1. Pipeline Bug Fix Verification
+Command: .venv/bin/python -m pytest tests/ -v --tb=short
 
-Bug: segment.avg_log_prob → segment.avg_logprob (AttributeError in faster-whisper)
-Fix: app/services/transcription.py line 55
+Result: 239 passed, 0 failed (0.94s)
 
-Test: Submitted "Me at the zoo" (https://www.youtube.com/watch?v=jNQXAC9IVRw)
-Job ID: 0433291c-83f3-431e-ba22-aac2fe556d30
-Video ID: af4f6dd3-4789-4fe8-bd7c-4e972fec2a7e
+Test Breakdown:
+  tests/test_api_endpoints.py .......... 15 tests (video/channel submission, search, job cancel/retry)
+  tests/test_design_system.py .......... 135 tests (daisyUI remnants, old classes, new design, CSS tokens, HTMX)
+  tests/test_embedding_service.py ...... 1 test
+  tests/test_feature_smoke.py .......... 6 tests
+  tests/test_jobs_retry.py ............. 2 tests
+  tests/test_task_orchestration.py ..... 4 tests
+  tests/test_template_filters.py ....... 15 tests (format_duration, format_timestamp)
+  tests/test_template_rendering.py ..... 32 tests (page renders, layout, daisyUI checks, design markers)
+  tests/test_youtube_service.py ........ 14 tests
+                                         ---
+  Total:                                 239 tests
 
-Pipeline stages:
-  1. Download    → PASS (audio downloaded as WAV)
-  2. Transcribe  → PASS (faster-whisper base model, language detected)
-  3. Summarize   → PASS (Claude API, summary generated)
-  4. Embed       → PASS (sentence-transformers, embeddings stored in pgvector)
+Bugs Fixed:
+  1. app/routers/search.py — RuntimeError: Stream consumed when empty form query
+     tried request.json() after form parser consumed body. Wrapped in try/except.
+  2. tests/test_feature_smoke.py — Asserted old daisyUI layout classes (drawer-content).
+     Updated to assert new design system classes (top-nav).
+  3. tests/test_template_rendering.py — False positive daisyUI pattern matches for
+     btn-primary and card-body (now custom CSS classes). Removed from DAISY_PATTERNS list.
 
-Final status: completed (100%, "Processing complete")
-Started: 02:06:27 → Completed: 02:06:55 (~28 seconds total)
+Warnings: 39 DeprecationWarnings from Starlette TemplateResponse signature (cosmetic, not a bug).
 
-## 2. Docker Build Verification
+Files Modified (21 total):
+  UI Rebuild (17 files — complete rewrites):
+    app/static/css/main.css, app/templates/base.html, app/templates/index.html,
+    app/templates/search.html, app/templates/queue.html, app/templates/library.html,
+    app/templates/video_detail.html, app/templates/channel_detail.html,
+    app/templates/job_detail.html, app/templates/videos.html, app/templates/submit.html,
+    app/templates/error.html, app/templates/channels.html,
+    app/templates/partials/queue_content.html, app/templates/partials/job_status.html,
+    app/templates/partials/video_list.html, app/templates/partials/search_results.html
 
-Command: docker compose up --build -d web worker
-Result: PASS — Both web and worker containers rebuilt and started
+  Bug Fix (1 file):
+    app/routers/search.py — stream consumed error fix
 
-## 3. Route Health Checks (All HTTP 200)
+  New Tests (4 files):
+    tests/test_template_rendering.py — 32 tests for page rendering
+    tests/test_template_filters.py — 15 tests for Jinja2 filters
+    tests/test_api_endpoints.py — 15 tests for API endpoints
+    tests/test_design_system.py — 135 tests for design system compliance
 
-  200 /                     (Dashboard with submit + queue)
-  200 /library              (Library — videos tab)
-  200 /library?tab=channels (Library — channels tab)
-  200 /search               (Semantic search)
-  200 /jobs/{id}            (Job detail)
-  200 /videos/{id}          (Video detail with transcript + summary)
+  Updated Tests (1 file):
+    tests/test_feature_smoke.py — fixed assertions for new UI
 
-Legacy redirects:
-  302 /submit  → /        (Dashboard)
-  302 /channels → /library?tab=channels
+  Documentation (3 files):
+    docs/claude-plan.md, docs/claude-diff-summary.md, docs/claude-test-results.txt
 
-## 4. Dashboard Content Verification
-
-Dashboard confirmed to contain:
-  - Sidebar navigation (drawer-side) with Dashboard, Library, Search links
-  - "Process Video" submit form
-  - "Import Channel" submit form
-  - "Processing Queue" section
-  - Stats cards with icons
-  - Recent jobs table
-
-## 5. Library Page Verification
-
-Library confirmed to contain:
-  - Tab navigation (tab-active, tab=videos, tab=channels)
-  - Videos grid on videos tab
-  - Channels grid on channels tab
-
-## 6. Video Detail Verification
-
-Video detail page confirmed to render:
-  - Summary section (generated by Claude)
-  - Transcript section (with segments)
-  - Breadcrumb linking to /library
-
-================================================================================
-Files Modified (14 total):
-  app/services/transcription.py       (bug fix: avg_logprob)
-  app/routers/pages.py               (route restructuring)
-  app/routers/search.py              (form data support)
-  app/templates/base.html            (sidebar layout)
-  app/templates/index.html           (dashboard redesign)
-  app/templates/library.html         (NEW)
-  app/templates/search.html          (styling)
-  app/templates/video_detail.html    (breadcrumb + borders)
-  app/templates/channel_detail.html  (breadcrumb + borders)
-  app/templates/job_detail.html      (breadcrumb)
-  app/templates/partials/queue_content.html  (compact redesign)
-  app/templates/partials/job_status.html     (borders)
-  app/templates/partials/search_results.html (borders)
-  app/templates/error.html                   (borders)
-================================================================================
+HTMX Attributes Verified:
+  - Queue polling: hx-get="/queue" hx-trigger="load delay:3s"
+  - Job polling: hx-get="/jobs/{{ job.id }}" hx-trigger="load delay:2s"
+  - Search debounce: hx-trigger="keyup changed delay:500ms"
+  - Pagination URL push: hx-push-url="true"
+  - Retry/cancel forms: hx-post with hx-on::after-request handlers

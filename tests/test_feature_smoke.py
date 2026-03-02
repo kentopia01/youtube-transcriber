@@ -36,8 +36,8 @@ def test_search_page_renders():
     response = client.get("/search")
     assert response.status_code == 200
     assert "Search across all transcribed video content" in response.text
-    assert "drawer-content lg:ml-64" in response.text
-    assert "lg:fixed lg:left-0 lg:top-0" in response.text
+    assert "top-nav" in response.text
+    assert "Semantic Search" in response.text
 
 
 def test_legacy_routes_redirect_to_new_locations():

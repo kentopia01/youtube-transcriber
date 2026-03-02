@@ -3,45 +3,48 @@
 {% block title %}Submit - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="app-page-head">
-    <h1 class="app-page-title">Submit Video Or Channel</h1>
-    <p class="app-page-subtitle">Start a single transcription job or discover a full channel in batches.</p>
+<div class="page-head">
+    <p class="kicker mb-1">Ingest</p>
+    <h1 class="page-title">Submit Video Or Channel</h1>
+    <p class="page-subtitle">Start a single transcription job or discover a full channel in batches.</p>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="card bg-base-100 shadow-sm">
-        <div class="card-body">
-            <h2 class="card-title">Single Video</h2>
-            <p class="text-sm text-base-content/60">Paste a YouTube video URL to download, transcribe, summarize, and index it.</p>
-            <form id="video-form" class="mt-2">
-                <div class="form-control mb-4">
-                    <label class="label" for="video-url">
-                        <span class="label-text">YouTube Video URL</span>
-                    </label>
+    <!-- Single Video -->
+    <div class="surface accent-top">
+        <div class="surface-body">
+            <h2 class="section-title mb-1"><i class="iconoir-video-camera" style="font-size:1rem; color: var(--accent);"></i> Single Video</h2>
+            <p class="text-sm mb-4" style="color: var(--text-secondary);">Paste a YouTube video URL to download, transcribe, summarize, and index it.</p>
+            <form id="video-form">
+                <div class="mb-4">
+                    <label class="input-label" for="video-url">YouTube Video URL</label>
                     <input type="url" id="video-url" name="url"
                            placeholder="https://www.youtube.com/watch?v=..."
-                           class="input input-bordered w-full" required>
+                           class="input-field" required>
                 </div>
-                <button type="submit" class="btn app-btn-primary w-full">Process Video</button>
+                <button type="submit" class="btn btn-primary w-full">
+                    <i class="iconoir-play-solid" style="font-size:0.85rem"></i> Process Video
+                </button>
             </form>
             <div id="video-result" class="mt-2"></div>
         </div>
     </div>
 
-    <div class="card bg-base-100 shadow-sm">
-        <div class="card-body">
-            <h2 class="card-title">Channel Import</h2>
-            <p class="text-sm text-base-content/60">Paste a YouTube channel URL to discover all videos. You'll choose which ones to process.</p>
-            <form id="channel-form" class="mt-2">
-                <div class="form-control mb-4">
-                    <label class="label" for="channel-url">
-                        <span class="label-text">YouTube Channel URL</span>
-                    </label>
+    <!-- Channel Import -->
+    <div class="surface">
+        <div class="surface-body">
+            <h2 class="section-title mb-1"><i class="iconoir-community" style="font-size:1rem; color: var(--accent);"></i> Channel Import</h2>
+            <p class="text-sm mb-4" style="color: var(--text-secondary);">Paste a YouTube channel URL to discover all videos. You'll choose which ones to process.</p>
+            <form id="channel-form">
+                <div class="mb-4">
+                    <label class="input-label" for="channel-url">YouTube Channel URL</label>
                     <input type="url" id="channel-url" name="url"
                            placeholder="https://www.youtube.com/@channelname"
-                           class="input input-bordered w-full" required>
+                           class="input-field" required>
                 </div>
-                <button type="submit" class="btn app-btn-primary w-full">Discover Videos</button>
+                <button type="submit" class="btn btn-outline w-full">
+                    <i class="iconoir-community" style="font-size:0.85rem"></i> Discover Videos
+                </button>
             </form>
             <div id="channel-result" class="mt-2"></div>
         </div>
@@ -49,29 +52,28 @@
 </div>
 
 <!-- Channel video selection modal -->
-<dialog id="channel-confirm-dialog" class="modal">
-    <div class="modal-box max-w-3xl max-h-[80vh]">
-        <form method="dialog">
-            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">&#10005;</button>
-        </form>
-        <h3 id="channel-dialog-title" class="text-lg font-bold mb-4">Select Videos to Process</h3>
-        <div class="flex items-center gap-2 mb-4">
-            <label class="label cursor-pointer gap-2">
-                <input type="checkbox" id="select-all" checked class="checkbox checkbox-primary checkbox-sm">
-                <span class="label-text">Select All (<span id="video-count">0</span> videos)</span>
-            </label>
+<dialog id="channel-confirm-dialog" class="modal-dialog">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="channel-dialog-title" class="section-title">Select Videos to Process</h3>
+            <button class="modal-close" onclick="document.getElementById('channel-confirm-dialog').close()">
+                <i class="iconoir-xmark"></i>
+            </button>
         </div>
-        <div id="channel-video-list" class="max-h-[50vh] overflow-y-auto border border-base-300 rounded-lg"></div>
-        <div class="modal-action">
-            <form method="dialog">
-                <button class="btn btn-ghost">Cancel</button>
-            </form>
-            <button id="confirm-process-btn" class="btn app-btn-primary">Process Selected</button>
+        <div class="modal-body">
+            <div class="flex items-center gap-2 mb-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="select-all" checked class="checkbox-field">
+                    <span class="text-sm">Select All (<span id="video-count">0</span> videos)</span>
+                </label>
+            </div>
+            <div id="channel-video-list" class="max-h-[50vh] overflow-y-auto border rounded-lg" style="border-color: var(--border-default);"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('channel-confirm-dialog').close()">Cancel</button>
+            <button id="confirm-process-btn" class="btn btn-primary btn-sm">Process Selected</button>
         </div>
     </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>close</button>
-    </form>
 </dialog>
 {% endblock %}
 
@@ -82,7 +84,7 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const url = document.getElementById('video-url').value;
     const result = document.getElementById('video-result');
-    result.innerHTML = '<span class="loading loading-spinner loading-sm"></span> <span class="text-sm">Processing...</span>';
+    result.innerHTML = '<span class="spinner spinner-sm"></span> <span class="text-sm">Processing...</span>';
 
     try {
         const resp = await fetch('/api/videos', {
@@ -92,7 +94,7 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
         });
         const data = await resp.json();
         if (resp.ok) {
-            result.innerHTML = '<p class="text-sm text-success">Video queued! <a href="/jobs/' + data.job_id + '" class="link link-primary">Track progress</a></p>';
+            result.innerHTML = '<p class="text-sm text-success">Video queued! <a href="/jobs/' + data.job_id + '" class="link">Track progress</a></p>';
         } else {
             result.innerHTML = '<p class="text-sm text-error">' + (data.detail || 'Error') + '</p>';
         }
@@ -109,7 +111,7 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
     e.preventDefault();
     const url = document.getElementById('channel-url').value;
     const result = document.getElementById('channel-result');
-    result.innerHTML = '<span class="loading loading-spinner loading-sm"></span> <span class="text-sm">Discovering videos... This may take a moment.</span>';
+    result.innerHTML = '<span class="spinner spinner-sm"></span> <span class="text-sm">Discovering videos... This may take a moment.</span>';
 
     try {
         const resp = await fetch('/api/channels', {
@@ -137,11 +139,11 @@ function showChannelConfirmDialog(channelName, videos) {
 
     const list = document.getElementById('channel-video-list');
     list.innerHTML = videos.map((v, i) => `
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-base-200 last:border-b-0">
-            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox checkbox-primary checkbox-sm channel-video-cb">
+        <div class="flex items-center gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
+            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox-field channel-video-cb">
             <label for="vid-${i}" class="flex-1 cursor-pointer">
                 <span class="font-medium text-sm">${v.title}</span>
-                <span class="text-xs text-base-content/50 ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
+                <span class="font-mono text-xs text-faint ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
             </label>
         </div>
     `).join('');
@@ -160,7 +162,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
     if (!selected.length) { alert('Select at least one video'); return; }
 
     const btn = document.getElementById('confirm-process-btn');
-    btn.classList.add('loading');
+    btn.classList.add('is-loading');
     btn.disabled = true;
 
     try {
@@ -173,14 +175,14 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
         if (resp.ok) {
             document.getElementById('channel-confirm-dialog').close();
             document.getElementById('channel-result').innerHTML =
-                '<p class="text-sm text-success">Queued ' + data.total_videos + ' videos in ' + data.total_batches + ' batch(es). <a href="/queue" class="link link-primary">View Queue</a></p>';
+                '<p class="text-sm text-success">Queued ' + data.total_videos + ' videos in ' + data.total_batches + ' batch(es). <a href="/queue" class="link">View Queue</a></p>';
         } else {
             alert(data.detail || 'Error processing videos');
         }
     } catch (err) {
         alert('Network error');
     } finally {
-        btn.classList.remove('loading');
+        btn.classList.remove('is-loading');
         btn.disabled = false;
     }
 });

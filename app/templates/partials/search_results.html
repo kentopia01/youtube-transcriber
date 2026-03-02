@@ -1,35 +1,39 @@
 {% if results %}
-<p class="text-sm text-base-content/55 mb-4">Found {{ results|length }} results for "{{ query }}"</p>
+<p class="text-sm text-muted mb-4">Found {{ results|length }} results for "{{ query }}"</p>
 
 <div class="space-y-4">
     {% for result in results %}
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-        <div class="card-body p-4">
+    <div class="surface">
+        <div class="surface-body">
             <div class="flex justify-between items-start gap-4">
                 <h4 class="font-semibold">
-                    <a href="/videos/{{ result.video_id }}" class="link link-hover">{{ result.video_title }}</a>
+                    <a href="/videos/{{ result.video_id }}" class="link-muted hover:text-[var(--accent)]">{{ result.video_title }}</a>
                 </h4>
-                <span class="badge app-badge-warning badge-sm whitespace-nowrap">{{ "%.1f"|format(result.similarity * 100) }}% match</span>
+                <span class="status-pill status-running whitespace-nowrap">
+                    <span class="dot"></span>
+                    {{ "%.1f"|format(result.similarity * 100) }}% match
+                </span>
             </div>
             {% if result.start_time is not none %}
-            <p class="text-xs text-base-content/40 mt-1">
+            <p class="font-mono text-xs text-faint mt-1">
                 {{ result.start_time|format_timestamp }} - {{ result.end_time|format_timestamp }}
             </p>
             {% endif %}
-            <p class="text-sm mt-2 text-base-content/70 leading-relaxed">{{ result.chunk_text[:500] }}{% if result.chunk_text|length > 500 %}...{% endif %}</p>
+            <p class="text-sm mt-2 leading-relaxed" style="color: var(--text-secondary);">{{ result.chunk_text[:500] }}{% if result.chunk_text|length > 500 %}...{% endif %}</p>
         </div>
     </div>
     {% endfor %}
 </div>
 {% elif query %}
-<div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body text-center py-10">
-        <h3 class="text-lg app-heading">No results for "{{ query }}"</h3>
-        <p class="text-sm text-base-content/60 mt-1 mb-4">Try a narrower phrase or switch to a term likely spoken verbatim in the transcript.</p>
-        <div class="app-chip-row justify-center">
-            <a href="/search?q=summary" class="app-chip">try: summary</a>
-            <a href="/search?q=deployment" class="app-chip">try: deployment</a>
-            <a href="/search?q=pricing" class="app-chip">try: pricing</a>
+<div class="surface">
+    <div class="surface-body text-center py-10">
+        <i class="iconoir-search" style="font-size:1.5rem; color: var(--text-tertiary); display:block; margin-bottom:0.5rem;"></i>
+        <h3 class="section-title mb-1">No results for "{{ query }}"</h3>
+        <p class="text-sm text-muted mt-1 mb-4">Try a narrower phrase or switch to a term likely spoken verbatim in the transcript.</p>
+        <div class="flex flex-wrap justify-center gap-2">
+            <a href="/search?q=summary" class="chip">try: summary</a>
+            <a href="/search?q=deployment" class="chip">try: deployment</a>
+            <a href="/search?q=pricing" class="chip">try: pricing</a>
         </div>
     </div>
 </div>

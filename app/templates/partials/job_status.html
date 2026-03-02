@@ -1,14 +1,11 @@
-<div class="card bg-base-100 shadow-sm border border-base-200">
-    <div class="card-body">
+<div class="surface">
+    <div class="surface-body">
         <div class="flex items-center gap-3 mb-4">
-            <h2 class="card-title text-xl">Job: {{ job.job_type }}</h2>
-            <span class="badge
-                {% if job.status == 'completed' %}badge-success
-                {% elif job.status == 'failed' %}badge-error
-                {% elif job.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                {% elif job.status == 'queued' %}badge-info
-                {% elif job.status == 'cancelled' %}badge-ghost
-                {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+            <h2 class="section-title">Job: {{ job.job_type }}</h2>
+            <span class="status-pill status-{{ job.status }}">
+                <span class="dot"></span>
+                {{ job.status }}
+            </span>
         </div>
 
         <!-- Pipeline progress visualization -->
@@ -17,56 +14,78 @@
         {% set step_thresholds = {'download': 25, 'transcribe': 50, 'summarize': 75, 'embed': 100} %}
 
         {% if job.job_type == 'pipeline' %}
-        <ul class="steps steps-horizontal w-full my-6">
+        <div class="pipeline-steps">
             {% for step in steps %}
             {% set threshold = step_thresholds[step] %}
             {% set prev_threshold = step_thresholds[steps[loop.index0 - 1]] if loop.index0 > 0 else 0 %}
-            <li class="step
-                {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}step-error
-                {% elif job.progress_pct >= threshold %}step-primary
-                {% elif job.progress_pct > prev_threshold %}step-primary
-                {% endif %}"
-                {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}data-content="✗"
-                {% elif job.progress_pct >= threshold %}data-content="✓"
-                {% endif %}>
-                {{ step_labels[step] }}
-            </li>
+            <div class="pipeline-step
+                {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}is-error
+                {% elif job.progress_pct >= threshold %}is-done
+                {% elif job.progress_pct > prev_threshold %}is-active
+                {% endif %}">
+                <div class="pipeline-step-dot">
+                    {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}
+                    <i class="iconoir-xmark" style="font-size:0.7rem"></i>
+                    {% elif job.progress_pct >= threshold %}
+                    <i class="iconoir-check" style="font-size:0.7rem"></i>
+                    {% else %}
+                    {{ loop.index }}
+                    {% endif %}
+                </div>
+                <div class="pipeline-step-label">{{ step_labels[step] }}</div>
+            </div>
             {% endfor %}
-        </ul>
+        </div>
         {% endif %}
 
-        <progress class="progress {% if job.status == 'completed' %}progress-success{% elif job.status == 'failed' %}progress-error{% else %}progress-primary{% endif %} w-full h-3"
+        <progress class="progress-bar progress-bar-lg {% if job.status == 'completed' %}progress-success{% elif job.status == 'failed' %}progress-error{% endif %} w-full"
                   value="{{ job.progress_pct }}" max="100"></progress>
         <p class="text-center mt-2">
-            <span class="font-bold">{{ "%.0f"|format(job.progress_pct) }}%</span>
-            {% if job.progress_message %} &mdash; <span class="text-base-content/60">{{ job.progress_message }}</span>{% endif %}
+            <span class="font-mono font-bold">{{ "%.0f"|format(job.progress_pct) }}%</span>
+            {% if job.progress_message %} &mdash; <span class="text-muted">{{ job.progress_message }}</span>{% endif %}
         </p>
 
         <div class="overflow-x-auto mt-6">
-            <table class="table">
+            <table class="data-table">
                 <tbody>
-                    <tr><td class="font-medium w-32">Job ID</td><td><code class="text-sm bg-base-200 px-2 py-0.5 rounded">{{ job.id }}</code></td></tr>
-                    <tr><td class="font-medium">Type</td><td>{{ job.job_type }}</td></tr>
+                    <tr>
+                        <td class="font-medium w-32">Job ID</td>
+                        <td><code class="font-mono text-sm px-2 py-0.5 rounded" style="background: var(--bg-elevated);">{{ job.id }}</code></td>
+                    </tr>
+                    <tr>
+                        <td class="font-medium">Type</td>
+                        <td>{{ job.job_type }}</td>
+                    </tr>
                     <tr>
                         <td class="font-medium">Status</td>
                         <td>
-                            <span class="badge badge-sm
-                                {% if job.status == 'completed' %}badge-success
-                                {% elif job.status == 'failed' %}badge-error
-                                {% elif job.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                                {% elif job.status == 'queued' %}badge-info
-                                {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+                            <span class="status-pill status-{{ job.status }}">
+                                <span class="dot"></span>
+                                {{ job.status }}
+                            </span>
                         </td>
                     </tr>
                     {% if job.started_at %}
-                    <tr><td class="font-medium">Started</td><td class="text-sm">{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+                    <tr>
+                        <td class="font-medium">Started</td>
+                        <td class="font-mono text-sm">{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
                     {% endif %}
                     {% if job.completed_at %}
-                    <tr><td class="font-medium">Completed</td><td class="text-sm">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+                    <tr>
+                        <td class="font-medium">Completed</td>
+                        <td class="font-mono text-sm">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
                     {% endif %}
-                    <tr><td class="font-medium">Created</td><td class="text-sm">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>
+                    <tr>
+                        <td class="font-medium">Created</td>
+                        <td class="font-mono text-sm">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
                     {% if job.error_message %}
-                    <tr><td class="font-medium">Error</td><td class="text-sm text-error">{{ job.error_message }}</td></tr>
+                    <tr>
+                        <td class="font-medium">Error</td>
+                        <td class="text-sm text-error">{{ job.error_message }}</td>
+                    </tr>
                     {% endif %}
                 </tbody>
             </table>
@@ -74,20 +93,26 @@
 
         <div class="flex gap-2 mt-4">
             {% if video %}
-            <a href="/videos/{{ video.id }}" class="btn btn-outline app-btn-outline btn-sm">View Video</a>
+            <a href="/videos/{{ video.id }}" class="btn btn-outline btn-sm">
+                <i class="iconoir-video-camera" style="font-size:0.8rem"></i> View Video
+            </a>
             {% endif %}
 
             {% if job.status in ['pending', 'queued'] %}
             <form hx-post="/api/jobs/{{ job.id }}/cancel"
                   hx-swap="none"
                   hx-on::after-request="htmx.ajax('GET', '/jobs/{{ job.id }}', {target: '#job-status-container', swap: 'innerHTML'})">
-                <button class="btn btn-error btn-outline btn-sm">Cancel Job</button>
+                <button class="btn btn-error-outline btn-sm">
+                    <i class="iconoir-xmark" style="font-size:0.8rem"></i> Cancel Job
+                </button>
             </form>
             {% endif %}
 
             {% if job.status == 'failed' %}
             <form hx-post="/api/jobs/{{ job.id }}/retry" hx-swap="none">
-                <button class="btn app-btn-warning btn-sm">Retry Job</button>
+                <button class="btn btn-warning btn-sm">
+                    <i class="iconoir-refresh-double" style="font-size:0.8rem"></i> Retry Job
+                </button>
             </form>
             {% endif %}
         </div>

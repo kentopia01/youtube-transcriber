@@ -3,27 +3,24 @@
 {% block title %}{{ channel.name }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="breadcrumbs text-sm mb-4">
-    <ul>
-        <li><a href="/library?tab=channels">Library</a></li>
-        <li>{{ channel.name }}</li>
-    </ul>
-</div>
+<!-- Breadcrumb -->
+<nav class="breadcrumb">
+    <a href="/library?tab=channels"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
+    <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
+    <span>{{ channel.name }}</span>
+</nav>
 
-<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
-    <div class="card-body">
+<!-- Channel Header -->
+<div class="surface mb-6">
+    <div class="surface-body">
         <div class="flex items-center gap-4">
             {% if channel.thumbnail_url %}
-            <div class="avatar">
-                <div class="w-16 rounded-full">
-                    <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
-                </div>
-            </div>
+            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar">
             {% endif %}
             <div>
-                <h1 class="text-2xl font-bold app-heading">{{ channel.name }}</h1>
-                <p class="text-sm text-base-content/50">
-                    {{ channel.video_count }} videos
+                <h1 class="page-title">{{ channel.name }}</h1>
+                <p class="text-sm text-muted">
+                    <span class="font-mono">{{ channel.video_count }}</span> videos
                     {% if channel.last_synced_at %}
                     &middot; Last synced {{ channel.last_synced_at.strftime('%b %d, %Y %H:%M') }}
                     {% endif %}
@@ -32,32 +29,41 @@
         </div>
 
         {% if channel.description %}
-        <p class="text-sm mt-4 text-base-content/70">{{ channel.description[:500] }}</p>
+        <p class="text-sm mt-4" style="color: var(--text-secondary);">{{ channel.description[:500] }}</p>
         {% endif %}
 
-        <div class="card-actions mt-4">
-            <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline app-btn-outline btn-sm">View on YouTube</a>
-            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline app-btn-outline btn-sm">View as Grid</a>
+        <div class="flex gap-2 mt-4">
+            <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+                <i class="iconoir-open-new-window" style="font-size:0.8rem"></i> View on YouTube
+            </a>
+            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline btn-sm">
+                <i class="iconoir-view-grid" style="font-size:0.8rem"></i> View as Grid
+            </a>
         </div>
     </div>
 </div>
 
-<div class="app-meta-grid">
-    <div class="app-meta-card">
-        <p class="app-meta-label">Videos Listed</p>
-        <p class="app-meta-value">{{ videos|length }}</p>
+<!-- Meta Stats -->
+<div class="meta-grid">
+    <div class="meta-card">
+        <p class="meta-label">Videos Listed</p>
+        <p class="meta-value">{{ videos|length }}</p>
     </div>
-    <div class="app-meta-card">
-        <p class="app-meta-label">Channel URL</p>
-        <p class="app-meta-value text-sm truncate">{{ channel.url or '--' }}</p>
+    <div class="meta-card">
+        <p class="meta-label">Channel URL</p>
+        <p class="meta-value text-sm truncate font-mono">{{ channel.url or '--' }}</p>
     </div>
 </div>
 
-<h2 class="text-2xl font-semibold mb-4 app-heading">Videos ({{ videos|length }})</h2>
+<!-- Videos Table -->
+<h2 class="section-title mb-4 mt-6">
+    <i class="iconoir-video-camera" style="font-size:1rem; color: var(--accent);"></i>
+    Videos ({{ videos|length }})
+</h2>
 
-<div class="card bg-base-100 shadow-sm border border-base-200">
+<div class="surface">
     <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="data-table">
             <thead>
                 <tr>
                     <th>Title</th>
@@ -69,18 +75,15 @@
             <tbody>
                 {% for video in videos %}
                 <tr>
-                    <td><a href="/videos/{{ video.id }}" class="link link-hover font-medium">{{ video.title }}</a></td>
-                    <td class="text-sm text-base-content/60">{{ video.duration_seconds|format_duration }}</td>
+                    <td><a href="/videos/{{ video.id }}" class="link-muted font-medium hover:text-[var(--accent)]">{{ video.title }}</a></td>
+                    <td class="font-mono text-sm text-faint">{{ video.duration_seconds|format_duration }}</td>
                     <td>
-                        <span class="badge badge-sm
-                            {% if video.status == 'completed' %}badge-success
-                            {% elif video.status == 'failed' %}badge-error
-                            {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                            {% elif video.status == 'queued' %}badge-info
-                            {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
-                            {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+                        <span class="status-pill status-{{ video.status }}">
+                            <span class="dot"></span>
+                            {{ video.status }}
+                        </span>
                     </td>
-                    <td class="text-sm text-base-content/60">{{ video.published_at.strftime('%b %d, %Y') if video.published_at else '--' }}</td>
+                    <td class="font-mono text-sm text-faint">{{ video.published_at.strftime('%b %d, %Y') if video.published_at else '--' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

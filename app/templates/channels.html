@@ -3,39 +3,35 @@
 {% block title %}Channels - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="app-page-head">
-    <h1 class="app-page-title">Channels</h1>
-    <p class="app-page-subtitle">Manage source channels and drill into their video pipelines.</p>
+<div class="page-head">
+    <p class="kicker mb-1">Sources</p>
+    <h1 class="page-title">Channels</h1>
+    <p class="page-subtitle">Manage source channels and drill into their video pipelines.</p>
 </div>
 
 {% if channels %}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {% for channel in channels %}
-    <a href="/channels/{{ channel.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
-        <div class="card-body items-center text-center">
+    <a href="/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow">
+        <div class="surface-body flex flex-col items-center text-center py-6">
             {% if channel.thumbnail_url %}
-            <div class="avatar">
-                <div class="w-20 rounded-full">
-                    <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
-                </div>
-            </div>
+            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar mb-3">
             {% else %}
-            <div class="avatar placeholder">
-                <div class="bg-neutral text-neutral-content w-20 rounded-full">
-                    <span class="text-2xl">{{ channel.name[0] }}</span>
-                </div>
-            </div>
+            <div class="channel-avatar-placeholder mb-3">{{ channel.name[0] }}</div>
             {% endif %}
-            <h4 class="card-title text-base mt-2">{{ channel.name }}</h4>
-            <p class="text-sm text-base-content/50">{{ channel.video_count }} videos</p>
+            <h4 class="text-sm font-semibold mt-1">{{ channel.name }}</h4>
+            <p class="text-xs text-faint mt-1">{{ channel.video_count }} videos</p>
         </div>
     </a>
     {% endfor %}
 </div>
 {% else %}
 <div class="text-center py-16">
-    <p class="text-base-content/50 mb-4">No channels imported yet.</p>
-    <a href="/submit" class="btn app-btn-primary">Import a Channel</a>
+    <i class="iconoir-community" style="font-size:2.5rem; color: var(--text-tertiary); display:block; margin-bottom:1rem;"></i>
+    <p class="text-muted mb-4">No channels imported yet.</p>
+    <a href="/" class="btn btn-primary">
+        <i class="iconoir-plus" style="font-size:0.85rem"></i> Import a Channel
+    </a>
 </div>
 {% endif %}
 {% endblock %}

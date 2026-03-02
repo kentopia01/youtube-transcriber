@@ -1,56 +1,54 @@
-# Diff Summary — Phase 8: Bug Fix + UI Restructuring
+# Diff Summary — Full Frontend UI Rebuild + Tests
 
 ## What Changed
 
-### Bug Fixes
-- **app/services/transcription.py** — Fixed `segment.avg_log_prob` → `segment.avg_logprob` (AttributeError that broke the pipeline at transcription stage)
-- **app/routers/search.py** — Fixed search endpoint to accept form-encoded data from HTMX (was requiring JSON body only)
+### CSS (`app/static/css/main.css`) — Complete Rewrite
+- **Removed**: All daisyUI-dependent overrides
+- **Removed**: Old design tokens (`--app-accent`, `--app-text`, etc.) and old component classes
+- **Added**: 30+ new design token CSS variables organized by category
+- **Added**: Typography system using Playfair Display, Inter, JetBrains Mono
+- **Added**: Component classes: `.top-nav`, `.surface`, `.bracket-accent`, `.stat-card`, `.status-pill`, `.pipeline-steps`, `.data-table`, `.progress-bar`, `.video-card`, `.pagination`, `.modal-dialog`, `.collapsible`, `.breadcrumb`, `.chip`, `.notice`, `.btn` variants, `.input-field`, `.tab-bar`
+- **Added**: HTMX indicator and spinner animation
 
-### Layout Restructuring
-- **app/templates/base.html** — Replaced top navbar with daisyUI drawer sidebar (desktop: always open, mobile: collapsible). Sidebar has logo, icon-based nav links (Dashboard, Library, Search), and footer. Active page highlighting via Jinja2 conditionals.
-- **app/routers/pages.py** — Added `/library` route (combined videos + channels page), updated `/` (dashboard) to include queue data + channel count, added redirects for legacy `/submit` and `/channels` routes.
-- **app/templates/library.html** — New template with daisyUI tabs for Videos (default) and Channels, replaces separate videos.html and channels.html pages.
+### Base Layout (`app/templates/base.html`) — Complete Rewrite
+- **Removed**: daisyUI CDN, Manrope + Public Sans fonts, sidebar drawer layout
+- **Added**: Iconoir icon CDN, Playfair Display + Inter + JetBrains Mono fonts
+- **Added**: Fixed top-nav bar (dark navy `#1a1a2e`) with brand, nav links, mobile hamburger
+- **Kept**: Tailwind CSS browser CDN, HTMX 2.0.4
 
-### Dashboard Redesign
-- **app/templates/index.html** — Complete redesign: 4 stat cards with colored icons (Light Able style), 3-column layout with submit forms + processing queue + recent jobs table, channel confirm modal embedded.
-- **app/templates/partials/queue_content.html** — Compact version: inline batch progress, active job cards with progress bars, collapsible completed/failed sections.
+### Page Templates (11 files) — All Rewritten
+Every page template rewritten to use custom design system classes instead of daisyUI.
 
-### Template Updates
-- **app/templates/video_detail.html** — Breadcrumb now links to `/library`, added border styling to all cards
-- **app/templates/channel_detail.html** — Breadcrumb links to `/library?tab=channels`, border styling
-- **app/templates/job_detail.html** — Breadcrumb links to `/` (Dashboard)
-- **app/templates/partials/job_status.html** — Added border styling
-- **app/templates/partials/search_results.html** — Added border styling
-- **app/templates/search.html** — Updated heading style, wrapped in card
-- **app/templates/error.html** — Added border styling
+### Partial Templates (4 files) — All Rewritten
+Same class replacement. All HTMX attributes preserved exactly.
 
-### Removed/Deprecated
-- `/submit` route now redirects to `/`
-- `/channels` route now redirects to `/library?tab=channels`
-- `app/templates/submit.html` — Still exists but unused (redirect catches first)
-- `app/templates/channels.html` — Still exists but unused (redirect catches first)
-- `app/templates/queue.html` — Still exists for direct `/queue` access
+### Bug Fix: `app/routers/search.py`
+- Fixed `RuntimeError: Stream consumed` when empty form query tried `request.json()` after form parser already consumed the request body. Wrapped in try/except.
 
-## Files Modified (12)
-1. `app/services/transcription.py` (bug fix)
-2. `app/routers/pages.py` (new routes, restructuring)
-3. `app/routers/search.py` (form data support)
-4. `app/templates/base.html` (sidebar layout)
-5. `app/templates/index.html` (dashboard redesign)
-6. `app/templates/library.html` (NEW — combined videos/channels)
-7. `app/templates/search.html` (styling update)
-8. `app/templates/video_detail.html` (breadcrumb + borders)
-9. `app/templates/channel_detail.html` (breadcrumb + borders)
-10. `app/templates/job_detail.html` (breadcrumb)
-11. `app/templates/partials/queue_content.html` (compact redesign)
-12. `app/templates/partials/job_status.html` (border styling)
-13. `app/templates/partials/search_results.html` (border styling)
-14. `app/templates/error.html` (border styling)
+### New Test Files (4 files, 197 new tests)
+- `tests/test_template_rendering.py` — 32 tests: page renders, base layout, daisyUI checks, new design markers
+- `tests/test_template_filters.py` — 15 tests: `format_duration` and `format_timestamp` Jinja2 filters
+- `tests/test_api_endpoints.py` — 15 tests: video/channel submission validation, search endpoint (HTMX + JSON), job cancel/retry
+- `tests/test_design_system.py` — 135 tests: daisyUI remnant scan, old class removal, new design class usage, CSS token definitions, CSS component classes, template structure, HTMX attribute preservation
+
+### Updated Test: `tests/test_feature_smoke.py`
+- Fixed assertions that checked for old daisyUI layout classes (`drawer-content`) to check for new design system classes (`top-nav`).
+
+### Documentation
+- `docs/claude-plan.md` — implementation plan
+- `docs/claude-diff-summary.md` — this file
+- `docs/claude-test-results.txt` — test output
+
+## Why
+- Drop daisyUI dependency for a custom, enterprise-polished design system
+- Align visual identity with Cloudflare (clean grid, orange accents, light body) and Fin.ai (dark contrast nav, serif headlines, bracket accents)
+- Comprehensive test coverage to catch regressions
 
 ## Risks
-- Legacy bookmarks to `/submit` and `/channels` will redirect (302) rather than break
-- The sidebar drawer uses `lg:drawer-open` — sidebar is always visible on desktop, hamburger menu on mobile
-- Search endpoint now accepts both JSON and form-encoded data, which is slightly unconventional for a FastAPI endpoint
+1. **CSS specificity**: Custom classes may need `!important` in edge cases if Tailwind utility order conflicts
+2. **Iconoir CDN availability**: External CDN dependency; could self-host if needed
+3. **Font loading**: Three Google Font families; `display=swap` mitigates FOIT
+4. **Browser testing**: Recommend visual testing at 375px, 768px, 1280px
 
 ## Plan Deviations
-- None. Implementation follows the plan.
+- None. All 17 UI files rewritten as planned, plus bug fix and test suite added.

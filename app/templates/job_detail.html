@@ -3,16 +3,17 @@
 {% block title %}Job {{ job.id }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="breadcrumbs text-sm mb-4">
-    <ul>
-        <li><a href="/">Dashboard</a></li>
-        <li>Job Details</li>
-    </ul>
-</div>
+<!-- Breadcrumb -->
+<nav class="breadcrumb">
+    <a href="/"><i class="iconoir-home-simple" style="font-size:0.85rem"></i> Dashboard</a>
+    <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
+    <span>Job Details</span>
+</nav>
 
-<div class="app-page-head">
-    <h1 class="app-page-title">Job Details</h1>
-    <p class="app-page-subtitle">Inspect pipeline progress, timestamps, and retry/cancel controls.</p>
+<div class="page-head">
+    <p class="kicker mb-1">Pipeline</p>
+    <h1 class="page-title">Job Details</h1>
+    <p class="page-subtitle">Inspect pipeline progress, timestamps, and retry/cancel controls.</p>
 </div>
 
 <div id="job-status-container"

@@ -3,115 +3,121 @@
 {% block title %}Dashboard - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<section class="mb-6">
-    <div class="app-hero-card">
+<!-- Hero Section with Bracket Accents -->
+<section class="surface mb-8">
+    <div class="surface-body bracket-accent">
         <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 mb-5">
             <div>
-                <p class="text-xs tracking-[0.2em] uppercase app-kicker mb-2">Operations Hub</p>
-                <h1 class="text-3xl md:text-4xl font-semibold tracking-tight text-base-content app-heading">Transcribe videos without babysitting jobs</h1>
-                <p class="text-sm md:text-base text-base-content/70 mt-2 max-w-2xl">
+                <p class="kicker mb-2">Operations Hub</p>
+                <h1 class="page-title">Transcribe videos without babysitting jobs</h1>
+                <p class="text-sm md:text-base mt-2 max-w-2xl" style="color: var(--text-secondary);">
                     Queue a source once, monitor progress in real time, and recover failures from one screen.
                 </p>
             </div>
-            <div class="badge app-badge-accent gap-2 px-3 py-3 self-start lg:self-auto">
-                <span class="w-2 h-2 rounded-full bg-success inline-block"></span>
+            <div class="status-pill status-completed self-start lg:self-auto">
+                <span class="dot"></span>
                 Queue Online
             </div>
         </div>
-
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="app-proof-chip">Faster-whisper pipeline</div>
-            <div class="app-proof-chip">Retry-safe queue controls</div>
-            <div class="app-proof-chip">Search-ready output store</div>
+            <div class="proof-chip"><i class="iconoir-microphone" style="font-size:0.9rem; color: var(--accent);"></i> Faster-whisper pipeline</div>
+            <div class="proof-chip"><i class="iconoir-refresh-double" style="font-size:0.9rem; color: var(--accent);"></i> Retry-safe queue controls</div>
+            <div class="proof-chip"><i class="iconoir-search" style="font-size:0.9rem; color: var(--accent);"></i> Search-ready output store</div>
         </div>
     </div>
 </section>
 
-<div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-    <div class="app-stat-card">
-        <p class="app-stat-label">Total Videos</p>
-        <p class="app-stat-value app-accent-text">{{ total_videos }}</p>
-        <p class="app-stat-desc">In your library</p>
+<!-- Stats Row -->
+<div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
+    <div class="stat-card">
+        <p class="stat-label">Total Videos</p>
+        <p class="stat-value text-accent">{{ total_videos }}</p>
+        <p class="stat-desc">In your library</p>
     </div>
-    <div class="app-stat-card">
-        <p class="app-stat-label">Completed</p>
-        <p class="app-stat-value text-success">{{ completed_videos }}</p>
-        <p class="app-stat-desc">Ready to query</p>
+    <div class="stat-card">
+        <p class="stat-label">Completed</p>
+        <p class="stat-value text-success">{{ completed_videos }}</p>
+        <p class="stat-desc">Ready to query</p>
     </div>
-    <div class="app-stat-card">
-        <p class="app-stat-label">Channels</p>
-        <p class="app-stat-value text-info">{{ total_channels }}</p>
-        <p class="app-stat-desc">Tracked sources</p>
+    <div class="stat-card">
+        <p class="stat-label">Channels</p>
+        <p class="stat-value text-info">{{ total_channels }}</p>
+        <p class="stat-desc">Tracked sources</p>
     </div>
-    <div class="app-stat-card">
-        <p class="app-stat-label">Active Jobs</p>
-        <p class="app-stat-value text-warning">{{ active_jobs|length }}</p>
-        <p class="app-stat-desc">Running or queued</p>
+    <div class="stat-card">
+        <p class="stat-label">Active Jobs</p>
+        <p class="stat-value text-warning">{{ active_jobs|length }}</p>
+        <p class="stat-desc">Running or queued</p>
     </div>
 </div>
 
-<div class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-6">
+<!-- Forms + Queue Grid -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-6 mb-8">
+    <!-- Left column: forms -->
     <div class="xl:col-span-5 space-y-6">
-        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
-            <div class="h-1.5 app-bar-accent"></div>
-            <div class="card-body">
-                <h2 class="card-title text-xl app-heading">Queue A Single Video</h2>
-                <p class="text-sm text-base-content/65">Primary path: submit one URL and start processing immediately.</p>
-                <form id="video-form" class="space-y-3 mt-2">
-                    <label class="form-control w-full">
-                        <div class="label pt-0 pb-1">
-                            <span class="label-text text-xs uppercase tracking-wide text-base-content/55">YouTube URL</span>
-                        </div>
+        <!-- Single Video Form -->
+        <div class="surface accent-top">
+            <div class="surface-body">
+                <h2 class="section-title mb-1">Queue A Single Video</h2>
+                <p class="text-sm mb-4" style="color: var(--text-secondary);">Primary path: submit one URL and start processing immediately.</p>
+                <form id="video-form" class="space-y-3">
+                    <div>
+                        <label class="input-label" for="video-url">YouTube URL</label>
                         <input type="url" id="video-url" name="url" placeholder="https://www.youtube.com/watch?v=..."
-                               class="input input-bordered w-full" required>
-                    </label>
-                    <button type="submit" class="btn app-btn-primary w-full">Start Transcription Job</button>
+                               class="input-field" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-full">
+                        <i class="iconoir-play-solid" style="font-size:0.85rem"></i> Start Transcription Job
+                    </button>
                 </form>
-
-                <div class="alert mt-3 py-2.5 px-3 bg-base-200/70 border border-base-300">
-                    <span class="text-xs text-base-content/70">Your URL is validated before queueing. Failed jobs can be retried from the queue panel.</span>
+                <div class="notice mt-3">
+                    <i class="iconoir-info-circle" style="font-size:0.85rem"></i>
+                    Your URL is validated before queueing. Failed jobs can be retried from the queue panel.
                 </div>
-                <div id="video-result" class="min-h-5 mt-1"></div>
+                <div id="video-result" class="min-h-[1.25rem] mt-2"></div>
             </div>
         </div>
 
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body">
+        <!-- Channel Import -->
+        <div class="surface">
+            <div class="surface-body">
                 <details class="group">
                     <summary class="list-none cursor-pointer flex items-center justify-between">
                         <div>
-                            <h2 class="card-title text-lg app-heading">Import Channel (Advanced)</h2>
-                            <p class="text-sm text-base-content/65">Use for batch discovery when you need multiple videos at once.</p>
+                            <h2 class="section-title">Import Channel (Advanced)</h2>
+                            <p class="text-sm" style="color: var(--text-secondary);">Use for batch discovery when you need multiple videos at once.</p>
                         </div>
-                        <span class="text-base-content/45 group-open:rotate-180 transition-transform duration-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
+                        <span class="text-[var(--text-tertiary)] group-open:rotate-180 transition-transform duration-200">
+                            <i class="iconoir-nav-arrow-down" style="font-size:1.1rem"></i>
                         </span>
                     </summary>
                     <form id="channel-form" class="space-y-3 mt-4">
-                        <label class="form-control w-full">
-                            <div class="label pt-0 pb-1">
-                                <span class="label-text text-xs uppercase tracking-wide text-base-content/55">Channel URL</span>
-                            </div>
+                        <div>
+                            <label class="input-label" for="channel-url">Channel URL</label>
                             <input type="url" id="channel-url" name="url" placeholder="https://www.youtube.com/@channel"
-                                   class="input input-bordered w-full" required>
-                        </label>
-                        <button type="submit" class="btn btn-outline app-btn-outline w-full">Discover Channel Videos</button>
+                                   class="input-field" required>
+                        </div>
+                        <button type="submit" class="btn btn-outline w-full">
+                            <i class="iconoir-community" style="font-size:0.85rem"></i> Discover Channel Videos
+                        </button>
                     </form>
                 </details>
-                <div id="channel-result" class="min-h-5"></div>
+                <div id="channel-result" class="min-h-[1.25rem]"></div>
             </div>
         </div>
     </div>
 
+    <!-- Right column: Live Queue -->
     <div class="xl:col-span-7">
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body">
+        <div class="surface">
+            <div class="surface-body">
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                    <h2 class="card-title text-xl app-heading">Live Queue Overview</h2>
+                    <h2 class="section-title">Live Queue Overview</h2>
                     {% if active_jobs or pending_jobs %}
-                    <div class="badge app-badge-warning">{{ active_jobs|length + pending_jobs|length }} jobs in flight</div>
+                    <span class="status-pill status-running">
+                        <span class="dot"></span>
+                        {{ active_jobs|length + pending_jobs|length }} jobs in flight
+                    </span>
                     {% endif %}
                 </div>
                 <div id="queue-content"
@@ -126,15 +132,15 @@
     </div>
 </div>
 
-<div class="card bg-base-100 border border-base-300 shadow-sm">
-    <div class="card-body">
+<!-- Recent Jobs Table -->
+<div class="surface">
+    <div class="surface-body">
         <div class="flex items-center justify-between mb-4">
-            <h2 class="card-title text-xl app-heading">Recent Jobs</h2>
-            <a href="/queue" class="btn btn-ghost btn-sm">View Queue</a>
+            <h2 class="section-title">Recent Jobs</h2>
+            <a href="/queue" class="btn btn-ghost btn-sm">View Queue <i class="iconoir-arrow-right" style="font-size:0.85rem"></i></a>
         </div>
-
         <div class="overflow-x-auto">
-            <table class="table table-zebra table-sm">
+            <table class="data-table">
                 <thead>
                     <tr>
                         <th>Type</th>
@@ -149,20 +155,18 @@
                     <tr>
                         <td class="font-medium">{{ job.job_type }}</td>
                         <td>
-                            <span class="badge badge-sm
-                                {% if job.status == 'completed' %}badge-success
-                                {% elif job.status == 'failed' %}badge-error
-                                {% elif job.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
-                                {% elif job.status == 'queued' %}badge-info
-                                {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+                            <span class="status-pill status-{{ job.status }}">
+                                <span class="dot"></span>
+                                {{ job.status }}
+                            </span>
                         </td>
                         <td>
                             <div class="flex items-center gap-2 w-36">
-                                <progress class="progress progress-primary w-full h-2" value="{{ job.progress_pct }}" max="100"></progress>
-                                <span class="text-xs text-base-content/60">{{ "%.0f"|format(job.progress_pct) }}%</span>
+                                <progress class="progress-bar" value="{{ job.progress_pct }}" max="100"></progress>
+                                <span class="font-mono text-xs text-faint">{{ "%.0f"|format(job.progress_pct) }}%</span>
                             </div>
                         </td>
-                        <td class="text-xs text-base-content/60">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
+                        <td class="font-mono text-xs text-faint">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
                         <td>
                             <div class="flex items-center justify-end gap-2">
                                 <a href="/jobs/{{ job.id }}" class="btn btn-ghost btn-xs">Details</a>
@@ -171,14 +175,14 @@
                                       hx-swap="none"
                                       hx-on::after-request="if(event.detail.successful){window.location.reload()}"
                                       class="inline">
-                                    <button class="btn app-btn-warning btn-xs">Retry</button>
+                                    <button class="btn btn-warning btn-xs">Retry</button>
                                 </form>
                                 {% elif job.status in ['pending', 'queued'] %}
                                 <form hx-post="/api/jobs/{{ job.id }}/cancel"
                                       hx-swap="none"
                                       hx-on::after-request="if(event.detail.successful){window.location.reload()}"
                                       class="inline">
-                                    <button class="btn btn-outline btn-error btn-xs">Cancel</button>
+                                    <button class="btn btn-error-outline btn-xs">Cancel</button>
                                 </form>
                                 {% endif %}
                             </div>
@@ -187,7 +191,10 @@
                     {% endfor %}
                     {% if not jobs %}
                     <tr>
-                        <td colspan="5" class="py-10 text-center text-base-content/50">No jobs yet. Start with the single-video form above.</td>
+                        <td colspan="5" class="py-10 text-center text-faint">
+                            <i class="iconoir-clipboard-check" style="font-size:1.5rem; display:block; margin-bottom:0.5rem; color: var(--text-tertiary);"></i>
+                            No jobs yet. Start with the single-video form above.
+                        </td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -196,32 +203,33 @@
     </div>
 </div>
 
-<dialog id="channel-confirm-dialog" class="modal">
-    <div class="modal-box max-w-3xl max-h-[80vh]">
-        <form method="dialog">
-            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">&#10005;</button>
-        </form>
-        <h3 id="channel-dialog-title" class="text-lg font-bold mb-4">Select Videos to Process</h3>
-        <div class="alert alert-info mb-4 py-2">
-            <span class="text-sm">Choose only videos you want to process now.</span>
+<!-- Channel Confirm Dialog -->
+<dialog id="channel-confirm-dialog" class="modal-dialog">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="channel-dialog-title" class="section-title">Select Videos to Process</h3>
+            <button class="modal-close" onclick="document.getElementById('channel-confirm-dialog').close()">
+                <i class="iconoir-xmark"></i>
+            </button>
         </div>
-        <div class="flex items-center gap-2 mb-4">
-            <label class="label cursor-pointer gap-2">
-                <input type="checkbox" id="select-all" checked class="checkbox checkbox-primary checkbox-sm">
-                <span class="label-text">Select All (<span id="video-count">0</span> videos)</span>
-            </label>
+        <div class="modal-body">
+            <div class="notice notice-info mb-4">
+                <i class="iconoir-info-circle" style="font-size:0.85rem"></i>
+                Choose only videos you want to process now.
+            </div>
+            <div class="flex items-center gap-2 mb-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="select-all" checked class="checkbox-field">
+                    <span class="text-sm">Select All (<span id="video-count">0</span> videos)</span>
+                </label>
+            </div>
+            <div id="channel-video-list" class="max-h-[50vh] overflow-y-auto border rounded-lg" style="border-color: var(--border-default);"></div>
         </div>
-        <div id="channel-video-list" class="max-h-[50vh] overflow-y-auto border border-base-300 rounded-lg"></div>
-        <div class="modal-action">
-            <form method="dialog">
-                <button class="btn btn-ghost btn-sm">Cancel</button>
-            </form>
-            <button id="confirm-process-btn" class="btn app-btn-primary btn-sm">Process Selected</button>
+        <div class="modal-footer">
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('channel-confirm-dialog').close()">Cancel</button>
+            <button id="confirm-process-btn" class="btn btn-primary btn-sm">Process Selected</button>
         </div>
     </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>close</button>
-    </form>
 </dialog>
 {% endblock %}
 
@@ -232,7 +240,7 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const url = document.getElementById('video-url').value;
     const result = document.getElementById('video-result');
-    result.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+    result.innerHTML = '<span class="spinner spinner-sm"></span>';
 
     try {
         const resp = await fetch('/api/videos', {
@@ -242,7 +250,7 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
         });
         const data = await resp.json();
         if (resp.ok) {
-            result.innerHTML = '<p class="text-sm text-success mt-1">Queued. <a href="/jobs/' + data.job_id + '" class="link link-primary">Open job</a></p>';
+            result.innerHTML = '<p class="text-sm text-success mt-1">Queued. <a href="/jobs/' + data.job_id + '" class="link">Open job</a></p>';
             document.getElementById('video-url').value = '';
             htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
         } else {
@@ -261,7 +269,7 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
     e.preventDefault();
     const url = document.getElementById('channel-url').value;
     const result = document.getElementById('channel-result');
-    result.innerHTML = '<span class="loading loading-spinner loading-xs"></span> <span class="text-sm">Discovering...</span>';
+    result.innerHTML = '<span class="spinner spinner-sm"></span> <span class="text-sm">Discovering...</span>';
 
     try {
         const resp = await fetch('/api/channels', {
@@ -288,11 +296,11 @@ function showChannelConfirmDialog(channelName, videos) {
     document.getElementById('video-count').textContent = videos.length;
     const list = document.getElementById('channel-video-list');
     list.innerHTML = videos.map((v, i) => `
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-base-200 last:border-b-0">
-            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox checkbox-primary checkbox-sm channel-video-cb">
+        <div class="flex items-center gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
+            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox-field channel-video-cb">
             <label for="vid-${i}" class="flex-1 cursor-pointer">
                 <span class="font-medium text-sm">${v.title}</span>
-                <span class="text-xs text-base-content/50 ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
+                <span class="font-mono text-xs text-faint ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
             </label>
         </div>
     `).join('');
@@ -307,7 +315,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
     const selected = Array.from(document.querySelectorAll('.channel-video-cb:checked')).map(cb => cb.value);
     if (!selected.length) { alert('Select at least one video'); return; }
     const btn = document.getElementById('confirm-process-btn');
-    btn.classList.add('loading');
+    btn.classList.add('is-loading');
     btn.disabled = true;
     try {
         const resp = await fetch(`/api/channels/${channelId}/process`, {
@@ -319,7 +327,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
         if (resp.ok) {
             document.getElementById('channel-confirm-dialog').close();
             document.getElementById('channel-result').innerHTML =
-                '<p class="text-sm text-success mt-1">Queued ' + data.total_videos + ' videos. <a href="/library" class="link link-primary">View Library</a></p>';
+                '<p class="text-sm text-success mt-1">Queued ' + data.total_videos + ' videos. <a href="/library" class="link">View Library</a></p>';
             htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
         } else {
             alert(data.detail || 'Error processing videos');
@@ -327,7 +335,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
     } catch (err) {
         alert('Network error');
     } finally {
-        btn.classList.remove('loading');
+        btn.classList.remove('is-loading');
         btn.disabled = false;
     }
 });

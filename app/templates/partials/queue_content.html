@@ -1,14 +1,14 @@
 <div id="queue-summary">
     {% if active_batches %}
-    <div class="mb-4 rounded-xl border border-base-300 bg-base-100/80 p-3">
-        <p class="text-xs font-medium uppercase tracking-[0.16em] app-kicker mb-2">Batch Progress</p>
+    <div class="surface-elevated mb-4 p-4">
+        <p class="kicker mb-2">Batch Progress</p>
         {% for batch in active_batches %}
         <div class="flex items-center gap-3 mb-2">
-            <span class="text-xs font-medium">Batch {{ batch.batch_number }}/{{ batch.total_batches }}</span>
-            <progress class="progress progress-primary flex-1 h-2"
+            <span class="font-mono text-xs font-medium">Batch {{ batch.batch_number }}/{{ batch.total_batches }}</span>
+            <progress class="progress-bar flex-1"
                       value="{{ (batch.completed_videos / batch.total_videos * 100) if batch.total_videos > 0 else 0 }}"
                       max="100"></progress>
-            <span class="text-xs text-base-content/50">{{ batch.completed_videos }}/{{ batch.total_videos }}</span>
+            <span class="font-mono text-xs text-faint">{{ batch.completed_videos }}/{{ batch.total_videos }}</span>
         </div>
         {% endfor %}
     </div>
@@ -16,71 +16,78 @@
 
     {% if active_jobs %}
     <div class="space-y-3 mb-4">
-        <p class="text-xs font-medium text-base-content/55 uppercase tracking-[0.16em]">Active</p>
+        <p class="kicker">Active</p>
         {% for job in active_jobs %}
-        <div class="flex items-center gap-3 rounded-lg border border-base-300 bg-base-100/70 p-2.5">
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                    <a href="/jobs/{{ job.id }}" class="text-sm font-medium hover:underline truncate">{{ job.job_type }}</a>
-                    <span class="badge badge-xs badge-warning">{{ job.status }}</span>
-                </div>
-                <progress class="progress progress-primary w-full h-1.5" value="{{ job.progress_pct }}" max="100"></progress>
-                <p class="text-xs text-base-content/50 mt-0.5">{{ job.progress_message or '' }} &middot; {{ "%.0f"|format(job.progress_pct) }}%</p>
+        <div class="surface-elevated p-3 rounded-lg">
+            <div class="flex items-center gap-2 mb-1.5">
+                <a href="/jobs/{{ job.id }}" class="text-sm font-medium link-muted hover:text-[var(--accent)] truncate">{{ job.job_type }}</a>
+                <span class="status-pill status-{{ job.status }}">
+                    <span class="dot"></span>
+                    {{ job.status }}
+                </span>
             </div>
+            <progress class="progress-bar w-full" value="{{ job.progress_pct }}" max="100"></progress>
+            <p class="font-mono text-xs text-faint mt-1">{{ job.progress_message or '' }} &middot; {{ "%.0f"|format(job.progress_pct) }}%</p>
         </div>
         {% endfor %}
     </div>
     {% endif %}
 
     {% if pending_jobs %}
-    <div class="space-y-2 mb-4 rounded-xl border border-base-300 bg-base-100/60 p-3">
-        <p class="text-xs font-medium text-base-content/55 uppercase tracking-[0.16em]">Pending ({{ pending_jobs|length }})</p>
-        {% for job in pending_jobs %}
-        <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <span class="text-sm">{{ job.job_type }}</span>
-                <span class="badge badge-xs
-                    {% if job.status == 'queued' %}badge-info
-                    {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+    <div class="surface-elevated mb-4 p-4 rounded-lg">
+        <p class="kicker mb-2">Pending ({{ pending_jobs|length }})</p>
+        <div class="space-y-2">
+            {% for job in pending_jobs %}
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm">{{ job.job_type }}</span>
+                    <span class="status-pill status-{{ job.status }}">
+                        <span class="dot"></span>
+                        {{ job.status }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="/jobs/{{ job.id }}" class="link text-xs">View</a>
+                    <form hx-post="/api/jobs/{{ job.id }}/cancel"
+                          hx-swap="none"
+                          hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
+                          class="inline">
+                        <button class="btn btn-ghost btn-xs text-error">Cancel</button>
+                    </form>
+                </div>
             </div>
-            <div class="flex items-center gap-1">
-                <a href="/jobs/{{ job.id }}" class="link link-primary text-xs">View</a>
-                <form hx-post="/api/jobs/{{ job.id }}/cancel"
-                      hx-swap="none"
-                      hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
-                      class="inline">
-                    <button class="btn btn-ghost btn-xs text-error">Cancel</button>
-                </form>
-            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
     {% endif %}
 
     {% if completed_jobs %}
-    <div class="collapse collapse-arrow rounded-xl border border-base-300 bg-base-100/60 px-3">
-        <input type="checkbox">
-        <div class="collapse-title text-xs font-medium text-base-content/55 uppercase tracking-[0.16em] p-0 min-h-0 py-3">
-            Completed ({{ completed_jobs|length }})
-        </div>
-        <div class="collapse-content px-0 pb-3">
+    <details class="collapsible mb-4">
+        <summary>
+            <span class="kicker">Completed ({{ completed_jobs|length }})</span>
+            <span class="chevron"><i class="iconoir-nav-arrow-down" style="font-size:0.9rem"></i></span>
+        </summary>
+        <div class="details-body">
             <div class="space-y-1">
                 {% for job in completed_jobs %}
                 <div class="flex items-center justify-between text-sm">
                     <span>{{ job.job_type }}</span>
-                    <a href="/jobs/{{ job.id }}" class="link link-primary text-xs">{{ job.completed_at.strftime('%H:%M') if job.completed_at else '--' }}</a>
+                    <a href="/jobs/{{ job.id }}" class="link text-xs font-mono">{{ job.completed_at.strftime('%H:%M') if job.completed_at else '--' }}</a>
                 </div>
                 {% endfor %}
             </div>
         </div>
-    </div>
+    </details>
     {% endif %}
 
     {% if failed_jobs %}
-    <div class="rounded-xl border border-error/20 bg-error/5 p-3">
+    <div class="p-4 rounded-lg" style="background: var(--error-subtle); border: 1px solid rgba(220,38,38,0.15);">
         <div class="flex items-center justify-between mb-2">
-            <p class="text-xs font-medium text-error uppercase tracking-[0.16em]">Failed ({{ failed_jobs|length }})</p>
-            <span class="badge badge-xs app-badge-warning">Needs Attention</span>
+            <p class="font-mono text-xs font-semibold uppercase tracking-wider text-error">Failed ({{ failed_jobs|length }})</p>
+            <span class="status-pill status-running">
+                <span class="dot"></span>
+                Needs Attention
+            </span>
         </div>
         <div class="space-y-2">
             {% for job in failed_jobs %}
@@ -91,9 +98,9 @@
                           hx-swap="none"
                           hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
                           class="inline">
-                        <button class="btn btn-xs app-btn-warning">Retry</button>
+                        <button class="btn btn-warning btn-xs">Retry</button>
                     </form>
-                    <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
+                    <a href="/jobs/{{ job.id }}" class="text-xs text-error hover:underline">Details</a>
                 </div>
             </div>
             {% endfor %}
@@ -102,7 +109,10 @@
     {% endif %}
 
     {% if not active_jobs and not pending_jobs and not completed_jobs and not failed_jobs %}
-    <p class="text-sm text-base-content/40 text-center py-4">No jobs in queue</p>
+    <div class="text-center py-6">
+        <i class="iconoir-clipboard-check" style="font-size:1.5rem; color: var(--text-tertiary); display:block; margin-bottom:0.5rem;"></i>
+        <p class="text-sm text-faint">No jobs in queue</p>
+    </div>
     {% endif %}
 </div>
 
