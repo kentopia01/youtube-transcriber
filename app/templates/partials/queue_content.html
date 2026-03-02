@@ -20,7 +20,7 @@
         {% for job in active_jobs %}
         <div class="surface-elevated p-3 rounded-lg">
             <div class="flex items-center gap-2 mb-1.5">
-                <a href="/jobs/{{ job.id }}" class="text-sm font-medium link-muted hover:text-[var(--accent)] truncate">{{ job.job_type }}</a>
+                <a href="/jobs/{{ job.id }}" class="text-sm font-medium link-muted hover:text-[var(--accent)] truncate">{{ job.display_name }}</a>
                 <span class="status-pill status-{{ job.status }}">
                     <span class="dot"></span>
                     {{ job.status }}
@@ -40,7 +40,7 @@
             {% for job in pending_jobs %}
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span class="text-sm">{{ job.job_type }}</span>
+                    <span class="text-sm">{{ job.display_name }}</span>
                     <span class="status-pill status-{{ job.status }}">
                         <span class="dot"></span>
                         {{ job.status }}
@@ -71,7 +71,7 @@
             <div class="space-y-1">
                 {% for job in completed_jobs %}
                 <div class="flex items-center justify-between text-sm">
-                    <span>{{ job.job_type }}</span>
+                    <span>{{ job.display_name }}</span>
                     <a href="/jobs/{{ job.id }}" class="link text-xs font-mono">{{ job.completed_at.strftime('%H:%M') if job.completed_at else '--' }}</a>
                 </div>
                 {% endfor %}
@@ -92,7 +92,7 @@
         <div class="space-y-2">
             {% for job in failed_jobs %}
             <div class="flex items-center justify-between text-sm">
-                <span class="truncate pr-2">{{ job.job_type }}</span>
+                <span class="truncate pr-2">{{ job.display_name }}</span>
                 <div class="flex items-center gap-2">
                     <form hx-post="/api/jobs/{{ job.id }}/retry"
                           hx-swap="none"

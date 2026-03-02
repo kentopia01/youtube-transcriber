@@ -37,7 +37,7 @@ def test_search_page_renders():
     assert response.status_code == 200
     assert "Search across all transcribed video content" in response.text
     assert "top-nav" in response.text
-    assert "Semantic Search" in response.text
+    assert "Chat with Library" in response.text
 
 
 def test_legacy_routes_redirect_to_new_locations():

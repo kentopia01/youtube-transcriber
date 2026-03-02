@@ -1,7 +1,7 @@
 <div class="surface">
     <div class="surface-body">
         <div class="flex items-center gap-3 mb-4">
-            <h2 class="section-title">Job: {{ job.job_type }}</h2>
+            <h2 class="section-title">Job: {{ job.display_name }}</h2>
             <span class="status-pill status-{{ job.status }}">
                 <span class="dot"></span>
                 {{ job.status }}
@@ -54,7 +54,7 @@
                     </tr>
                     <tr>
                         <td class="font-medium">Type</td>
-                        <td>{{ job.job_type }}</td>
+                        <td>{{ job.display_name }}</td>
                     </tr>
                     <tr>
                         <td class="font-medium">Status</td>

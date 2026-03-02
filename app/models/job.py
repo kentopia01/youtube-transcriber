@@ -32,3 +32,9 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="jobs")
+
+    @property
+    def display_name(self) -> str:
+        if self.video and self.video.title:
+            return self.video.title[:60] + ("..." if len(self.video.title) > 60 else "")
+        return self.job_type

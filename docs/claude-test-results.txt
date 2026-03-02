@@ -1,64 +1,18 @@
-Test Results — YouTube Transcriber Frontend UI Rebuild + Unit Tests
+Test Results — Job Titles, Clean Transcripts, Nav Cleanup, DB Reset
 ====================================================================
 Date: 2026-03-02
 Python: 3.13.12
 pytest: 9.0.2
 
-Command: .venv/bin/python -m pytest tests/ -v --tb=short
+Command: .venv/bin/python -m pytest tests/ -v
+Result: 257 passed, 39 warnings in 0.82s
 
-Result: 239 passed, 0 failed (0.94s)
+DB Reset:
+  alembic downgrade base -> OK (Running downgrade 001 -> )
+  alembic upgrade head   -> OK (Running upgrade -> 001)
 
-Test Breakdown:
-  tests/test_api_endpoints.py .......... 15 tests (video/channel submission, search, job cancel/retry)
-  tests/test_design_system.py .......... 135 tests (daisyUI remnants, old classes, new design, CSS tokens, HTMX)
-  tests/test_embedding_service.py ...... 1 test
-  tests/test_feature_smoke.py .......... 6 tests
-  tests/test_jobs_retry.py ............. 2 tests
-  tests/test_task_orchestration.py ..... 4 tests
-  tests/test_template_filters.py ....... 15 tests (format_duration, format_timestamp)
-  tests/test_template_rendering.py ..... 32 tests (page renders, layout, daisyUI checks, design markers)
-  tests/test_youtube_service.py ........ 14 tests
-                                         ---
-  Total:                                 239 tests
-
-Bugs Fixed:
-  1. app/routers/search.py — RuntimeError: Stream consumed when empty form query
-     tried request.json() after form parser consumed body. Wrapped in try/except.
-  2. tests/test_feature_smoke.py — Asserted old daisyUI layout classes (drawer-content).
-     Updated to assert new design system classes (top-nav).
-  3. tests/test_template_rendering.py — False positive daisyUI pattern matches for
-     btn-primary and card-body (now custom CSS classes). Removed from DAISY_PATTERNS list.
-
-Warnings: 39 DeprecationWarnings from Starlette TemplateResponse signature (cosmetic, not a bug).
-
-Files Modified (21 total):
-  UI Rebuild (17 files — complete rewrites):
-    app/static/css/main.css, app/templates/base.html, app/templates/index.html,
-    app/templates/search.html, app/templates/queue.html, app/templates/library.html,
-    app/templates/video_detail.html, app/templates/channel_detail.html,
-    app/templates/job_detail.html, app/templates/videos.html, app/templates/submit.html,
-    app/templates/error.html, app/templates/channels.html,
-    app/templates/partials/queue_content.html, app/templates/partials/job_status.html,
-    app/templates/partials/video_list.html, app/templates/partials/search_results.html
-
-  Bug Fix (1 file):
-    app/routers/search.py — stream consumed error fix
-
-  New Tests (4 files):
-    tests/test_template_rendering.py — 32 tests for page rendering
-    tests/test_template_filters.py — 15 tests for Jinja2 filters
-    tests/test_api_endpoints.py — 15 tests for API endpoints
-    tests/test_design_system.py — 135 tests for design system compliance
-
-  Updated Tests (1 file):
-    tests/test_feature_smoke.py — fixed assertions for new UI
-
-  Documentation (3 files):
-    docs/claude-plan.md, docs/claude-diff-summary.md, docs/claude-test-results.txt
-
-HTMX Attributes Verified:
-  - Queue polling: hx-get="/queue" hx-trigger="load delay:3s"
-  - Job polling: hx-get="/jobs/{{ job.id }}" hx-trigger="load delay:2s"
-  - Search debounce: hx-trigger="keyup changed delay:500ms"
-  - Pagination URL push: hx-push-url="true"
-  - Retry/cancel forms: hx-post with hx-on::after-request handlers
+All 257 tests pass including:
+  - 18 new filler removal tests (tests/test_filler_removal.py)
+  - Updated nav assertions (no /videos, /channels; has "Chat with Library")
+  - Updated smoke test (Chat with Library instead of Semantic Search)
+  - Updated _make_job with video + display_name for template rendering tests

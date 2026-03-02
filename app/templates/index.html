@@ -143,7 +143,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Type</th>
+                        <th>Job</th>
                         <th>Status</th>
                         <th>Progress</th>
                         <th>Created</th>
@@ -153,7 +153,7 @@
                 <tbody>
                     {% for job in jobs %}
                     <tr>
-                        <td class="font-medium">{{ job.job_type }}</td>
+                        <td class="font-medium">{{ job.display_name }}</td>
                         <td>
                             <span class="status-pill status-{{ job.status }}">
                                 <span class="dot"></span>

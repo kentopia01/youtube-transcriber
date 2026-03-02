@@ -1,8 +1,41 @@
+import re
 import time
 
 import structlog
 
 logger = structlog.get_logger()
+
+
+def clean_filler_words(text: str) -> str:
+    """Remove common filler words and phrases from transcribed text."""
+    # Remove standalone filler words (case-insensitive, word-boundary)
+    standalone = [
+        r"\bum\b", r"\buh\b", r"\buhm\b", r"\bumm\b",
+        r"\byou know\b", r"\bI mean\b", r"\bbasically\b",
+        r"\bkind of\b", r"\bsort of\b",
+    ]
+    for pattern in standalone:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+
+    # Context-aware removals: "like" before comma or pronoun
+    text = re.sub(r"\blike,\s", ", ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\blike\s+(I|you|he|she|it|we|they)\b", r"\1", text, flags=re.IGNORECASE)
+
+    # "right" before comma or question mark
+    text = re.sub(r"\bright[,?]\s", " ", text, flags=re.IGNORECASE)
+
+    # "so" before comma
+    text = re.sub(r"\bso,\s", ", ", text, flags=re.IGNORECASE)
+
+    # Collapse multiple spaces
+    text = re.sub(r"  +", " ", text)
+
+    # Clean punctuation artifacts: space before punctuation, leading commas
+    text = re.sub(r"\s+([,.])", r"\1", text)
+    text = re.sub(r"^[,\s]+", "", text)
+    text = re.sub(r"[,\s]+$", "", text)
+
+    return text.strip()
 
 # Singleton model cache
 _model_cache: dict = {}
@@ -66,8 +99,10 @@ def transcribe_audio(
         processing_time=round(processing_time, 2),
     )
 
+    full_text = clean_filler_words(" ".join(full_text_parts))
+
     return {
-        "text": " ".join(full_text_parts),
+        "text": full_text,
         "language": info.language,
         "segments": segments,
         "processing_time": processing_time,

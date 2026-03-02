@@ -25,6 +25,7 @@ _NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _make_job(**overrides):
+    video = SimpleNamespace(title="Test Video Title")
     defaults = dict(
         id=uuid.uuid4(),
         video_id=uuid.uuid4(),
@@ -39,9 +40,17 @@ def _make_job(**overrides):
         started_at=_NOW,
         completed_at=_NOW,
         created_at=_NOW,
+        video=video,
     )
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    obj = SimpleNamespace(**defaults)
+    # Add display_name property behavior
+    if obj.video and obj.video.title:
+        title = obj.video.title
+        obj.display_name = title[:60] + ("..." if len(title) > 60 else "")
+    else:
+        obj.display_name = obj.job_type
+    return obj
 
 
 def _make_video(**overrides):
@@ -274,8 +283,9 @@ class TestBaseLayout:
         assert 'href="/"' in html
         assert 'href="/queue"' in html
         assert 'href="/library"' in html
-        assert 'href="/videos"' in html
-        assert 'href="/channels"' in html
+        assert 'href="/videos"' not in html
+        assert 'href="/channels"' not in html
+        assert "Chat with Library" in html
 
     def test_search_nav_active_state(self):
         client = _build_client(MockDB(scalar=0, default=[]))

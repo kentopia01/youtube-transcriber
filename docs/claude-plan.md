@@ -1,42 +1,52 @@
-# Plan: Full Frontend UI Rebuild (Phase 9)
+# Plan: Job Titles, Clean Transcripts, Nav Cleanup, DB Reset
 
 ## Goal
-Complete visual rebuild of all frontend templates and CSS from daisyUI v5 sidebar layout to a Cloudflare/Fin.ai-inspired design system with dark navy top navigation, orange accents, serif headlines, corner bracket accents, and Iconoir icons.
+Show video titles on jobs instead of "pipeline", clean filler words from transcripts, remove redundant Videos/Channels nav tabs, rename Search to "Chat with Library", and reset the database.
 
 ## Assumptions
-1. All backend Python code (routers, models, services, tasks) stays untouched
-2. All Jinja2 template variables remain identical
-3. All HTMX attributes (hx-get, hx-post, hx-trigger, hx-target, hx-swap, polling intervals) preserved verbatim
-4. All JavaScript form handlers preserved verbatim
-5. Existing tests are not affected (template-only changes)
+1. Job model already has a `video` relationship
+2. All Job queries in pages.py need eager loading added
+3. Templates use `job.job_type` for display — switch to `job.display_name`
+4. Transcript segments view is being replaced with a simple full-text paragraph
+5. Filler word removal is applied at transcription time
 
 ## Steps
 
-### Phase 1: Foundation
-1. **Rewrite `app/static/css/main.css`** — Replace daisyUI-dependent CSS with new design tokens (CSS custom properties), component classes for navigation, cards, buttons, status pills, pipeline steps, pagination, modals, tables, forms, bracket accents
-2. **Rewrite `app/templates/base.html`** — Replace sidebar drawer layout with sticky top-nav bar (dark navy `#1a1a2e`), drop daisyUI CDN + Manrope/Public Sans fonts, add Iconoir CSS CDN + Playfair Display/Inter/JetBrains Mono fonts, keep Tailwind browser CDN + HTMX
+### 1. Job Display Names
+- Add `display_name` property to `app/models/job.py` (shows video title truncated to 60 chars, falls back to job_type)
+- Add `.options(selectinload(Job.video))` to all 10 Job queries in `app/routers/pages.py`
+- Replace `{{ job.job_type }}` with `{{ job.display_name }}` in index.html, queue_content.html, job_status.html
+- Change table header "Type" to "Job" in index.html
 
-### Phase 2: Page Templates (11 files)
-3. `index.html` — Hero with bracket accents, stat cards, video/channel forms, queue widget, jobs table, channel confirm dialog
-4. `search.html` — Search input with debounce, result area, query pre-fill
-5. `queue.html` — Page title + polling container
-6. `library.html` — Tabs (Videos/Channels), video card grid, channel avatars, pagination
-7. `video_detail.html` — Breadcrumb, metadata, thumbnail, description collapsible, summary, transcript segments
-8. `channel_detail.html` — Breadcrumb, channel avatar, stats, video table
-9. `job_detail.html` — Breadcrumb, polling container
-10. `videos.html` — Page title + HTMX container
-11. `submit.html` — Two-column forms + channel confirm dialog
-12. `error.html` — Centered error card with icon
-13. `channels.html` — Channel avatar grid
+### 2. Clean Transcript Display
+- Add `clean_filler_words()` function to `app/services/transcription.py` (regex-based removal of um, uh, you know, I mean, basically, kind of, sort of, context-aware like/right/so)
+- Apply to `full_text` in `transcribe_audio()` before returning
+- Replace collapsible + segments in `video_detail.html` with single `<p>` for `full_text`
 
-### Phase 3: Partial Templates (4 files)
-14. `partials/queue_content.html` — Batch progress, active/pending/completed/failed sections, auto-refresh polling
-15. `partials/job_status.html` — Pipeline step visualization, progress bar, details table, action buttons, auto-poll
-16. `partials/video_list.html` — Video card grid + pagination with HTMX
-17. `partials/search_results.html` — Result cards + empty state
+### 3. Nav Cleanup
+- Remove Videos and Channels links from both desktop and mobile nav in `base.html`
+- Rename Search button to "Chat with Library" with `iconoir-chat-bubble` icon (desktop + mobile)
+- Update `search.html` page title and heading
 
-## Design System Summary
-- **Colors**: Light-mode Cloudflare-inspired with dark navy top-nav contrast
-- **Typography**: Playfair Display (headlines), Inter (body), JetBrains Mono (data)
-- **Icons**: Iconoir (MIT, 1600+ icons via CDN)
-- **Key patterns**: Top navigation, corner bracket accents, status pills with dots, monospace kickers, surface cards with subtle shadows
+### 4. Database Reset
+- `alembic downgrade base && alembic upgrade head`
+
+### 5. Test Updates
+- Update `_make_job` in test_template_rendering.py to include `video` + `display_name`
+- Update nav assertions (remove /videos, /channels; add "Chat with Library")
+- Fix test_feature_smoke.py "Semantic Search" assertion
+- Create `tests/test_filler_removal.py` with 18 tests
+
+## Files Changed (12)
+1. `app/models/job.py`
+2. `app/routers/pages.py`
+3. `app/services/transcription.py`
+4. `app/templates/base.html`
+5. `app/templates/search.html`
+6. `app/templates/video_detail.html`
+7. `app/templates/index.html`
+8. `app/templates/partials/queue_content.html`
+9. `app/templates/partials/job_status.html`
+10. `tests/test_template_rendering.py`
+11. `tests/test_feature_smoke.py`
+12. `tests/test_filler_removal.py` (new)

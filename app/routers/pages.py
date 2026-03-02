@@ -20,13 +20,13 @@ router = APIRouter()
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     # Recent jobs
     result = await db.execute(
-        select(Job).order_by(Job.created_at.desc()).limit(10)
+        select(Job).options(selectinload(Job.video)).order_by(Job.created_at.desc()).limit(10)
     )
     jobs = result.scalars().all()
 
     # Active/pending jobs for queue widget
     active_result = await db.execute(
-        select(Job).where(Job.status.in_(["running", "queued", "pending"])).order_by(Job.created_at.desc()).limit(5)
+        select(Job).options(selectinload(Job.video)).where(Job.status.in_(["running", "queued", "pending"])).order_by(Job.created_at.desc()).limit(5)
     )
     active_jobs = active_result.scalars().all()
 
@@ -41,17 +41,17 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     # Queue data
     pending_result = await db.execute(
-        select(Job).where(Job.status.in_(["pending", "queued"])).order_by(Job.created_at).limit(20)
+        select(Job).options(selectinload(Job.video)).where(Job.status.in_(["pending", "queued"])).order_by(Job.created_at).limit(20)
     )
     pending_jobs = pending_result.scalars().all()
 
     completed_result = await db.execute(
-        select(Job).where(Job.status == "completed").order_by(Job.completed_at.desc()).limit(10)
+        select(Job).options(selectinload(Job.video)).where(Job.status == "completed").order_by(Job.completed_at.desc()).limit(10)
     )
     completed_jobs = completed_result.scalars().all()
 
     failed_result = await db.execute(
-        select(Job).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(10)
+        select(Job).options(selectinload(Job.video)).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(10)
     )
     failed_jobs = failed_result.scalars().all()
 
@@ -247,17 +247,14 @@ async def search_page(request: Request):
 
 @router.get("/jobs/{job_id}")
 async def job_detail(request: Request, job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    result = await db.execute(select(Job).options(selectinload(Job.video)).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         return request.app.state.templates.TemplateResponse(
             "error.html", {"request": request, "message": "Job not found"}, status_code=404
         )
 
-    video = None
-    if job.video_id:
-        v_result = await db.execute(select(Video).where(Video.id == job.video_id))
-        video = v_result.scalar_one_or_none()
+    video = job.video
 
     # For HTMX polling, return partial
     if request.headers.get("HX-Request"):
@@ -276,25 +273,25 @@ async def queue_page(request: Request, db: AsyncSession = Depends(get_db)):
     """Queue data endpoint — serves both full page and HTMX partials."""
     # Active jobs
     active_result = await db.execute(
-        select(Job).where(Job.status == "running").order_by(Job.started_at.desc())
+        select(Job).options(selectinload(Job.video)).where(Job.status == "running").order_by(Job.started_at.desc())
     )
     active_jobs = active_result.scalars().all()
 
     # Pending jobs
     pending_result = await db.execute(
-        select(Job).where(Job.status.in_(["pending", "queued"])).order_by(Job.created_at)
+        select(Job).options(selectinload(Job.video)).where(Job.status.in_(["pending", "queued"])).order_by(Job.created_at)
     )
     pending_jobs = pending_result.scalars().all()
 
     # Recent completed
     completed_result = await db.execute(
-        select(Job).where(Job.status == "completed").order_by(Job.completed_at.desc()).limit(20)
+        select(Job).options(selectinload(Job.video)).where(Job.status == "completed").order_by(Job.completed_at.desc()).limit(20)
     )
     completed_jobs = completed_result.scalars().all()
 
     # Failed
     failed_result = await db.execute(
-        select(Job).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(20)
+        select(Job).options(selectinload(Job.video)).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(20)
     )
     failed_jobs = failed_result.scalars().all()
 
