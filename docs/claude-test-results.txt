@@ -1,18 +1,25 @@
-Test Results — Job Titles, Clean Transcripts, Nav Cleanup, DB Reset
-====================================================================
+Test Results — Dashboard Polling + Chat Launcher
+=================================================
 Date: 2026-03-02
 Python: 3.13.12
 pytest: 9.0.2
 
 Command: .venv/bin/python -m pytest tests/ -v
-Result: 257 passed, 39 warnings in 0.82s
+Result: 260 passed, 42 warnings in 0.92s
 
-DB Reset:
-  alembic downgrade base -> OK (Running downgrade 001 -> )
-  alembic upgrade head   -> OK (Running upgrade -> 001)
+New tests added (3):
+  - test_dashboard_has_recent_jobs_polling — PASSED
+  - test_dashboard_has_chat_launcher — PASSED
+  - test_recent_jobs_partial_endpoint — PASSED
 
-All 257 tests pass including:
-  - 18 new filler removal tests (tests/test_filler_removal.py)
-  - Updated nav assertions (no /videos, /channels; has "Chat with Library")
-  - Updated smoke test (Chat with Library instead of Semantic Search)
-  - Updated _make_job with video + display_name for template rendering tests
+Updated tests (2):
+  - test_dashboard_has_queue_polling — relaxed delay assertion (PASSED)
+  - test_auto_refresh_in_queue_content — updated 3s→5s (PASSED)
+
+All 260 tests pass across:
+  - tests/test_template_rendering.py (39 tests)
+  - tests/test_design_system.py (197 tests)
+  - tests/test_api_endpoints.py (3 tests)
+  - tests/test_feature_smoke.py (2 tests)
+  - tests/test_filler_removal.py (18 tests)
+  - tests/test_youtube_service.py (1 test)

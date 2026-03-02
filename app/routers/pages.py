@@ -77,6 +77,17 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/partials/recent-jobs")
+async def recent_jobs_partial(request: Request, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Job).options(selectinload(Job.video)).order_by(Job.created_at.desc()).limit(10)
+    )
+    jobs = result.scalars().all()
+    return request.app.state.templates.TemplateResponse(
+        "partials/recent_jobs.html", {"request": request, "jobs": jobs}
+    )
+
+
 @router.get("/submit")
 async def submit_page(request: Request):
     """Legacy route — redirects to dashboard."""

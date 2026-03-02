@@ -1,0 +1,48 @@
+{% for job in jobs %}
+<tr>
+    <td class="font-medium">{{ job.display_name }}</td>
+    <td>
+        <span class="status-pill status-{{ job.status }}">
+            <span class="dot"></span>
+            {{ job.status }}
+        </span>
+    </td>
+    <td>
+        <div class="flex items-center gap-2 w-36">
+            <progress class="progress-bar" value="{{ job.progress_pct }}" max="100"></progress>
+            <span class="font-mono text-xs text-faint">{{ "%.0f"|format(job.progress_pct) }}%</span>
+        </div>
+    </td>
+    <td class="font-mono text-xs text-faint">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
+    <td>
+        <div class="flex items-center justify-end gap-2">
+            <a href="/jobs/{{ job.id }}" class="btn btn-ghost btn-xs">Details</a>
+            {% if job.status == 'failed' %}
+            <form hx-post="/api/jobs/{{ job.id }}/retry"
+                  hx-swap="none"
+                  hx-on::after-request="if(event.detail.successful){window.location.reload()}"
+                  class="inline">
+                <button class="btn btn-warning btn-xs">Retry</button>
+            </form>
+            {% elif job.status in ['pending', 'queued'] %}
+            <form hx-post="/api/jobs/{{ job.id }}/cancel"
+                  hx-swap="none"
+                  hx-on::after-request="if(event.detail.successful){window.location.reload()}"
+                  class="inline">
+                <button class="btn btn-error-outline btn-xs">Cancel</button>
+            </form>
+            {% endif %}
+        </div>
+    </td>
+</tr>
+{% endfor %}
+{% if not jobs %}
+<tr>
+    <td colspan="5" class="py-10 text-center text-faint">
+        <i class="iconoir-clipboard-check" style="font-size:1.5rem; display:block; margin-bottom:0.5rem; color: var(--text-tertiary);"></i>
+        No jobs yet. Start with the single-video form above.
+    </td>
+</tr>
+{% endif %}
+<div hx-get="/partials/recent-jobs" hx-trigger="load delay:5s"
+     hx-target="#recent-jobs-body" hx-swap="innerHTML" style="display:none;"></div>

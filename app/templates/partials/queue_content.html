@@ -1,4 +1,13 @@
 <div id="queue-summary">
+    {% if active_jobs or pending_jobs %}
+    <div class="flex items-center justify-between mb-3">
+        <span class="status-pill status-running">
+            <span class="dot"></span>
+            {{ (active_jobs|length) + (pending_jobs|length) }} jobs in flight
+        </span>
+    </div>
+    {% endif %}
+
     {% if active_batches %}
     <div class="surface-elevated mb-4 p-4">
         <p class="kicker mb-2">Batch Progress</p>
@@ -116,10 +125,8 @@
     {% endif %}
 </div>
 
-{% if active_jobs or pending_jobs %}
 <div hx-get="/queue"
-     hx-trigger="load delay:3s"
+     hx-trigger="load delay:5s"
      hx-target="#queue-content"
      hx-swap="innerHTML"
      style="display:none;"></div>
-{% endif %}

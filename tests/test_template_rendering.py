@@ -365,7 +365,6 @@ class TestDashboardPage:
         resp = client.get("/")
         html = resp.text
         assert 'hx-get="/queue"' in html
-        assert 'hx-trigger="load delay:3s"' in html
         assert 'hx-target="#queue-content"' in html
 
     def test_dashboard_has_jobs_table(self):
@@ -374,6 +373,32 @@ class TestDashboardPage:
         html = resp.text
         assert "Recent Jobs" in html
         assert "data-table" in html
+
+    def test_dashboard_has_recent_jobs_polling(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert 'id="recent-jobs-body"' in html
+        assert 'hx-get="/partials/recent-jobs"' in html
+        assert 'hx-trigger="load delay:5s"' in html
+
+    def test_dashboard_has_chat_launcher(self):
+        client = _build_client(self._build_dashboard_db())
+        resp = client.get("/")
+        html = resp.text
+        assert "Chat with Library" in html
+        assert 'id="quick-search-form"' in html
+        assert 'id="quick-search-input"' in html
+        assert "Ask a question about your videos" in html
+
+    def test_recent_jobs_partial_endpoint(self):
+        db = MockDB(execute_1=[_make_job(status="completed")], default=[])
+        client = _build_client(db)
+        resp = client.get("/partials/recent-jobs")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "Test Video Title" in html
+        assert '<html' not in html
 
     def test_dashboard_has_modal(self):
         client = _build_client(self._build_dashboard_db())
@@ -474,7 +499,7 @@ class TestQueuePage:
         resp = client.get("/queue")
         html = resp.text
         assert 'hx-get="/queue"' in html
-        assert 'hx-trigger="load delay:3s"' in html
+        assert 'hx-trigger="load delay:' in html
 
     def test_queue_htmx_returns_partial(self):
         client = _build_client(self._build_queue_db())

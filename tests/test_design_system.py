@@ -273,7 +273,7 @@ class TestHTMXAttributesPreserved:
 
     def test_auto_refresh_in_queue_content(self, templates):
         html = templates.get("partials/queue_content.html", "")
-        assert 'hx-trigger="load delay:3s"' in html
+        assert 'hx-trigger="load delay:5s"' in html
         assert 'style="display:none;"' in html
 
     def test_auto_refresh_in_job_status(self, templates):
