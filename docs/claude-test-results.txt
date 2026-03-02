@@ -1,82 +1,82 @@
 ================================================================================
-YouTube Transcriber — Test & Verification Results
+Phase 8: Bug Fix + UI Restructuring — Test Results
 Date: 2026-03-02
 ================================================================================
 
-## 1. Docker Build Verification
+## 1. Pipeline Bug Fix Verification
 
-### Web Image
-Command: docker compose build web
-Result: SUCCESS — Built youtube-transcriber-web
+Bug: segment.avg_log_prob → segment.avg_logprob (AttributeError in faster-whisper)
+Fix: app/services/transcription.py line 55
 
-### Worker Image
-Command: docker compose build worker
-Result: SUCCESS — Built youtube-transcriber-worker (includes ffmpeg, faster-whisper, sentence-transformers)
+Test: Submitted "Me at the zoo" (https://www.youtube.com/watch?v=jNQXAC9IVRw)
+Job ID: 0433291c-83f3-431e-ba22-aac2fe556d30
+Video ID: af4f6dd3-4789-4fe8-bd7c-4e972fec2a7e
 
-## 2. Database Verification
+Pipeline stages:
+  1. Download    → PASS (audio downloaded as WAV)
+  2. Transcribe  → PASS (faster-whisper base model, language detected)
+  3. Summarize   → PASS (Claude API, summary generated)
+  4. Embed       → PASS (sentence-transformers, embeddings stored in pgvector)
 
-### PostgreSQL + Extensions
-Command: docker compose exec postgres psql -U transcriber -c "SELECT extname FROM pg_extension;"
-Result:
-  extname
------------
- plpgsql
- uuid-ossp
- vector
-(3 rows)
+Final status: completed (100%, "Processing complete")
+Started: 02:06:27 → Completed: 02:06:55 (~28 seconds total)
 
-### Alembic Migration
-Command: docker compose run --rm web alembic upgrade head
-Result: INFO [alembic.runtime.migration] Running upgrade -> 001, Initial schema with all tables
+## 2. Docker Build Verification
 
-### Tables Created
-Command: docker compose exec postgres psql -U transcriber -c "\dt"
-Result: 9 tables (alembic_version, batches, channels, embedding_chunks, jobs, summaries, transcription_segments, transcriptions, videos)
+Command: docker compose up --build -d web worker
+Result: PASS — Both web and worker containers rebuilt and started
 
-## 3. Web Server Verification
+## 3. Route Health Checks (All HTTP 200)
 
-### Page Routes (all HTTP 200)
-- GET /         → 200 (Dashboard)
-- GET /submit   → 200 (Submit page)
-- GET /videos   → 200 (Video list)
-- GET /channels → 200 (Channel list)
-- GET /search   → 200 (Search page)
-- GET /queue    → 200 (Processing queue)
+  200 /                     (Dashboard with submit + queue)
+  200 /library              (Library — videos tab)
+  200 /library?tab=channels (Library — channels tab)
+  200 /search               (Semantic search)
+  200 /jobs/{id}            (Job detail)
+  200 /videos/{id}          (Video detail with transcript + summary)
 
-### API Routes
-- GET /api/jobs/{invalid-uuid} → 404 {"detail": "Job not found"}
+Legacy redirects:
+  302 /submit  → /        (Dashboard)
+  302 /channels → /library?tab=channels
 
-### HTML Rendering
-Dashboard renders with:
-- Pico CSS (dark theme)
-- HTMX v2.0.4
-- Navigation bar (Submit, Videos, Channels, Search, Queue)
-- Stats cards (Total Videos, Completed, Active Jobs)
-- Quick submit form
-- Active jobs widget
-- Recent jobs table
+## 4. Dashboard Content Verification
 
-## 4. Unit Tests
+Dashboard confirmed to contain:
+  - Sidebar navigation (drawer-side) with Dashboard, Library, Search links
+  - "Process Video" submit form
+  - "Import Channel" submit form
+  - "Processing Queue" section
+  - Stats cards with icons
+  - Recent jobs table
 
-Command: python -m pytest tests/ -v
-Result: 12 passed in 0.05s
+## 5. Library Page Verification
 
-tests/test_embedding_service.py::test_chunk_text_splitting PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_standard_url PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_short_url PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_embed_url PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_shorts_url PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_url_with_params PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_invalid_url PASSED
-tests/test_youtube_service.py::TestExtractVideoId::test_empty_string PASSED
-tests/test_youtube_service.py::TestIsChannelUrl::test_channel_handle PASSED
-tests/test_youtube_service.py::TestIsChannelUrl::test_channel_id PASSED
-tests/test_youtube_service.py::TestIsChannelUrl::test_channel_c PASSED
-tests/test_youtube_service.py::TestIsChannelUrl::test_video_url PASSED
+Library confirmed to contain:
+  - Tab navigation (tab-active, tab=videos, tab=channels)
+  - Videos grid on videos tab
+  - Channels grid on channels tab
 
-## 5. Known Limitations
+## 6. Video Detail Verification
 
-1. Search endpoint returns 503 on web container (sentence-transformers not installed in web image)
-2. End-to-end pipeline test requires actual YouTube video download (not tested in CI)
-3. Worker image not started in this test run (would need GPU or sufficient CPU for faster-whisper)
-4. Flower monitoring not tested (requires worker to be running)
+Video detail page confirmed to render:
+  - Summary section (generated by Claude)
+  - Transcript section (with segments)
+  - Breadcrumb linking to /library
+
+================================================================================
+Files Modified (14 total):
+  app/services/transcription.py       (bug fix: avg_logprob)
+  app/routers/pages.py               (route restructuring)
+  app/routers/search.py              (form data support)
+  app/templates/base.html            (sidebar layout)
+  app/templates/index.html           (dashboard redesign)
+  app/templates/library.html         (NEW)
+  app/templates/search.html          (styling)
+  app/templates/video_detail.html    (breadcrumb + borders)
+  app/templates/channel_detail.html  (breadcrumb + borders)
+  app/templates/job_detail.html      (breadcrumb)
+  app/templates/partials/queue_content.html  (compact redesign)
+  app/templates/partials/job_status.html     (borders)
+  app/templates/partials/search_results.html (borders)
+  app/templates/error.html                   (borders)
+================================================================================

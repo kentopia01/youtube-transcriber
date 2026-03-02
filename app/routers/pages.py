@@ -36,6 +36,30 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         select(func.count(Video.id)).where(Video.status == "completed")
     )
 
+    # Channel count
+    total_channels = await db.scalar(select(func.count(Channel.id)))
+
+    # Queue data
+    pending_result = await db.execute(
+        select(Job).where(Job.status.in_(["pending", "queued"])).order_by(Job.created_at).limit(20)
+    )
+    pending_jobs = pending_result.scalars().all()
+
+    completed_result = await db.execute(
+        select(Job).where(Job.status == "completed").order_by(Job.completed_at.desc()).limit(10)
+    )
+    completed_jobs = completed_result.scalars().all()
+
+    failed_result = await db.execute(
+        select(Job).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(10)
+    )
+    failed_jobs = failed_result.scalars().all()
+
+    batch_result = await db.execute(
+        select(Batch).where(Batch.status.in_(["pending", "running"])).order_by(Batch.created_at)
+    )
+    active_batches = batch_result.scalars().all()
+
     return request.app.state.templates.TemplateResponse(
         "index.html",
         {
@@ -44,14 +68,54 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "active_jobs": active_jobs,
             "total_videos": total_videos or 0,
             "completed_videos": completed_videos or 0,
+            "total_channels": total_channels or 0,
+            "pending_jobs": pending_jobs,
+            "completed_jobs": completed_jobs,
+            "failed_jobs": failed_jobs,
+            "active_batches": active_batches,
         },
     )
 
 
 @router.get("/submit")
 async def submit_page(request: Request):
+    """Legacy route — redirects to dashboard."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/library")
+async def library_page(
+    request: Request,
+    tab: str = "videos",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    # Videos
+    video_count = await db.scalar(select(func.count(Video.id))) or 0
+    video_query = select(Video).order_by(Video.created_at.desc())
+    video_result = await db.execute(video_query.offset(offset).limit(per_page))
+    videos = video_result.scalars().all()
+    total_video_pages = (video_count + per_page - 1) // per_page
+
+    # Channels
+    channel_result = await db.execute(select(Channel).order_by(Channel.name))
+    channels = channel_result.scalars().all()
+
     return request.app.state.templates.TemplateResponse(
-        "submit.html", {"request": request}
+        "library.html",
+        {
+            "request": request,
+            "tab": tab,
+            "videos": videos,
+            "channels": channels,
+            "video_count": video_count,
+            "page": page,
+            "total_pages": total_video_pages,
+        },
     )
 
 
@@ -145,11 +209,9 @@ async def video_detail(request: Request, video_id: uuid.UUID, db: AsyncSession =
 
 @router.get("/channels")
 async def channel_list(request: Request, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Channel).order_by(Channel.name))
-    channels = result.scalars().all()
-    return request.app.state.templates.TemplateResponse(
-        "channels.html", {"request": request, "channels": channels}
-    )
+    """Legacy route — redirects to library channels tab."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/library?tab=channels", status_code=302)
 
 
 @router.get("/channels/{channel_id}")
@@ -211,6 +273,7 @@ async def job_detail(request: Request, job_id: uuid.UUID, db: AsyncSession = Dep
 
 @router.get("/queue")
 async def queue_page(request: Request, db: AsyncSession = Depends(get_db)):
+    """Queue data endpoint — serves both full page and HTMX partials."""
     # Active jobs
     active_result = await db.execute(
         select(Job).where(Job.status == "running").order_by(Job.started_at.desc())

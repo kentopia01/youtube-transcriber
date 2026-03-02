@@ -3,26 +3,35 @@
 {% block title %}Search - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1>Semantic Search</h1>
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-base-content">Search</h1>
+    <p class="text-sm text-base-content/50 mt-1">Search across all transcribed video content using natural language.</p>
+</div>
 
-<p>Search across all transcribed video content using natural language.</p>
-
-<form hx-post="/api/search"
-      hx-target="#search-results"
-      hx-trigger="submit"
-      hx-indicator="#search-loading">
-    <div class="grid">
-        <input type="text" name="query" placeholder="What are you looking for?"
-               hx-post="/api/search"
-               hx-target="#search-results"
-               hx-trigger="keyup changed delay:500ms"
-               hx-include="[name='query']"
-               autofocus>
-        <button type="submit" style="width: auto;">Search</button>
+<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
+    <div class="card-body p-5">
+        <form hx-post="/api/search"
+              hx-target="#search-results"
+              hx-trigger="submit"
+              hx-indicator="#search-loading">
+            <div class="flex gap-2">
+                <input type="text" name="query" placeholder="What are you looking for?"
+                       hx-post="/api/search"
+                       hx-target="#search-results"
+                       hx-trigger="keyup changed delay:500ms"
+                       hx-include="[name='query']"
+                       class="input input-bordered flex-1"
+                       autofocus>
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </form>
     </div>
-</form>
+</div>
 
-<span id="search-loading" class="htmx-indicator" aria-busy="true">Searching...</span>
+<span id="search-loading" class="htmx-indicator inline-flex items-center gap-2 mb-4">
+    <span class="loading loading-spinner loading-sm"></span>
+    <span class="text-sm text-base-content/60">Searching...</span>
+</span>
 
 <div id="search-results"></div>
 {% endblock %}

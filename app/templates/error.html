@@ -3,9 +3,13 @@
 {% block title %}Error - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<article>
-    <header><h1>Error</h1></header>
-    <p>{{ message }}</p>
-    <a href="/" role="button">Back to Dashboard</a>
-</article>
+<div class="flex justify-center items-center py-16">
+    <div class="card bg-base-100 shadow-sm border border-base-200 max-w-lg w-full">
+        <div class="card-body text-center">
+            <h1 class="text-2xl font-bold text-error mb-2">Error</h1>
+            <p class="text-base-content/70 mb-6">{{ message }}</p>
+            <a href="/" class="btn btn-primary">Back to Dashboard</a>
+        </div>
+    </div>
+</div>
 {% endblock %}

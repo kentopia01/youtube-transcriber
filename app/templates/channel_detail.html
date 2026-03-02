@@ -3,62 +3,77 @@
 {% block title %}{{ channel.name }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<nav aria-label="breadcrumb">
+<div class="breadcrumbs text-sm mb-4">
     <ul>
-        <li><a href="/channels">Channels</a></li>
+        <li><a href="/library?tab=channels">Library</a></li>
         <li>{{ channel.name }}</li>
     </ul>
-</nav>
+</div>
 
-<article>
-    <header>
-        <div style="display: flex; align-items: center; gap: 1rem;">
+<div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
+    <div class="card-body">
+        <div class="flex items-center gap-4">
             {% if channel.thumbnail_url %}
-            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}"
-                 style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover;">
+            <div class="avatar">
+                <div class="w-16 rounded-full">
+                    <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
+                </div>
+            </div>
             {% endif %}
             <div>
-                <h1 style="margin: 0;">{{ channel.name }}</h1>
-                <small>{{ channel.video_count }} videos
+                <h1 class="text-2xl font-bold">{{ channel.name }}</h1>
+                <p class="text-sm text-base-content/50">
+                    {{ channel.video_count }} videos
                     {% if channel.last_synced_at %}
                     &middot; Last synced {{ channel.last_synced_at.strftime('%b %d, %Y %H:%M') }}
                     {% endif %}
-                </small>
+                </p>
             </div>
         </div>
-    </header>
 
-    {% if channel.description %}
-    <p>{{ channel.description[:500] }}</p>
-    {% endif %}
+        {% if channel.description %}
+        <p class="text-sm mt-4 text-base-content/70">{{ channel.description[:500] }}</p>
+        {% endif %}
 
-    <a href="{{ channel.url }}" target="_blank" rel="noopener" role="button" class="secondary outline">View on YouTube</a>
-</article>
-
-<h2>Videos ({{ videos|length }})</h2>
-
-<div>
-    <a href="/videos?channel_id={{ channel.id }}" role="button" class="outline">View as grid</a>
+        <div class="card-actions mt-4">
+            <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">View on YouTube</a>
+            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline btn-sm">View as Grid</a>
+        </div>
+    </div>
 </div>
 
-<table>
-    <thead>
-        <tr>
-            <th>Title</th>
-            <th>Duration</th>
-            <th>Status</th>
-            <th>Date</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for video in videos %}
-        <tr>
-            <td><a href="/videos/{{ video.id }}">{{ video.title }}</a></td>
-            <td>{{ video.duration_seconds|format_duration }}</td>
-            <td><span class="badge badge-{{ video.status }}">{{ video.status }}</span></td>
-            <td><small>{{ video.published_at.strftime('%b %d, %Y') if video.published_at else '--' }}</small></td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<h2 class="text-2xl font-semibold mb-4">Videos ({{ videos|length }})</h2>
+
+<div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="overflow-x-auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for video in videos %}
+                <tr>
+                    <td><a href="/videos/{{ video.id }}" class="link link-hover font-medium">{{ video.title }}</a></td>
+                    <td class="text-sm text-base-content/60">{{ video.duration_seconds|format_duration }}</td>
+                    <td>
+                        <span class="badge badge-sm
+                            {% if video.status == 'completed' %}badge-success
+                            {% elif video.status == 'failed' %}badge-error
+                            {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
+                            {% elif video.status == 'queued' %}badge-info
+                            {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
+                            {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+                    </td>
+                    <td class="text-sm text-base-content/60">{{ video.published_at.strftime('%b %d, %Y') if video.published_at else '--' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}

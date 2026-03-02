@@ -3,113 +3,303 @@
 {% block title %}Dashboard - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1>Dashboard</h1>
-
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value">{{ total_videos }}</div>
-        <div class="stat-label">Total Videos</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ completed_videos }}</div>
-        <div class="stat-label">Completed</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ active_jobs|length }}</div>
-        <div class="stat-label">Active Jobs</div>
+<!-- Header row -->
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+    <div>
+        <h1 class="text-2xl font-bold text-base-content">Dashboard</h1>
+        <p class="text-sm text-base-content/50 mt-1">Monitor your transcription pipeline</p>
     </div>
 </div>
 
-<div class="grid">
-    <div>
-        <article>
-            <header>Quick Submit</header>
-            <form hx-post="/api/videos" hx-target="#submit-result" hx-swap="innerHTML">
-                <input type="text" name="url" placeholder="Paste YouTube URL..." required>
-                <button type="submit">Process</button>
-            </form>
-            <div id="submit-result"></div>
-        </article>
-    </div>
-    <div>
-        <article>
-            <header>
-                Active Jobs
-                {% if active_jobs %}
-                <span class="badge badge-running">{{ active_jobs|length }}</span>
-                {% endif %}
-            </header>
-            <div hx-get="/queue" hx-trigger="load delay:3s" hx-target="#active-jobs-list" hx-select="#queue-summary" hx-swap="innerHTML">
-                <div id="active-jobs-list">
-                    {% if active_jobs %}
-                        {% for job in active_jobs %}
-                        <div style="margin-bottom: 0.75rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <a href="/jobs/{{ job.id }}">
-                                    <small>{{ job.job_type }}</small>
-                                </a>
-                                <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
-                            </div>
-                            {% if job.progress_message %}
-                            <small style="color: var(--pico-muted-color);">{{ job.progress_message }}</small>
-                            {% endif %}
-                            <div class="progress-bar">
-                                <div class="progress-bar-fill {% if job.status == 'completed' %}complete{% elif job.status == 'failed' %}failed{% endif %}"
-                                     style="width: {{ job.progress_pct }}%"></div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <p><small>No active jobs</small></p>
-                    {% endif %}
+<!-- Stats cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-base-content/50 mb-1">Total Videos</p>
+                    <p class="text-3xl font-bold">{{ total_videos }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
                 </div>
             </div>
-        </article>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-base-content/50 mb-1">Completed</p>
+                    <p class="text-3xl font-bold text-success">{{ completed_videos }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-base-content/50 mb-1">Channels</p>
+                    <p class="text-3xl font-bold">{{ total_channels }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-info/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+        <div class="card-body p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-base-content/50 mb-1">Active Jobs</p>
+                    <p class="text-3xl font-bold text-warning">{{ active_jobs|length }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-warning/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
-<h2>Recent Jobs</h2>
-<table>
-    <thead>
-        <tr>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Progress</th>
-            <th>Created</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for job in jobs %}
-        <tr>
-            <td>{{ job.job_type }}</td>
-            <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
-            <td>
-                <div class="progress-bar" style="width: 150px;">
-                    <div class="progress-bar-fill {% if job.status == 'completed' %}complete{% elif job.status == 'failed' %}failed{% endif %}"
-                         style="width: {{ job.progress_pct }}%"></div>
+<!-- Submit + Active Jobs row -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <!-- Submit forms -->
+    <div class="lg:col-span-1 space-y-5">
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-5">
+                <h2 class="font-semibold text-base mb-3">Process Video</h2>
+                <form id="video-form">
+                    <input type="url" id="video-url" name="url"
+                           placeholder="Paste YouTube URL..."
+                           class="input input-bordered input-sm w-full mb-2" required>
+                    <button type="submit" class="btn btn-primary btn-sm w-full">Process</button>
+                </form>
+                <div id="video-result" class="mt-1"></div>
+            </div>
+        </div>
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-5">
+                <h2 class="font-semibold text-base mb-3">Import Channel</h2>
+                <form id="channel-form">
+                    <input type="url" id="channel-url" name="url"
+                           placeholder="https://www.youtube.com/@channel"
+                           class="input input-bordered input-sm w-full mb-2" required>
+                    <button type="submit" class="btn btn-primary btn-sm btn-outline w-full">Discover Videos</button>
+                </form>
+                <div id="channel-result" class="mt-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Jobs & Queue -->
+    <div class="lg:col-span-2">
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-semibold text-base">Processing Queue</h2>
+                    {% if active_jobs or pending_jobs %}
+                    <span class="badge badge-sm badge-warning">{{ active_jobs|length + pending_jobs|length }} active</span>
+                    {% endif %}
                 </div>
-            </td>
-            <td><small>{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</small></td>
-            <td><a href="/jobs/{{ job.id }}">Details</a></td>
-        </tr>
-        {% endfor %}
-        {% if not jobs %}
-        <tr><td colspan="5">No jobs yet. Submit a video to get started!</td></tr>
-        {% endif %}
-    </tbody>
-</table>
+
+                <div id="queue-content"
+                     hx-get="/queue"
+                     hx-trigger="load delay:3s"
+                     hx-target="#queue-content"
+                     hx-swap="innerHTML">
+                    {% include "partials/queue_content.html" %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Jobs table -->
+<div class="card bg-base-100 shadow-sm border border-base-200">
+    <div class="card-body p-5">
+        <h2 class="font-semibold text-base mb-4">Recent Jobs</h2>
+        <div class="overflow-x-auto">
+            <table class="table table-sm">
+                <thead>
+                    <tr class="text-base-content/50">
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Progress</th>
+                        <th>Created</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td class="font-medium text-sm">{{ job.job_type }}</td>
+                        <td>
+                            <span class="badge badge-xs
+                                {% if job.status == 'completed' %}badge-success
+                                {% elif job.status == 'failed' %}badge-error
+                                {% elif job.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
+                                {% elif job.status == 'queued' %}badge-info
+                                {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+                        </td>
+                        <td>
+                            <progress class="progress progress-primary w-20 h-1.5" value="{{ job.progress_pct }}" max="100"></progress>
+                        </td>
+                        <td class="text-xs text-base-content/50">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
+                        <td><a href="/jobs/{{ job.id }}" class="link link-primary text-xs">Details</a></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not jobs %}
+                    <tr><td colspan="5" class="text-center text-sm text-base-content/40 py-8">No jobs yet. Submit a video to get started!</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Channel video selection modal -->
+<dialog id="channel-confirm-dialog" class="modal">
+    <div class="modal-box max-w-3xl max-h-[80vh]">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">&#10005;</button>
+        </form>
+        <h3 id="channel-dialog-title" class="text-lg font-bold mb-4">Select Videos to Process</h3>
+        <div class="flex items-center gap-2 mb-4">
+            <label class="label cursor-pointer gap-2">
+                <input type="checkbox" id="select-all" checked class="checkbox checkbox-primary checkbox-sm">
+                <span class="label-text">Select All (<span id="video-count">0</span> videos)</span>
+            </label>
+        </div>
+        <div id="channel-video-list" class="max-h-[50vh] overflow-y-auto border border-base-300 rounded-lg"></div>
+        <div class="modal-action">
+            <form method="dialog">
+                <button class="btn btn-ghost btn-sm">Cancel</button>
+            </form>
+            <button id="confirm-process-btn" class="btn btn-primary btn-sm">Process Selected</button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.body.addEventListener('htmx:afterRequest', function(evt) {
-    if (evt.detail.pathInfo.requestPath === '/api/videos' && evt.detail.successful) {
-        const data = JSON.parse(evt.detail.xhr.responseText);
-        const target = document.getElementById('submit-result');
-        if (data.job_id) {
-            target.innerHTML = '<p>Video queued! <a href="/jobs/' + data.job_id + '">Track progress</a></p>';
+// Video submission
+document.getElementById('video-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('video-url').value;
+    const result = document.getElementById('video-result');
+    result.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+
+    try {
+        const resp = await fetch('/api/videos', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            result.innerHTML = '<p class="text-xs text-success mt-1">Queued! <a href="/jobs/' + data.job_id + '" class="link link-primary">Track</a></p>';
+            document.getElementById('video-url').value = '';
+        } else {
+            result.innerHTML = '<p class="text-xs text-error mt-1">' + (data.detail || 'Error') + '</p>';
         }
+    } catch (err) {
+        result.innerHTML = '<p class="text-xs text-error mt-1">Network error</p>';
+    }
+});
+
+// Channel submission
+let channelId = null;
+let discoveredVideos = [];
+
+document.getElementById('channel-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('channel-url').value;
+    const result = document.getElementById('channel-result');
+    result.innerHTML = '<span class="loading loading-spinner loading-xs"></span> <span class="text-xs">Discovering...</span>';
+
+    try {
+        const resp = await fetch('/api/channels', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            channelId = data.channel_id;
+            discoveredVideos = data.videos || [];
+            showChannelConfirmDialog(data.channel_name, discoveredVideos);
+            result.innerHTML = '<p class="text-xs text-success mt-1">Found ' + discoveredVideos.length + ' videos</p>';
+        } else {
+            result.innerHTML = '<p class="text-xs text-error mt-1">' + (data.detail || 'Error') + '</p>';
+        }
+    } catch (err) {
+        result.innerHTML = '<p class="text-xs text-error mt-1">Network error</p>';
+    }
+});
+
+function showChannelConfirmDialog(channelName, videos) {
+    document.getElementById('channel-dialog-title').textContent = 'Select Videos from ' + channelName;
+    document.getElementById('video-count').textContent = videos.length;
+    const list = document.getElementById('channel-video-list');
+    list.innerHTML = videos.map((v, i) => `
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-base-200 last:border-b-0">
+            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox checkbox-primary checkbox-sm channel-video-cb">
+            <label for="vid-${i}" class="flex-1 cursor-pointer">
+                <span class="font-medium text-sm">${v.title}</span>
+                <span class="text-xs text-base-content/50 ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
+            </label>
+        </div>
+    `).join('');
+    document.getElementById('channel-confirm-dialog').showModal();
+}
+
+document.getElementById('select-all').addEventListener('change', (e) => {
+    document.querySelectorAll('.channel-video-cb').forEach(cb => cb.checked = e.target.checked);
+});
+
+document.getElementById('confirm-process-btn').addEventListener('click', async () => {
+    const selected = Array.from(document.querySelectorAll('.channel-video-cb:checked')).map(cb => cb.value);
+    if (!selected.length) { alert('Select at least one video'); return; }
+    const btn = document.getElementById('confirm-process-btn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/api/channels/${channelId}/process`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({video_ids: selected})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            document.getElementById('channel-confirm-dialog').close();
+            document.getElementById('channel-result').innerHTML =
+                '<p class="text-xs text-success mt-1">Queued ' + data.total_videos + ' videos. <a href="/library" class="link link-primary">View Library</a></p>';
+        } else {
+            alert(data.detail || 'Error processing videos');
+        }
+    } catch (err) {
+        alert('Network error');
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
     }
 });
 </script>

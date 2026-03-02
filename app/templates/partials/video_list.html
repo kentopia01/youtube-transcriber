@@ -1,23 +1,32 @@
 <div id="video-list-content">
-    <div class="video-grid">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" style="text-decoration: none; color: inherit;">
-            <div class="video-card">
-                {% if video.thumbnail_url %}
-                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy">
-                {% else %}
-                <div style="width: 100%; aspect-ratio: 16/9; background: #333; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: #666;">No thumbnail</span>
+        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow">
+            {% if video.thumbnail_url %}
+            <figure>
+                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy"
+                     class="w-full aspect-video object-cover">
+            </figure>
+            {% else %}
+            <figure>
+                <div class="w-full aspect-video bg-base-300 flex items-center justify-center">
+                    <span class="text-base-content/30 text-sm">No thumbnail</span>
                 </div>
-                {% endif %}
-                <div class="video-card-body">
-                    <h4>{{ video.title }}</h4>
-                    <div class="meta">
-                        <span class="badge badge-{{ video.status }}">{{ video.status }}</span>
-                        {% if video.duration_seconds %}
-                        &middot; {{ video.duration_seconds|format_duration }}
-                        {% endif %}
-                    </div>
+            </figure>
+            {% endif %}
+            <div class="card-body p-4">
+                <h4 class="card-title text-sm leading-snug line-clamp-2">{{ video.title }}</h4>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="badge badge-sm
+                        {% if video.status == 'completed' %}badge-success
+                        {% elif video.status == 'failed' %}badge-error
+                        {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
+                        {% elif video.status == 'queued' %}badge-info
+                        {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
+                        {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+                    {% if video.duration_seconds %}
+                    <span class="text-xs text-base-content/50">{{ video.duration_seconds|format_duration }}</span>
+                    {% endif %}
                 </div>
             </div>
         </a>
@@ -25,32 +34,38 @@
     </div>
 
     {% if not videos %}
-    <p>No videos yet. <a href="/submit">Submit one</a> to get started.</p>
+    <div class="text-center py-12 text-base-content/50">
+        <p>No videos yet. <a href="/submit" class="link link-primary">Submit one</a> to get started.</p>
+    </div>
     {% endif %}
 
     {% if total_pages > 1 %}
-    <nav class="pagination">
-        {% if page > 1 %}
-        <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-target="#video-list-content"
-           hx-push-url="true">&laquo; Prev</a>
-        {% endif %}
+    <div class="flex justify-center mt-8">
+        <div class="join">
+            {% if page > 1 %}
+            <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-target="#video-list-content"
+               hx-push-url="true"
+               class="join-item btn btn-sm">&laquo; Prev</a>
+            {% endif %}
 
-        {% for p in range(1, total_pages + 1) %}
-        <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-target="#video-list-content"
-           hx-push-url="true"
-           class="{% if p == page %}active{% endif %}">{{ p }}</a>
-        {% endfor %}
+            {% for p in range(1, total_pages + 1) %}
+            <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-target="#video-list-content"
+               hx-push-url="true"
+               class="join-item btn btn-sm {% if p == page %}btn-primary{% endif %}">{{ p }}</a>
+            {% endfor %}
 
-        {% if page < total_pages %}
-        <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
-           hx-target="#video-list-content"
-           hx-push-url="true">Next &raquo;</a>
-        {% endif %}
-    </nav>
+            {% if page < total_pages %}
+            <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+               hx-target="#video-list-content"
+               hx-push-url="true"
+               class="join-item btn btn-sm">Next &raquo;</a>
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
 </div>

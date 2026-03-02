@@ -1,157 +1,99 @@
 <div id="queue-summary">
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ active_jobs|length }}</div>
-            <div class="stat-label">Active</div>
+    {% if active_batches %}
+    <div class="mb-4">
+        {% for batch in active_batches %}
+        <div class="flex items-center gap-3 mb-2">
+            <span class="text-xs font-medium">Batch {{ batch.batch_number }}/{{ batch.total_batches }}</span>
+            <progress class="progress progress-primary flex-1 h-2"
+                      value="{{ (batch.completed_videos / batch.total_videos * 100) if batch.total_videos > 0 else 0 }}"
+                      max="100"></progress>
+            <span class="text-xs text-base-content/50">{{ batch.completed_videos }}/{{ batch.total_videos }}</span>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ pending_jobs|length }}</div>
-            <div class="stat-label">Pending</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ completed_jobs|length }}</div>
-            <div class="stat-label">Recent Completed</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ failed_jobs|length }}</div>
-            <div class="stat-label">Failed</div>
-        </div>
+        {% endfor %}
     </div>
-</div>
+    {% endif %}
 
-{% if active_batches %}
-<h3>Active Batches</h3>
-{% for batch in active_batches %}
-<article>
-    <header>
-        Batch {{ batch.batch_number }}/{{ batch.total_batches }}
-        <span class="badge badge-{{ batch.status }}">{{ batch.status }}</span>
-    </header>
-    <div class="progress-bar" style="height: 10px;">
-        <div class="progress-bar-fill {% if batch.status == 'completed' %}complete{% endif %}"
-             style="width: {{ (batch.completed_videos / batch.total_videos * 100) if batch.total_videos > 0 else 0 }}%"></div>
-    </div>
-    <small>{{ batch.completed_videos }}/{{ batch.total_videos }} videos complete
-        {% if batch.failed_videos %} &middot; {{ batch.failed_videos }} failed{% endif %}</small>
-</article>
-{% endfor %}
-{% endif %}
-
-{% if active_jobs %}
-<h3>Active Jobs</h3>
-<table class="queue-table">
-    <thead>
-        <tr>
-            <th>Type</th>
-            <th>Progress</th>
-            <th>Message</th>
-            <th>Started</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
+    {% if active_jobs %}
+    <div class="space-y-3 mb-4">
         {% for job in active_jobs %}
-        <tr>
-            <td>{{ job.job_type }}</td>
-            <td>
-                <div class="progress-bar" style="width: 100px;">
-                    <div class="progress-bar-fill" style="width: {{ job.progress_pct }}%"></div>
+        <div class="flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                    <a href="/jobs/{{ job.id }}" class="text-sm font-medium hover:underline truncate">{{ job.job_type }}</a>
+                    <span class="badge badge-xs badge-warning">{{ job.status }}</span>
                 </div>
-                <small>{{ "%.0f"|format(job.progress_pct) }}%</small>
-            </td>
-            <td><small>{{ job.progress_message or '--' }}</small></td>
-            <td><small>{{ job.started_at.strftime('%H:%M:%S') if job.started_at else '--' }}</small></td>
-            <td><a href="/jobs/{{ job.id }}">Details</a></td>
-        </tr>
+                <progress class="progress progress-primary w-full h-1.5" value="{{ job.progress_pct }}" max="100"></progress>
+                <p class="text-xs text-base-content/50 mt-0.5">{{ job.progress_message or '' }} &middot; {{ "%.0f"|format(job.progress_pct) }}%</p>
+            </div>
+        </div>
         {% endfor %}
-    </tbody>
-</table>
-{% endif %}
+    </div>
+    {% endif %}
 
-{% if pending_jobs %}
-<h3>Pending Jobs ({{ pending_jobs|length }})</h3>
-<table class="queue-table">
-    <thead>
-        <tr>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Message</th>
-            <th>Created</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
+    {% if pending_jobs %}
+    <div class="space-y-2 mb-4">
+        <p class="text-xs font-medium text-base-content/50 uppercase tracking-wider">Pending ({{ pending_jobs|length }})</p>
         {% for job in pending_jobs %}
-        <tr>
-            <td>{{ job.job_type }}</td>
-            <td><span class="badge badge-{{ job.status }}">{{ job.status }}</span></td>
-            <td><small>{{ job.progress_message or '--' }}</small></td>
-            <td><small>{{ job.created_at.strftime('%H:%M:%S') if job.created_at else '--' }}</small></td>
-            <td>
-                <a href="/jobs/{{ job.id }}">Details</a>
-                <form hx-post="/api/jobs/{{ job.id }}/cancel" hx-target="#queue-content" hx-swap="innerHTML" style="display: inline;">
-                    <button class="secondary outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Cancel</button>
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="text-sm">{{ job.job_type }}</span>
+                <span class="badge badge-xs
+                    {% if job.status == 'queued' %}badge-info
+                    {% else %}badge-ghost{% endif %}">{{ job.status }}</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <a href="/jobs/{{ job.id }}" class="link link-primary text-xs">View</a>
+                <form hx-post="/api/jobs/{{ job.id }}/cancel" hx-target="#queue-content" hx-swap="innerHTML" class="inline">
+                    <button class="btn btn-ghost btn-xs text-error">Cancel</button>
                 </form>
-            </td>
-        </tr>
+            </div>
+        </div>
         {% endfor %}
-    </tbody>
-</table>
-{% endif %}
+    </div>
+    {% endif %}
 
-{% if completed_jobs %}
-<details>
-    <summary>Recently Completed ({{ completed_jobs|length }})</summary>
-    <table class="queue-table">
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Completed</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for job in completed_jobs %}
-            <tr>
-                <td>{{ job.job_type }}</td>
-                <td><small>{{ job.completed_at.strftime('%Y-%m-%d %H:%M') if job.completed_at else '--' }}</small></td>
-                <td><a href="/jobs/{{ job.id }}">Details</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</details>
-{% endif %}
+    {% if completed_jobs %}
+    <div class="collapse collapse-arrow -mx-1 px-1">
+        <input type="checkbox">
+        <div class="collapse-title text-xs font-medium text-base-content/50 uppercase tracking-wider p-0 min-h-0 py-1">
+            Completed ({{ completed_jobs|length }})
+        </div>
+        <div class="collapse-content px-0">
+            <div class="space-y-1">
+                {% for job in completed_jobs %}
+                <div class="flex items-center justify-between text-sm">
+                    <span>{{ job.job_type }}</span>
+                    <a href="/jobs/{{ job.id }}" class="link link-primary text-xs">{{ job.completed_at.strftime('%H:%M') if job.completed_at else '--' }}</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
-{% if failed_jobs %}
-<details>
-    <summary>Failed ({{ failed_jobs|length }})</summary>
-    <table class="queue-table">
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Error</th>
-                <th>Time</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for job in failed_jobs %}
-            <tr>
-                <td>{{ job.job_type }}</td>
-                <td><small style="color: var(--pico-del-color);">{{ (job.error_message or '--')[:100] }}</small></td>
-                <td><small>{{ job.completed_at.strftime('%Y-%m-%d %H:%M') if job.completed_at else '--' }}</small></td>
-                <td><a href="/jobs/{{ job.id }}">Details</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</details>
-{% endif %}
+    {% if failed_jobs %}
+    <div class="collapse collapse-arrow -mx-1 px-1">
+        <input type="checkbox">
+        <div class="collapse-title text-xs font-medium text-error/70 uppercase tracking-wider p-0 min-h-0 py-1">
+            Failed ({{ failed_jobs|length }})
+        </div>
+        <div class="collapse-content px-0">
+            <div class="space-y-1">
+                {% for job in failed_jobs %}
+                <div class="flex items-center justify-between text-sm">
+                    <span>{{ job.job_type }}</span>
+                    <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
-{% if not active_jobs and not pending_jobs and not completed_jobs and not failed_jobs %}
-<p>No jobs in the queue. <a href="/submit">Submit a video</a> to get started.</p>
-{% endif %}
+    {% if not active_jobs and not pending_jobs and not completed_jobs and not failed_jobs %}
+    <p class="text-sm text-base-content/40 text-center py-4">No jobs in queue</p>
+    {% endif %}
+</div>
 
 {% if active_jobs or pending_jobs %}
 <div hx-get="/queue"

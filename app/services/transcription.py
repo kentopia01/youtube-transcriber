@@ -52,7 +52,7 @@ def transcribe_audio(
             "start": segment.start,
             "end": segment.end,
             "text": segment.text.strip(),
-            "confidence": segment.avg_log_prob,
+            "confidence": segment.avg_logprob,
         })
         full_text_parts.append(segment.text.strip())
 

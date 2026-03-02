@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -14,12 +14,22 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 @router.post("")
 async def search(
     request: Request,
-    data: SearchQuery,
     db: AsyncSession = Depends(get_db),
+    query: str = Form(None),
 ):
-    """Semantic search across all transcripts."""
-    query = data.query.strip()
+    """Semantic search across all transcripts. Accepts form data (HTMX) or JSON."""
+    # Handle both form-encoded (HTMX) and JSON requests
+    if query is None:
+        body = await request.json()
+        query = body.get("query", "")
+
+    query = query.strip()
     if not query:
+        if request.headers.get("HX-Request"):
+            return request.app.state.templates.TemplateResponse(
+                "partials/search_results.html",
+                {"request": request, "results": [], "query": ""},
+            )
         return {"results": []}
 
     try:
@@ -35,7 +45,7 @@ async def search(
     results = await semantic_search(
         db=db,
         query_embedding=query_embedding,
-        limit=data.limit,
+        limit=10,
     )
 
     # For HTMX, return HTML partial

@@ -3,12 +3,12 @@
 {% block title %}Job {{ job.id }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<nav aria-label="breadcrumb">
+<div class="breadcrumbs text-sm mb-4">
     <ul>
-        <li><a href="/queue">Queue</a></li>
+        <li><a href="/">Dashboard</a></li>
         <li>Job Details</li>
     </ul>
-</nav>
+</div>
 
 <div id="job-status-container"
      hx-get="/jobs/{{ job.id }}"

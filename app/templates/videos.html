@@ -3,7 +3,7 @@
 {% block title %}Videos - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1>Videos <small>({{ total }})</small></h1>
+<h1 class="text-3xl font-bold mb-6">Videos <span class="text-base-content/40 text-xl font-normal">({{ total }})</span></h1>
 
 <div id="video-list-container"
      hx-get="/videos?page={{ page }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"

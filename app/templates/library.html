@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Library - YouTube Transcriber{% endblock %}
+
+{% block content %}
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-base-content">Library</h1>
+        <p class="text-sm text-base-content/50 mt-1">Browse your videos and channels</p>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs tabs-bordered mb-6">
+    <a href="/library?tab=videos"
+       class="tab tab-lg {% if tab == 'videos' %}tab-active font-semibold{% endif %}">
+        Videos
+        <span class="badge badge-sm badge-ghost ml-2">{{ video_count }}</span>
+    </a>
+    <a href="/library?tab=channels"
+       class="tab tab-lg {% if tab == 'channels' %}tab-active font-semibold{% endif %}">
+        Channels
+        <span class="badge badge-sm badge-ghost ml-2">{{ channels|length }}</span>
+    </a>
+</div>
+
+{% if tab == 'videos' %}
+<!-- Videos Tab -->
+<div id="video-list-content">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        {% for video in videos %}
+        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
+            {% if video.thumbnail_url %}
+            <figure>
+                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy"
+                     class="w-full aspect-video object-cover">
+            </figure>
+            {% else %}
+            <figure>
+                <div class="w-full aspect-video bg-base-300 flex items-center justify-center">
+                    <span class="text-base-content/20 text-sm">No thumbnail</span>
+                </div>
+            </figure>
+            {% endif %}
+            <div class="card-body p-4">
+                <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
+                <div class="flex items-center gap-2 mt-2">
+                    <span class="badge badge-xs
+                        {% if video.status == 'completed' %}badge-success
+                        {% elif video.status == 'failed' %}badge-error
+                        {% elif video.status in ['running', 'downloading', 'transcribing', 'summarizing'] %}badge-warning
+                        {% elif video.status == 'queued' %}badge-info
+                        {% elif video.status == 'transcribed' or video.status == 'downloaded' %}badge-success
+                        {% else %}badge-ghost{% endif %}">{{ video.status }}</span>
+                    {% if video.duration_seconds %}
+                    <span class="text-xs text-base-content/40">{{ video.duration_seconds|format_duration }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if not videos %}
+    <div class="text-center py-16">
+        <p class="text-base-content/40 mb-2">No videos yet.</p>
+        <a href="/" class="link link-primary text-sm">Submit a video from the Dashboard</a>
+    </div>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <div class="flex justify-center mt-8">
+        <div class="join">
+            {% if page > 1 %}
+            <a href="/library?tab=videos&page={{ page - 1 }}" class="join-item btn btn-sm">&laquo;</a>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+            <a href="/library?tab=videos&page={{ p }}"
+               class="join-item btn btn-sm {% if p == page %}btn-primary{% endif %}">{{ p }}</a>
+            {% endfor %}
+            {% if page < total_pages %}
+            <a href="/library?tab=videos&page={{ page + 1 }}" class="join-item btn btn-sm">&raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% else %}
+<!-- Channels Tab -->
+{% if channels %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+    {% for channel in channels %}
+    <a href="/channels/{{ channel.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
+        <div class="card-body items-center text-center p-5">
+            {% if channel.thumbnail_url %}
+            <div class="avatar">
+                <div class="w-16 rounded-full">
+                    <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}">
+                </div>
+            </div>
+            {% else %}
+            <div class="avatar placeholder">
+                <div class="bg-neutral text-neutral-content w-16 rounded-full">
+                    <span class="text-xl">{{ channel.name[0] }}</span>
+                </div>
+            </div>
+            {% endif %}
+            <h4 class="text-sm font-medium mt-2">{{ channel.name }}</h4>
+            <p class="text-xs text-base-content/40">{{ channel.video_count }} videos</p>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-16">
+    <p class="text-base-content/40 mb-2">No channels imported yet.</p>
+    <a href="/" class="link link-primary text-sm">Import a channel from the Dashboard</a>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
