@@ -12,7 +12,7 @@
 
 <div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
     <div class="card-body">
-        <h1 class="card-title text-2xl font-bold">{{ video.title }}</h1>
+        <h1 class="card-title text-2xl font-bold app-heading">{{ video.title }}</h1>
         <div class="flex flex-wrap items-center gap-2 mt-1">
             <span class="badge
                 {% if video.status == 'completed' %}badge-success
@@ -83,7 +83,7 @@
         <div class="space-y-0 divide-y divide-base-200">
             {% for segment in transcription.segments %}
             <div class="flex gap-4 py-3">
-                <span class="segment-time flex-shrink-0 font-mono text-sm text-primary min-w-[5rem]"
+                <span class="segment-time flex-shrink-0 font-mono text-sm app-accent-text min-w-[5rem]"
                       title="Click to copy timestamp">
                     {{ segment.start_time|format_timestamp }} - {{ segment.end_time|format_timestamp }}
                 </span>

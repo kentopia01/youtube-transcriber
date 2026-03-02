@@ -3,7 +3,10 @@
 {% block title %}Submit - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Submit Video or Channel</h1>
+<div class="app-page-head">
+    <h1 class="app-page-title">Submit Video Or Channel</h1>
+    <p class="app-page-subtitle">Start a single transcription job or discover a full channel in batches.</p>
+</div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="card bg-base-100 shadow-sm">
@@ -19,7 +22,7 @@
                            placeholder="https://www.youtube.com/watch?v=..."
                            class="input input-bordered w-full" required>
                 </div>
-                <button type="submit" class="btn btn-primary w-full">Process Video</button>
+                <button type="submit" class="btn app-btn-primary w-full">Process Video</button>
             </form>
             <div id="video-result" class="mt-2"></div>
         </div>
@@ -38,7 +41,7 @@
                            placeholder="https://www.youtube.com/@channelname"
                            class="input input-bordered w-full" required>
                 </div>
-                <button type="submit" class="btn btn-primary w-full">Discover Videos</button>
+                <button type="submit" class="btn app-btn-primary w-full">Discover Videos</button>
             </form>
             <div id="channel-result" class="mt-2"></div>
         </div>
@@ -63,7 +66,7 @@
             <form method="dialog">
                 <button class="btn btn-ghost">Cancel</button>
             </form>
-            <button id="confirm-process-btn" class="btn btn-primary">Process Selected</button>
+            <button id="confirm-process-btn" class="btn app-btn-primary">Process Selected</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">

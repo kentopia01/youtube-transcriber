@@ -3,7 +3,10 @@
 {% block title %}Processing Queue - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Processing Queue</h1>
+<div class="app-page-head">
+    <h1 class="app-page-title">Processing Queue</h1>
+    <p class="app-page-subtitle">Track running, pending, and failed pipeline jobs in one place.</p>
+</div>
 
 <div id="queue-content"
      hx-get="/queue"

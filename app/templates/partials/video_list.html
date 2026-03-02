@@ -1,7 +1,7 @@
 <div id="video-list-content">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow">
+        <a href="/videos/{{ video.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
             {% if video.thumbnail_url %}
             <figure>
                 <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy"
@@ -55,7 +55,7 @@
                hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
                hx-target="#video-list-content"
                hx-push-url="true"
-               class="join-item btn btn-sm {% if p == page %}btn-primary{% endif %}">{{ p }}</a>
+               class="join-item btn btn-sm {% if p == page %}app-btn-primary{% endif %}">{{ p }}</a>
             {% endfor %}
 
             {% if page < total_pages %}

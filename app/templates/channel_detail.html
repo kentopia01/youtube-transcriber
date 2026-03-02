@@ -21,7 +21,7 @@
             </div>
             {% endif %}
             <div>
-                <h1 class="text-2xl font-bold">{{ channel.name }}</h1>
+                <h1 class="text-2xl font-bold app-heading">{{ channel.name }}</h1>
                 <p class="text-sm text-base-content/50">
                     {{ channel.video_count }} videos
                     {% if channel.last_synced_at %}
@@ -36,8 +36,8 @@
         {% endif %}
 
         <div class="card-actions mt-4">
-            <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">View on YouTube</a>
-            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline btn-sm">View as Grid</a>
+            <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline app-btn-outline btn-sm">View on YouTube</a>
+            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline app-btn-outline btn-sm">View as Grid</a>
         </div>
     </div>
 </div>

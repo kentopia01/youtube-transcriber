@@ -1,6 +1,7 @@
 <div id="queue-summary">
     {% if active_batches %}
-    <div class="mb-4">
+    <div class="mb-4 rounded-xl border border-base-300 bg-base-100/80 p-3">
+        <p class="text-xs font-medium uppercase tracking-[0.16em] app-kicker mb-2">Batch Progress</p>
         {% for batch in active_batches %}
         <div class="flex items-center gap-3 mb-2">
             <span class="text-xs font-medium">Batch {{ batch.batch_number }}/{{ batch.total_batches }}</span>
@@ -15,8 +16,9 @@
 
     {% if active_jobs %}
     <div class="space-y-3 mb-4">
+        <p class="text-xs font-medium text-base-content/55 uppercase tracking-[0.16em]">Active</p>
         {% for job in active_jobs %}
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 rounded-lg border border-base-300 bg-base-100/70 p-2.5">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                     <a href="/jobs/{{ job.id }}" class="text-sm font-medium hover:underline truncate">{{ job.job_type }}</a>
@@ -31,8 +33,8 @@
     {% endif %}
 
     {% if pending_jobs %}
-    <div class="space-y-2 mb-4">
-        <p class="text-xs font-medium text-base-content/50 uppercase tracking-wider">Pending ({{ pending_jobs|length }})</p>
+    <div class="space-y-2 mb-4 rounded-xl border border-base-300 bg-base-100/60 p-3">
+        <p class="text-xs font-medium text-base-content/55 uppercase tracking-[0.16em]">Pending ({{ pending_jobs|length }})</p>
         {% for job in pending_jobs %}
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -56,12 +58,12 @@
     {% endif %}
 
     {% if completed_jobs %}
-    <div class="collapse collapse-arrow -mx-1 px-1">
+    <div class="collapse collapse-arrow rounded-xl border border-base-300 bg-base-100/60 px-3">
         <input type="checkbox">
-        <div class="collapse-title text-xs font-medium text-base-content/50 uppercase tracking-wider p-0 min-h-0 py-1">
+        <div class="collapse-title text-xs font-medium text-base-content/55 uppercase tracking-[0.16em] p-0 min-h-0 py-3">
             Completed ({{ completed_jobs|length }})
         </div>
-        <div class="collapse-content px-0">
+        <div class="collapse-content px-0 pb-3">
             <div class="space-y-1">
                 {% for job in completed_jobs %}
                 <div class="flex items-center justify-between text-sm">
@@ -75,28 +77,26 @@
     {% endif %}
 
     {% if failed_jobs %}
-    <div class="collapse collapse-arrow -mx-1 px-1">
-        <input type="checkbox">
-        <div class="collapse-title text-xs font-medium text-error/70 uppercase tracking-wider p-0 min-h-0 py-1">
-            Failed ({{ failed_jobs|length }})
+    <div class="rounded-xl border border-error/20 bg-error/5 p-3">
+        <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-medium text-error uppercase tracking-[0.16em]">Failed ({{ failed_jobs|length }})</p>
+            <span class="badge badge-xs app-badge-warning">Needs Attention</span>
         </div>
-        <div class="collapse-content px-0">
-            <div class="space-y-1">
-                {% for job in failed_jobs %}
-                <div class="flex items-center justify-between text-sm">
-                    <span>{{ job.job_type }}</span>
-                    <div class="flex items-center gap-2">
-                        <form hx-post="/api/jobs/{{ job.id }}/retry"
-                              hx-swap="none"
-                              hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
-                              class="inline">
-                            <button class="btn btn-ghost btn-xs text-warning">Retry</button>
-                        </form>
-                        <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
-                    </div>
+        <div class="space-y-2">
+            {% for job in failed_jobs %}
+            <div class="flex items-center justify-between text-sm">
+                <span class="truncate pr-2">{{ job.job_type }}</span>
+                <div class="flex items-center gap-2">
+                    <form hx-post="/api/jobs/{{ job.id }}/retry"
+                          hx-swap="none"
+                          hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
+                          class="inline">
+                        <button class="btn btn-xs app-btn-warning">Retry</button>
+                    </form>
+                    <a href="/jobs/{{ job.id }}" class="link link-error text-xs">Details</a>
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
     </div>
     {% endif %}

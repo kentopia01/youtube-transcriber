@@ -3,7 +3,10 @@
 {% block title %}Videos - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Videos <span class="text-base-content/40 text-xl font-normal">({{ total }})</span></h1>
+<div class="app-page-head">
+    <h1 class="app-page-title">Videos <span class="text-base-content/40 text-xl font-normal">({{ total }})</span></h1>
+    <p class="app-page-subtitle">Browse all imported and processed videos.</p>
+</div>
 
 <div id="video-list-container"
      hx-get="/videos?page={{ page }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"

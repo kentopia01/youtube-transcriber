@@ -3,9 +3,9 @@
 {% block title %}Search - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-base-content">Search</h1>
-    <p class="text-sm text-base-content/50 mt-1">Search across all transcribed video content using natural language.</p>
+<div class="app-page-head">
+    <h1 class="app-page-title">Semantic Search</h1>
+    <p class="app-page-subtitle">Search across all transcribed video content using natural language.</p>
 </div>
 
 <div class="card bg-base-100 shadow-sm border border-base-200 mb-6">
@@ -22,7 +22,7 @@
                        hx-include="[name='query']"
                        class="input input-bordered flex-1"
                        autofocus>
-                <button type="submit" class="btn btn-primary">Search</button>
+                <button type="submit" class="btn app-btn-primary">Search</button>
             </div>
         </form>
     </div>

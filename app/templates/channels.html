@@ -3,12 +3,15 @@
 {% block title %}Channels - YouTube Transcriber{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold mb-6">Channels</h1>
+<div class="app-page-head">
+    <h1 class="app-page-title">Channels</h1>
+    <p class="app-page-subtitle">Manage source channels and drill into their video pipelines.</p>
+</div>
 
 {% if channels %}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {% for channel in channels %}
-    <a href="/channels/{{ channel.id }}" class="card bg-base-100 shadow-sm hover:shadow-md transition-shadow">
+    <a href="/channels/{{ channel.id }}" class="card bg-base-100 shadow-sm border border-base-200 hover:shadow-md transition-shadow">
         <div class="card-body items-center text-center">
             {% if channel.thumbnail_url %}
             <div class="avatar">
@@ -32,7 +35,7 @@
 {% else %}
 <div class="text-center py-16">
     <p class="text-base-content/50 mb-4">No channels imported yet.</p>
-    <a href="/submit" class="btn btn-primary">Import a Channel</a>
+    <a href="/submit" class="btn app-btn-primary">Import a Channel</a>
 </div>
 {% endif %}
 {% endblock %}

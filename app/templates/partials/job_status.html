@@ -74,7 +74,7 @@
 
         <div class="flex gap-2 mt-4">
             {% if video %}
-            <a href="/videos/{{ video.id }}" class="btn btn-outline btn-sm">View Video</a>
+            <a href="/videos/{{ video.id }}" class="btn btn-outline app-btn-outline btn-sm">View Video</a>
             {% endif %}
 
             {% if job.status in ['pending', 'queued'] %}
@@ -87,7 +87,7 @@
 
             {% if job.status == 'failed' %}
             <form hx-post="/api/jobs/{{ job.id }}/retry" hx-swap="none">
-                <button class="btn btn-warning btn-sm">Retry Job</button>
+                <button class="btn app-btn-warning btn-sm">Retry Job</button>
             </form>
             {% endif %}
         </div>

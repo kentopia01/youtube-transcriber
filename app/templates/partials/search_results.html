@@ -1,5 +1,5 @@
 {% if results %}
-<p class="text-sm text-base-content/50 mb-4">Found {{ results|length }} results for "{{ query }}"</p>
+<p class="text-sm text-base-content/55 mb-4">Found {{ results|length }} results for "{{ query }}"</p>
 
 <div class="space-y-4">
     {% for result in results %}
@@ -9,7 +9,7 @@
                 <h4 class="font-semibold">
                     <a href="/videos/{{ result.video_id }}" class="link link-hover">{{ result.video_title }}</a>
                 </h4>
-                <span class="badge badge-ghost badge-sm whitespace-nowrap">{{ "%.1f"|format(result.similarity * 100) }}% match</span>
+                <span class="badge app-badge-warning badge-sm whitespace-nowrap">{{ "%.1f"|format(result.similarity * 100) }}% match</span>
             </div>
             {% if result.start_time is not none %}
             <p class="text-xs text-base-content/40 mt-1">

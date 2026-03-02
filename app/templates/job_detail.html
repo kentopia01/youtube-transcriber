@@ -10,6 +10,11 @@
     </ul>
 </div>
 
+<div class="app-page-head">
+    <h1 class="app-page-title">Job Details</h1>
+    <p class="app-page-subtitle">Inspect pipeline progress, timestamps, and retry/cancel controls.</p>
+</div>
+
 <div id="job-status-container"
      hx-get="/jobs/{{ job.id }}"
      hx-trigger="{% if job.status in ['running', 'queued', 'pending'] %}load delay:2s{% endif %}"
