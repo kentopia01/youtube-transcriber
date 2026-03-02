@@ -25,6 +25,28 @@ Use this section to quickly find the right document.
 4. Open the app:
    - `http://localhost:8000`
 
+## Auto Deploy On Push
+
+This repo includes `.github/workflows/deploy-main.yml` to auto-deploy on every push to `main`.
+
+Set these GitHub Actions repository secrets before enabling it:
+
+- `DEPLOY_HOST`: SSH host/IP of your server
+- `DEPLOY_USER`: SSH username
+- `DEPLOY_SSH_KEY`: private key for SSH auth
+- `DEPLOY_PORT`: SSH port (optional; defaults to `22`)
+- `DEPLOY_APP_DIR`: absolute path to this repo on the server
+
+Deploy command executed on the server:
+
+```bash
+cd "$DEPLOY_APP_DIR"
+git fetch origin main
+git checkout main
+git pull --ff-only origin main
+docker compose up -d --build web worker
+```
+
 ## What the App Does
 
 - Submit a **single video URL** for full processing.
