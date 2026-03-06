@@ -6,9 +6,10 @@ from app.tasks.celery_app import celery
 def run_pipeline(video_id: str) -> str:
     """Launch the full processing pipeline for a video.
 
-    Pipeline: download → transcribe → diarize → summarize → embed
+    Pipeline: download → transcribe → diarize → cleanup → summarize → embed
 
     Diarization step is a no-op if DIARIZATION_ENABLED=false.
+    Cleanup step is a no-op if TRANSCRIPT_CLEANUP_ENABLED=false.
 
     Uses task signatures by name to avoid importing worker-only dependencies
     in the web process.
@@ -19,6 +20,7 @@ def run_pipeline(video_id: str) -> str:
         signature("tasks.download_audio", args=[video_id], app=celery),
         signature("tasks.transcribe_audio", app=celery),
         signature("tasks.diarize_and_align", app=celery),
+        signature("tasks.cleanup_transcript", app=celery),
         signature("tasks.summarize_transcription", app=celery),
         signature("tasks.generate_embeddings", app=celery),
     )
