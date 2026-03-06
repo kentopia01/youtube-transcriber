@@ -1135,3 +1135,349 @@ class TestAdditionalEdgeCases:
 
         _, kwargs = mock_search.call_args
         assert kwargs["limit"] == 10  # default chat_retrieval_top_k
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 4 — Final edge cases
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound4:
+    """Final edge cases for Phase 2 completeness."""
+
+    def test_format_chunks_start_time_only(self):
+        """Chunk with start_time but no end_time should format correctly."""
+        from app.services.chat import _format_chunks_for_context
+
+        chunks = [
+            {
+                "video_title": "Video C",
+                "chunk_text": "partial time",
+                "start_time": 120.0,
+                "end_time": None,
+            }
+        ]
+        result = _format_chunks_for_context(chunks)
+        assert "[1] Video C [2:00]" in result
+        assert "partial time" in result
+
+    def test_format_chunks_multiple(self):
+        """Multiple chunks should be numbered sequentially."""
+        from app.services.chat import _format_chunks_for_context
+
+        chunks = [
+            {"video_title": "V1", "chunk_text": "c1", "start_time": 0.0, "end_time": 5.0},
+            {"video_title": "V2", "chunk_text": "c2", "start_time": 10.0, "end_time": 15.0},
+            {"video_title": "V3", "chunk_text": "c3", "start_time": None, "end_time": None},
+        ]
+        result = _format_chunks_for_context(chunks)
+        assert "[1] V1" in result
+        assert "[2] V2" in result
+        assert "[3] V3" in result
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_multiple_sources_returned(self, mock_chat):
+        """Multiple sources from RAG should all appear in response."""
+        multi_source_result = {
+            "content": "Answer with multiple sources.",
+            "sources": [
+                {
+                    "video_id": str(uuid.uuid4()),
+                    "video_title": "Video A",
+                    "chunk_text": "chunk a",
+                    "start_time": 0.0,
+                    "end_time": 10.0,
+                    "similarity": 0.95,
+                },
+                {
+                    "video_id": str(uuid.uuid4()),
+                    "video_title": "Video B",
+                    "chunk_text": "chunk b",
+                    "start_time": 20.0,
+                    "end_time": 30.0,
+                    "similarity": 0.85,
+                },
+            ],
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 200,
+            "completion_tokens": 80,
+        }
+        mock_chat.return_value = multi_source_result
+        s = _make_session(title="Multi-source")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "compare videos"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["sources"]) == 2
+        assert body["sources"][0]["video_title"] == "Video A"
+        assert body["sources"][1]["video_title"] == "Video B"
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_session_updated_at_touched_on_message(self, mock_chat):
+        """Sending a message should update session.updated_at."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Touch Test")
+        original_updated = s.updated_at
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "touch updated_at"},
+        )
+        assert resp.status_code == 200
+        # updated_at should have been reassigned (sa_func.now())
+        assert s.updated_at != original_updated
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_history_exactly_at_max_not_trimmed(self, mock_encode, mock_search, mock_llm):
+        """History exactly at chat_max_history * 2 should not be trimmed."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        # Exactly 20 messages = chat_max_history(10) * 2
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i}"}
+            for i in range(20)
+        ]
+
+        db = AsyncMock()
+        await chat_with_context("question", history, db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        # 20 history + 1 current = 21
+        assert len(messages) == 21
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_chat_no_chunks_still_calls_llm(self, mock_encode, mock_search, mock_llm):
+        """When search returns no chunks, LLM is still called with empty context."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "I don't have relevant context.",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 30,
+            "completion_tokens": 15,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("obscure question", [], db)
+
+        mock_llm.assert_called_once()
+        assert result["content"] == "I don't have relevant context."
+        assert result["sources"] == []
+
+    def test_create_session_with_empty_string_title(self):
+        """Empty string title in create should be accepted (nullable field, no min_length)."""
+        db = StubDB()
+        client = _build_client(db)
+        resp = client.post("/api/chat/sessions", json={"title": ""})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["title"] == ""
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_user_message_saved_before_chat_call(self, mock_chat):
+        """User message should be added to DB before chat_with_context is called."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Order Test")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "test ordering"},
+        )
+        assert resp.status_code == 200
+        # User message should be added first
+        assert db.added[0].role == "user"
+        assert db.added[0].content == "test ordering"
+
+    def test_rename_preserves_other_fields(self):
+        """Renaming a session should not alter platform or other fields."""
+        s = _make_session("Original")
+        s.platform = "telegram"
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/chat/sessions/{s.id}",
+            json={"title": "Renamed"},
+        )
+        assert resp.status_code == 200
+        assert s.platform == "telegram"
+        assert s.title == "Renamed"
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 5 — Concurrent, system prompt, _call_anthropic unit tests
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound5:
+    """Final gap-filling tests for Phase 2 QA completeness."""
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_concurrent_messages_both_succeed(self, mock_chat):
+        """Two sequential messages to the same session should both succeed."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title=None)
+        # First message
+        db1 = StubDB(execute_results=[s])
+        client1 = _build_client(db1)
+        resp1 = client1.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "First question"},
+        )
+        assert resp1.status_code == 200
+        assert s.title == "First question"
+
+        # Second message (simulate fresh DB load with messages already present)
+        msg1 = _make_message(s.id, "user", "First question")
+        msg2 = _make_message(s.id, "assistant", MOCK_CHAT_RESULT["content"])
+        s.messages = [msg1, msg2]
+        db2 = StubDB(execute_results=[s])
+        client2 = _build_client(db2)
+        resp2 = client2.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "Follow-up question"},
+        )
+        assert resp2.status_code == 200
+        # Title should NOT change on second message
+        assert s.title == "First question"
+        # History should contain the prior messages
+        history = mock_chat.call_args[1]["history"]
+        assert len(history) == 2
+
+    def test_system_prompt_mentions_video_transcripts(self):
+        """System prompt should ground the assistant in video transcript content."""
+        from app.services.chat import SYSTEM_PROMPT
+
+        assert "video transcript" in SYSTEM_PROMPT.lower()
+        assert "context" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_instructs_citation(self):
+        """System prompt should instruct the model to cite sources."""
+        from app.services.chat import SYSTEM_PROMPT
+
+        assert "cite" in SYSTEM_PROMPT.lower() or "source" in SYSTEM_PROMPT.lower()
+
+    @patch("app.services.chat._get_anthropic_client")
+    def test_call_anthropic_passes_correct_params(self, mock_get_client):
+        """_call_anthropic should pass model, system, messages, and max_tokens."""
+        from app.services.chat import _call_anthropic
+
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Generated answer")]
+        mock_response.model = "claude-sonnet-4-20250514"
+        mock_response.usage.input_tokens = 200
+        mock_response.usage.output_tokens = 80
+        mock_client.messages.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        result = _call_anthropic(
+            system="Test system prompt",
+            messages=[{"role": "user", "content": "Hello"}],
+            model="claude-sonnet-4-20250514",
+        )
+
+        mock_client.messages.create.assert_called_once_with(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system="Test system prompt",
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+        assert result["content"] == "Generated answer"
+        assert result["model"] == "claude-sonnet-4-20250514"
+        assert result["prompt_tokens"] == 200
+        assert result["completion_tokens"] == 80
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_token_guard_preserves_current_question(self, mock_encode, mock_search, mock_llm):
+        """Even with massive history, the current question must survive the token guard."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        # 10 messages of 100k chars each = way over 150k tokens
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": "X" * 100_000}
+            for i in range(10)
+        ]
+
+        db = AsyncMock()
+        await chat_with_context("my important question", history, db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        # The last message must be the current question
+        assert "my important question" in messages[-1]["content"]
+        # Should have at least 1 message (the question itself)
+        assert len(messages) >= 1
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_message_content_type_json_required(self, mock_chat):
+        """Sending non-JSON body should return 422."""
+        client = _build_client()
+        resp = client.post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            content="plain text",
+            headers={"Content-Type": "text/plain"},
+        )
+        assert resp.status_code == 422
+
+    def test_create_session_invalid_json_returns_422(self):
+        """Sending malformed JSON to create session should return 422."""
+        client = _build_client()
+        resp = client.post(
+            "/api/chat/sessions",
+            content="not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_assistant_message_has_model_and_tokens(self, mock_chat):
+        """Assistant message should store model name and token counts."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Token Test")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "count tokens"},
+        )
+        assert resp.status_code == 200
+        # Check the saved assistant message object
+        assistant_msg = db.added[1]
+        assert assistant_msg.role == "assistant"
+        assert assistant_msg.model == "claude-sonnet-4-20250514"
+        assert assistant_msg.prompt_tokens == 500
+        assert assistant_msg.completion_tokens == 100

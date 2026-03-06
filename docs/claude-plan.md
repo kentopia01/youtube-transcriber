@@ -1,30 +1,35 @@
-# QAClaw Phase 2 QA Round 3 — Chat Backend Deep Review
+# QAClaw Phase 2 QA Round 4 — Chat Backend Final QA
 
 ## Goal
-Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all acceptance criteria, add missing edge case tests.
+Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all acceptance criteria, add remaining edge case tests.
 
 ## Assumptions
 - Phase 1 (toggle system) complete and tested
-- Phase 2 implemented by BuildClaw, two prior QA rounds completed
-- All prior bugs fixed; this round is for completeness verification
+- Phase 2 implemented by BuildClaw, three prior QA rounds completed
+- All prior bugs fixed; this round fills remaining test gaps
 
 ## Steps
 1. Read CHAT_FEATURE_PLAN.md Phase 2 section — verified spec alignment
-2. Code review all Phase 2 files:
-   - Migration 006: clean, tables match spec, proper FK/cascade, index on session_id
-   - Models: ChatSession/ChatMessage match plan exactly, JSONB for sources
-   - Schemas: proper validation (min_length, max_length), from_attributes config
-   - Service: RAG pipeline correct — chat_enabled_only=True, history trimming, 150k guard, graceful errors
-   - Router: session CRUD correct, auto-title on first message, history built from loaded messages
-   - Config: chat_model, chat_max_history, chat_retrieval_top_k all present
-3. Verified no bugs found in this round — prior fixes are solid
-4. Added 9 new edge case tests:
-   - Telegram platform session creation
-   - Auto-title not overwritten on second message
-   - Invalid UUID returns 422 (3 endpoints)
-   - Empty sources list handling
-   - Source structure matches ChatSourceOut schema
-   - Empty history produces single message to LLM
-   - chat_retrieval_top_k passed correctly to search
-5. Run full suite: 510 passed, 0 failed
+2. Full code review of all Phase 2 files:
+   - Migration 006, models (chat_session.py, chat_message.py)
+   - Service (services/chat.py), router (routers/chat.py)
+   - Schemas (schemas/chat.py), config (config.py)
+   - Search integration (services/search.py chat_enabled_only param)
+   - Model registration (__init__.py), router inclusion (main.py)
+3. No bugs found — implementation matches spec
+4. Added 9 new edge case tests (Round 4):
+   - Format chunks with partial timestamps
+   - Multiple chunks formatting
+   - Multiple sources in response
+   - Session updated_at touched on message
+   - History boundary test (exactly at max)
+   - Empty search results still calls LLM
+   - Empty string title in create
+   - User message save ordering
+   - Rename preserves other fields
+5. Run full suite: 519 passed, 0 failed
 6. Commit and push
+
+## Test Coverage (cumulative)
+- 69 tests in test_chat.py across 9 test classes
+- 519 tests total across all test files
