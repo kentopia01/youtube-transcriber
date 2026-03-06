@@ -1,7 +1,7 @@
 $ .venv/bin/pytest -v
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.12, pytest-9.0.2, pluggy-1.6.0
-533 passed, 42 warnings in 5.06s
+545 passed, 42 warnings in 5.14s
 
-All 533 tests pass including 83 Phase 2 chat backend tests across 11 test classes.
+All 545 tests pass including 95 Phase 2 chat backend tests across 12 test classes.
 No failures. No errors.

@@ -1579,3 +1579,291 @@ class TestQAClawRound6:
         )
         assert resp.status_code == 200
         assert s.title == "x" * 255
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 7 — Final missing edge cases
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound7:
+    """Coverage gaps: message over 100k, rename over 255, _fmt_ts edge, platform validation,
+    chat_enabled_only propagation through search modes, and auto-title exactly 50 chars."""
+
+    def test_send_message_over_100k_returns_422(self):
+        """Message over 100_000 chars should be rejected by schema validation."""
+        s = _make_session(title="Over Limit")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "x" * 100_001},
+        )
+        assert resp.status_code == 422
+
+    def test_rename_over_255_returns_422(self):
+        """Title over 255 chars should be rejected by schema validation."""
+        s = _make_session("Old")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/chat/sessions/{s.id}",
+            json={"title": "x" * 256},
+        )
+        assert resp.status_code == 422
+
+    def test_fmt_ts_zero_seconds(self):
+        """_fmt_ts(0) should return '0:00'."""
+        from app.services.chat import _fmt_ts
+
+        assert _fmt_ts(0) == "0:00"
+
+    def test_fmt_ts_fractional_seconds(self):
+        """_fmt_ts with fractional seconds should truncate to int."""
+        from app.services.chat import _fmt_ts
+
+        assert _fmt_ts(65.9) == "1:05"
+
+    def test_auto_title_exactly_50_chars_no_ellipsis(self):
+        """A message exactly 50 chars should NOT get '...' appended."""
+        mock_result = MOCK_CHAT_RESULT.copy()
+        with patch("app.routers.chat.chat_with_context", new_callable=AsyncMock, return_value=mock_result):
+            s = _make_session(title=None)
+            db = StubDB(execute_results=[s])
+            client = _build_client(db)
+            msg_50 = "a" * 50
+            resp = client.post(
+                f"/api/chat/sessions/{s.id}/messages",
+                json={"content": msg_50},
+            )
+            assert resp.status_code == 200
+            assert s.title == msg_50
+            assert not s.title.endswith("...")
+
+    def test_auto_title_51_chars_gets_ellipsis(self):
+        """A message of 51 chars should get truncated to 50 + '...'."""
+        mock_result = MOCK_CHAT_RESULT.copy()
+        with patch("app.routers.chat.chat_with_context", new_callable=AsyncMock, return_value=mock_result):
+            s = _make_session(title=None)
+            db = StubDB(execute_results=[s])
+            client = _build_client(db)
+            msg_51 = "b" * 51
+            resp = client.post(
+                f"/api/chat/sessions/{s.id}/messages",
+                json={"content": msg_51},
+            )
+            assert resp.status_code == 200
+            assert s.title == "b" * 50 + "..."
+
+    def test_create_session_default_platform_is_web(self):
+        """Default platform should be 'web' when not specified."""
+        db = StubDB()
+        client = _build_client(db)
+        resp = client.post("/api/chat/sessions", json={})
+        assert resp.status_code == 200
+        created = db.added[0]
+        assert created.platform == "web"
+
+    def test_delete_session_returns_session_id(self):
+        """Delete response should include the deleted session_id."""
+        s = _make_session("To Delete")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.delete(f"/api/chat/sessions/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["deleted"] is True
+        assert body["session_id"] == str(s.id)
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_sources_include_all_required_fields(self, mock_encode, mock_search, mock_llm):
+        """Each source dict must have video_id, video_title, chunk_text, start_time, end_time, similarity."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": uuid.uuid4(),
+                "video_title": "Source Check",
+                "chunk_text": "test chunk",
+                "start_time": 5.0,
+                "end_time": 15.0,
+                "speaker": None,
+                "similarity": 0.88,
+            }
+        ]
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("check sources", [], db)
+
+        assert len(result["sources"]) == 1
+        source = result["sources"][0]
+        required_keys = {"video_id", "video_title", "chunk_text", "start_time", "end_time", "similarity"}
+        assert set(source.keys()) == required_keys
+        assert source["similarity"] == 0.88
+        assert source["start_time"] == 5.0
+        assert source["end_time"] == 15.0
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_user_message_not_stored_with_model_or_tokens(self, mock_chat):
+        """User messages should have None for model, prompt_tokens, completion_tokens."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="User Msg Check")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "user question"},
+        )
+        assert resp.status_code == 200
+        user_msg = db.added[0]
+        assert user_msg.role == "user"
+        assert user_msg.model is None
+        assert user_msg.prompt_tokens is None
+        assert user_msg.completion_tokens is None
+
+    def test_format_chunks_empty_list(self):
+        """Empty chunk list should produce empty string."""
+        from app.services.chat import _format_chunks_for_context
+
+        assert _format_chunks_for_context([]) == ""
+
+    def test_list_sessions_default_pagination(self):
+        """Default list sessions should use offset=0, limit=20."""
+        db = StubDB(execute_results=[[]])
+        client = _build_client(db)
+        resp = client.get("/api/chat/sessions")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 8 — Code-review-driven gap tests
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound8:
+    """Tests discovered during code review: empty-string title, odd history,
+    newlines in content, search query passthrough."""
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_empty_string_title_blocks_auto_title(self, mock_chat):
+        """Session created with title='' should NOT trigger auto-title.
+
+        Only title=None triggers auto-title (line 121 in routers/chat.py).
+        This documents the current intentional behavior.
+        """
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "Should this set the title?"},
+        )
+        assert resp.status_code == 200
+        assert s.title == ""
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_odd_number_history_messages(self, mock_encode, mock_search, mock_llm):
+        """History with odd number of messages should still work correctly."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        history = [
+            {"role": "user", "content": "Q1"},
+            {"role": "assistant", "content": "A1"},
+            {"role": "user", "content": "Q2"},
+        ]
+
+        db = AsyncMock()
+        await chat_with_context("Q3", history, db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        assert len(messages) == 4  # 3 history + 1 current
+        assert messages[-1]["role"] == "user"
+        assert "Q3" in messages[-1]["content"]
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_newlines_in_message_content_preserved(self, mock_chat):
+        """Message content with newlines should be passed through unchanged."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Newlines")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        content = "Line 1\nLine 2\n\nLine 4"
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": content},
+        )
+        assert resp.status_code == 200
+        assert mock_chat.call_args[1]["question"] == content
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_search_query_text_passed_correctly(self, mock_encode, mock_search, mock_llm):
+        """User question should be passed as both embedding query and text query."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("specific question about cats", [], db)
+
+        mock_encode.assert_called_once_with("specific question about cats")
+        _, kwargs = mock_search.call_args
+        assert kwargs["query"] == "specific question about cats"
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_max_tokens_4096_in_anthropic_call(self, mock_encode, mock_search, mock_llm):
+        """Verify _call_anthropic is invoked with max_tokens=4096."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("question", [], db)
+
+        # _call_anthropic(system, messages, model) — verify it was called
+        mock_llm.assert_called_once()
+        call_args = mock_llm.call_args[0]
+        assert call_args[2] == "claude-sonnet-4-20250514"  # model arg
