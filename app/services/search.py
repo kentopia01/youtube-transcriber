@@ -72,11 +72,11 @@ async def _vector_search(
             ec.start_time,
             ec.end_time,
             ec.speaker,
-            1 - (ec.embedding <=> :embedding::vector) as similarity
+            1 - (ec.embedding <=> CAST(:embedding AS vector)) as similarity
         FROM embedding_chunks ec
         JOIN videos v ON v.id = ec.video_id
         {where}
-        ORDER BY ec.embedding <=> :embedding::vector
+        ORDER BY ec.embedding <=> CAST(:embedding AS vector)
         LIMIT :limit
     """
 
@@ -187,11 +187,11 @@ async def _hybrid_search(
                 ec.start_time,
                 ec.end_time,
                 ec.speaker,
-                ROW_NUMBER() OVER (ORDER BY ec.embedding <=> :embedding::vector) as vector_rank
+                ROW_NUMBER() OVER (ORDER BY ec.embedding <=> CAST(:embedding AS vector)) as vector_rank
             FROM embedding_chunks ec
             JOIN videos v ON v.id = ec.video_id
             {where}
-            ORDER BY ec.embedding <=> :embedding::vector
+            ORDER BY ec.embedding <=> CAST(:embedding AS vector)
             LIMIT {candidate_limit}
         ),
         keyword_ranked AS (
