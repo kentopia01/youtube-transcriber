@@ -48,7 +48,7 @@ YouTube URL → yt-dlp download
   → Speaker Diarization (pyannote.audio) [optional]
   → LLM Transcript Cleanup (Anthropic Haiku) [optional]
   → Summarization (Anthropic Sonnet)
-  → Semantic Embeddings (MiniLM)
+  → Semantic Embeddings (nomic-embed-text-v1.5, 768d, speaker-aware chunks)
 ```
 
 ## Prerequisites
@@ -137,6 +137,10 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
 | `REDIS_URL` | | Redis URL (Celery broker) |
+| `EMBEDDING_MODEL` | `nomic-ai/nomic-embed-text-v1.5` | Sentence-transformers embedding model |
+| `EMBEDDING_DIMENSIONS` | `768` | Embedding vector dimensions |
+| `CHUNK_TARGET_TOKENS` | `300` | Target chunk size in tokens |
+| `CHUNK_MAX_TOKENS` | `400` | Maximum chunk size in tokens |
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 
 See `.env.example` for the full list with all defaults.
@@ -237,6 +241,22 @@ When `TRANSCRIPT_CLEANUP_ENABLED=true` and `ANTHROPIC_API_KEY` is set:
 - Preserves meaning, timing, and speaker labels
 - Non-fatal: if the API call fails, the pipeline continues with the original text
 - Adds ~10-15 seconds per video
+
+### Semantic Embeddings
+
+Transcripts are chunked and embedded for semantic search using `nomic-ai/nomic-embed-text-v1.5`:
+- **768-dimensional** vectors (upgraded from 384d MiniLM)
+- **Speaker-aware chunking** — chunks respect speaker turn boundaries when diarization is available
+- **Sentence-boundary splitting** — long monologues split at sentence boundaries, not mid-word
+- **Asymmetric retrieval** — uses `search_document:` prefix for chunks, `search_query:` prefix for queries
+- **Configurable chunk size** — target 300 tokens, max 400 tokens (via `CHUNK_TARGET_TOKENS`, `CHUNK_MAX_TOKENS`)
+
+To re-embed all existing videos after upgrading:
+```bash
+python scripts/reembed_all.py              # re-embed all completed videos
+python scripts/reembed_all.py --dry-run    # preview without writing
+python scripts/reembed_all.py --video-id UUID  # re-embed a single video
+```
 
 ## Worker Management
 

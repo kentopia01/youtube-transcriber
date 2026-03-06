@@ -33,6 +33,17 @@ def download_mlx_models():
     print("\n✅ All models pre-downloaded.")
 
 
+def download_embedding_model():
+    """Download the nomic embedding model via sentence-transformers."""
+    print("Downloading nomic-ai/nomic-embed-text-v1.5...")
+    try:
+        from sentence_transformers import SentenceTransformer
+        SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+        print("   Cached successfully")
+    except Exception as e:
+        print(f"   Failed: {e}")
+
+
 def download_pyannote_model():
     """Download pyannote diarization model if HF_TOKEN is set."""
     hf_token = os.environ.get("HF_TOKEN", "")
@@ -56,4 +67,5 @@ def download_pyannote_model():
 
 if __name__ == "__main__":
     download_mlx_models()
+    download_embedding_model()
     download_pyannote_model()
