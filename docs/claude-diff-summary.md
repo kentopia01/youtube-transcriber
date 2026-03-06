@@ -1,29 +1,28 @@
-# QAClaw Phase 1 Review — Diff Summary
+# QAClaw Phase 1 Review (Round 2) — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat_toggle.py` | Added 7 edge case tests: invalid body, invalid UUID, channel missing body, channel 0 videos, empty search results for all 3 modes |
-| `tests/test_config.py` | Fixed stale model ID assertion (claude-haiku-4-20250514 → claude-haiku-4-5-20251001) |
-| `docs/claude-plan.md` | Updated with QA review plan |
-| `docs/claude-diff-summary.md` | Updated with QA review changes |
-| `docs/claude-test-results.txt` | Updated with full test results |
+| `tests/test_chat_toggle.py` | Added 7 more edge case tests (total: 28): idempotent video toggle (already enabled/disabled), response video_id correctness, idempotent channel toggle, channel invalid UUID, channel response channel_id, channel_id-only where clause |
+| `docs/claude-plan.md` | Updated with round 2 QA review plan |
+| `docs/claude-diff-summary.md` | Updated with round 2 changes |
+| `docs/claude-test-results.txt` | Updated with full test results (450 passed) |
 
 ## Why
-QA review of Phase 1 Toggle System — found missing edge case test coverage and a pre-existing test failure.
+Second QA pass found gaps in idempotency testing and response payload verification.
 
 ## Risks
 - None. All changes are test-only (no production code modified).
-- Phase 1 implementation code reviewed and found correct.
+- Phase 1 implementation code reviewed and confirmed correct — no bugs found.
 
-## Code Review Findings
-- Migration 005: Clean, correct server_default, proper downgrade
-- Models: chat_enabled columns match migration
-- API: Proper 404 handling, Pydantic validation, channel bulk-update iterates all videos
-- Search: chat_enabled_only filter correctly threaded through all 3 modes (vector/keyword/hybrid)
-- UI: HTMX toggles with hx-swap="none", JS-based dimming via toggleCardDim
-- CSS: .is-chat-disabled opacity 0.6 dimming applied correctly
+## Code Review Findings (Round 2)
+- Migration 005: Clean, correct
+- Models: chat_enabled columns correct
+- Video toggle API: correct 404, Pydantic validation, idempotent behavior confirmed
+- Channel toggle API: correct 404, bulk-update works, idempotent, returns correct channel_id + video count
+- Search: `_build_where_clause` handles all 4 combinations (none, channel only, chat only, both)
+- UI: HTMX toggles correct, dimming CSS correct, `toggleCardDim` JS handles both wrapper types
 
 ## Plan Deviations
-- None. All planned review steps completed.
+- None.

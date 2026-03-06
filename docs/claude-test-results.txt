@@ -1,29 +1,24 @@
-QAClaw Phase 1 Review - Test Results
-=====================================
+QAClaw Phase 1 Review (Round 2) - Test Results
+================================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 443 passed, 0 failed, 42 warnings in 4.67s
+Result: 450 passed, 0 failed, 42 warnings in 4.51s
 
-New tests added (7) in tests/test_chat_toggle.py:
-  TestVideoChatToggle::test_toggle_invalid_enabled_value_returns_422
-  TestVideoChatToggle::test_toggle_invalid_uuid_returns_422
-  TestChannelChatToggle::test_toggle_channel_missing_body_returns_422
-  TestChannelChatToggle::test_toggle_channel_zero_videos
-  TestSemanticSearchChatFilter::test_search_returns_empty_when_all_disabled
-  TestSemanticSearchChatFilter::test_keyword_search_returns_empty_when_all_disabled
-  TestSemanticSearchChatFilter::test_hybrid_search_returns_empty_when_all_disabled
+New tests added in this round (7) in tests/test_chat_toggle.py:
+  TestVideoChatToggle::test_toggle_idempotent_already_enabled
+  TestVideoChatToggle::test_toggle_idempotent_already_disabled
+  TestVideoChatToggle::test_toggle_response_contains_correct_video_id
+  TestChannelChatToggle::test_toggle_channel_idempotent_already_disabled
+  TestChannelChatToggle::test_toggle_channel_invalid_uuid_returns_422
+  TestChannelChatToggle::test_toggle_channel_response_contains_channel_id
+  TestBuildWhereClauseChatEnabled::test_channel_id_only
 
-Pre-existing fix:
-  tests/test_config.py::TestConfigDefaults::test_cleanup_model_default
-  - Updated expected model ID from "claude-haiku-4-20250514" to "claude-haiku-4-5-20251001"
-
-Total chat toggle tests: 21 (14 original + 7 new)
-Total suite: 443 passed
+Total chat toggle tests: 28 (21 from round 1 + 7 new)
+Total suite: 450 passed (443 from round 1 + 7 new)
 
 Files changed:
   tests/test_chat_toggle.py (7 new edge case tests)
-  tests/test_config.py (stale model ID fix)
   docs/claude-plan.md
   docs/claude-diff-summary.md
   docs/claude-test-results.txt

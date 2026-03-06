@@ -143,6 +143,45 @@ class TestVideoChatToggle:
         )
         assert resp.status_code == 422
 
+    def test_toggle_idempotent_already_enabled(self):
+        """Toggling enabled=True on already-enabled video is a no-op (idempotent)."""
+        video = SimpleNamespace(id=uuid.uuid4(), chat_enabled=True, title="Test")
+        db = StubDB(execute_results=[video])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/videos/{video.id}/chat-toggle",
+            json={"enabled": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chat_enabled"] is True
+        assert video.chat_enabled is True
+
+    def test_toggle_idempotent_already_disabled(self):
+        """Toggling enabled=False on already-disabled video is a no-op (idempotent)."""
+        video = SimpleNamespace(id=uuid.uuid4(), chat_enabled=False, title="Test")
+        db = StubDB(execute_results=[video])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/videos/{video.id}/chat-toggle",
+            json={"enabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chat_enabled"] is False
+        assert video.chat_enabled is False
+
+    def test_toggle_response_contains_correct_video_id(self):
+        """Response video_id matches the requested video."""
+        vid = uuid.uuid4()
+        video = SimpleNamespace(id=vid, chat_enabled=True, title="Test")
+        db = StubDB(execute_results=[video])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/videos/{vid}/chat-toggle",
+            json={"enabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["video_id"] == str(vid)
+
 
 # ---------------------------------------------------------------------------
 # Channel chat toggle (bulk updates videos)
@@ -218,6 +257,44 @@ class TestChannelChatToggle:
         assert body["videos_updated"] == 0
         assert channel.chat_enabled is False
 
+    def test_toggle_channel_idempotent_already_disabled(self):
+        """Toggling enabled=False on already-disabled channel is idempotent."""
+        channel = SimpleNamespace(
+            id=uuid.uuid4(), chat_enabled=False, name="Test Channel",
+        )
+        video = SimpleNamespace(id=uuid.uuid4(), chat_enabled=False, channel_id=channel.id)
+        db = StubDB(execute_results=[channel, [video]])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/channels/{channel.id}/chat-toggle",
+            json={"enabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chat_enabled"] is False
+        assert channel.chat_enabled is False
+        assert video.chat_enabled is False
+
+    def test_toggle_channel_invalid_uuid_returns_422(self):
+        client = _build_client()
+        resp = client.patch(
+            "/api/channels/not-a-uuid/chat-toggle",
+            json={"enabled": True},
+        )
+        assert resp.status_code == 422
+
+    def test_toggle_channel_response_contains_channel_id(self):
+        """Response channel_id matches the requested channel."""
+        cid = uuid.uuid4()
+        channel = SimpleNamespace(id=cid, chat_enabled=True, name="Test Channel")
+        db = StubDB(execute_results=[channel, []])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/channels/{cid}/chat-toggle",
+            json={"enabled": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["channel_id"] == str(cid)
+
 
 # ---------------------------------------------------------------------------
 # Search with chat_enabled_only filter
@@ -238,6 +315,13 @@ class TestBuildWhereClauseChatEnabled:
         assert "channel_id" in clause
         assert "chat_enabled" in clause
         assert "AND" in clause
+
+    def test_channel_id_only(self):
+        cid = uuid.uuid4()
+        clause, params = _build_where_clause(cid, chat_enabled_only=False)
+        assert "channel_id" in clause
+        assert "chat_enabled" not in clause
+        assert params["channel_id"] == str(cid)
 
     def test_neither_filter(self):
         clause, params = _build_where_clause(None, chat_enabled_only=False)
