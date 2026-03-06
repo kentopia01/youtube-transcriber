@@ -64,6 +64,38 @@ docker compose up -d --build web worker
 - `/search` Semantic search
 - `/queue` Active and completed jobs
 
+## OpenClaw Skills
+
+Two bundled skills in `skills/` let AI agents interact with the transcriber programmatically:
+
+### `yt-transcribe` — Transcribe videos
+
+```bash
+# Submit a video and wait for transcription
+bash skills/yt-transcribe/scripts/transcribe.sh "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# List all transcribed videos
+bash skills/yt-transcribe/scripts/list_videos.sh
+
+# Check job status
+bash skills/yt-transcribe/scripts/get_status.sh <job-id>
+```
+
+### `yt-chat` — Chat with transcribed content
+
+```bash
+# List available videos
+python3 skills/yt-chat/scripts/chat.py --list
+
+# Ask a question about a specific video
+python3 skills/yt-chat/scripts/chat.py --video-id <uuid> -q "What were the main points?"
+
+# Search across all transcripts
+python3 skills/yt-chat/scripts/chat.py --search "topic" -q "What was discussed?"
+```
+
+Requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for the chat LLM. See each skill's `SKILL.md` for full details.
+
 ## Who Should Read What
 
 - Nontechnical operators: `docs/user-guide.md`
