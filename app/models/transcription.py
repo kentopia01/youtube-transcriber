@@ -17,7 +17,7 @@ class Transcription(Base):
     )
     full_text: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    model_size: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model_size: Mapped[str | None] = mapped_column(String(128), nullable=True)
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     processing_time_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

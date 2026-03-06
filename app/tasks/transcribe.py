@@ -61,7 +61,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
                 language=result.get("language"),
                 model_size=model_name,
                 word_count=len(result["text"].split()),
-                processing_time_seconds=result.get("processing_time"),
+                processing_time_seconds=float(result["processing_time"]) if result.get("processing_time") is not None else None,
             )
             db.add(transcription)
             db.flush()
@@ -70,10 +70,10 @@ def transcribe_audio_task(self, video_id: str) -> str:
                 segment = TranscriptionSegment(
                     transcription_id=transcription.id,
                     segment_index=i,
-                    start_time=seg["start"],
-                    end_time=seg["end"],
+                    start_time=float(seg["start"]),
+                    end_time=float(seg["end"]),
                     text=seg["text"],
-                    confidence=seg.get("confidence"),
+                    confidence=float(seg["confidence"]) if seg.get("confidence") is not None else None,
                 )
                 db.add(segment)
 
