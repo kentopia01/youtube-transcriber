@@ -142,6 +142,9 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `CHUNK_TARGET_TOKENS` | `300` | Target chunk size in tokens |
 | `CHUNK_MAX_TOKENS` | `400` | Maximum chunk size in tokens |
 | `SEARCH_MODE` | `hybrid` | Search strategy: `vector`, `hybrid`, or `keyword` |
+| `TELEGRAM_BOT_TOKEN` | | Telegram bot token from BotFather |
+| `TELEGRAM_ALLOWED_USERS` | | Comma-separated list of allowed Telegram user IDs (empty = allow all) |
+| `DATABASE_URL_NATIVE` | `postgresql+asyncpg://...@localhost:5432/transcriber` | Async Postgres URL for native processes (Telegram bot) |
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 
 See `.env.example` for the full list with all defaults.
@@ -214,6 +217,44 @@ python3 skills/yt-chat/scripts/chat.py --video-id <uuid> -q "What were the main 
 python3 skills/yt-chat/scripts/chat.py --video-id <uuid> -q "What did Speaker 1 say about pricing?"
 python3 skills/yt-chat/scripts/chat.py --search "topic" -q "Summarize the discussion"
 ```
+
+## Telegram Bot
+
+Chat with your transcript library via Telegram. The bot shares the same database and RAG pipeline as the web app.
+
+### Setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and get the token
+2. Add to your `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=your-bot-token-here
+   TELEGRAM_ALLOWED_USERS=123456789,987654321  # optional: comma-separated Telegram user IDs
+   DATABASE_URL=postgresql+asyncpg://transcriber:transcriber@localhost:5432/transcriber
+   ```
+3. Run the bot:
+   ```bash
+   .venv/bin/python scripts/run_telegram_bot.py
+   ```
+
+### Install as launchd service
+
+```bash
+cp com.sentryclaw.yt-telegram-bot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sentryclaw.yt-telegram-bot.plist
+launchctl kickstart gui/$(id -u)/com.sentryclaw.yt-telegram-bot
+```
+
+### Bot Commands
+
+| Command | Description |
+|---|---|
+| `/start` | Welcome message and instructions |
+| `/new` | Start a new chat session |
+| `/sessions` | List recent sessions (last 10) |
+| `/status` | Show library stats (enabled/total videos) |
+| `/videos` | List chat-enabled videos |
+
+Regular messages are sent to the RAG chat pipeline and return answers with source citations.
 
 ## V2 Pipeline Features
 
@@ -308,6 +349,71 @@ tail -f /tmp/yt-worker/yt-worker.log
 
 # Stop worker
 launchctl bootout gui/$(id -u)/com.sentryclaw.yt-worker
+```
+
+## Telegram Chat Bot
+
+A Telegram bot that lets you chat with your video transcript library via the same RAG pipeline used by the web chat UI.
+
+### Setup
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) on Telegram
+2. Add the bot token to `.env.native`:
+   ```
+   TELEGRAM_BOT_TOKEN=your-bot-token-here
+   ```
+3. (Optional) Restrict access to specific Telegram user IDs:
+   ```
+   TELEGRAM_ALLOWED_USERS=[123456789,987654321]
+   ```
+   Leave empty to allow all users.
+
+### Running
+
+```bash
+# Manual start
+source .venv/bin/activate
+set -a && source .env.native && set +a
+python -m app.telegram_bot
+
+# Or use the start script
+./scripts/start_telegram_bot.sh
+```
+
+### Install as launchd service
+
+```bash
+cp com.sentryclaw.yt-chatbot.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sentryclaw.yt-chatbot.plist
+launchctl kickstart gui/$(id -u)/com.sentryclaw.yt-chatbot
+```
+
+### Bot Commands
+
+| Command | Description |
+|---|---|
+| `/start` | Welcome message and instructions |
+| `/new` | Start a new chat session (archives current) |
+| `/sessions` | List recent chat sessions (last 10) |
+| `/status` | Show chat-enabled video count and total library size |
+| `/videos` | List videos enabled for chat |
+
+Regular text messages are sent through the RAG pipeline and answered with source citations.
+
+### Managing the bot
+
+```bash
+# Check status
+launchctl print gui/$(id -u)/com.sentryclaw.yt-chatbot
+
+# Restart
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-chatbot
+
+# View logs
+tail -f /tmp/yt-chatbot/yt-chatbot.log
+
+# Stop
+launchctl bootout gui/$(id -u)/com.sentryclaw.yt-chatbot
 ```
 
 ## Development

@@ -1,0 +1,371 @@
+"""Tests for Phase 4: Telegram bot."""
+
+import uuid
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.models.chat_session import ChatSession
+from app.telegram_bot import (
+    DENIED_TEXT,
+    _is_user_allowed,
+    format_response_with_sources,
+    handle_message,
+    new_command,
+    sessions_command,
+    split_message,
+    start_command,
+    status_command,
+    videos_command,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_update(user_id=123, chat_id=456, text="Hello"):
+    """Create a mock Telegram Update."""
+    update = MagicMock()
+    update.effective_user.id = user_id
+    update.effective_chat.id = chat_id
+    update.message.text = text
+    update.message.reply_text = AsyncMock()
+    return update
+
+
+def _make_session(title="Test Session", chat_id=456):
+    session = MagicMock(spec=ChatSession)
+    session.id = uuid.uuid4()
+    session.title = title
+    session.platform = "telegram"
+    session.telegram_chat_id = chat_id
+    session.created_at = datetime(2026, 3, 6, 12, 0, tzinfo=timezone.utc)
+    session.updated_at = datetime(2026, 3, 6, 12, 0, tzinfo=timezone.utc)
+    session.messages = []
+    return session
+
+
+class FakeScalars:
+    def __init__(self, items):
+        self._items = items
+
+    def all(self):
+        return self._items
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+
+class FakeResult:
+    def __init__(self, items):
+        self._items = items
+
+    def scalars(self):
+        return FakeScalars(self._items)
+
+    def scalar(self):
+        return self._items
+
+    def scalar_one(self):
+        return self._items[0] if isinstance(self._items, list) else self._items
+
+
+class FakeDB:
+    def __init__(self, results=None):
+        self._results = list(results or [])
+        self._idx = 0
+        self.added = []
+
+    async def execute(self, *args, **kwargs):
+        if self._idx < len(self._results):
+            val = self._results[self._idx]
+            self._idx += 1
+            return val
+        return FakeResult([])
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def flush(self):
+        pass
+
+    async def commit(self):
+        pass
+
+    async def refresh(self, obj):
+        if not hasattr(obj, "id") or obj.id is None:
+            obj.id = uuid.uuid4()
+
+    async def close(self):
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Access control tests
+# ---------------------------------------------------------------------------
+
+
+class TestAccessControl:
+    def test_allowed_when_list_empty(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_allowed_users = []
+            assert _is_user_allowed(999) is True
+
+    def test_allowed_when_in_list(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_allowed_users = [123, 456]
+            assert _is_user_allowed(123) is True
+
+    def test_denied_when_not_in_list(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_allowed_users = [123, 456]
+            assert _is_user_allowed(789) is False
+
+    @pytest.mark.asyncio
+    async def test_start_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await start_command(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+    @pytest.mark.asyncio
+    async def test_new_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await new_command(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+    @pytest.mark.asyncio
+    async def test_message_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await handle_message(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+
+# ---------------------------------------------------------------------------
+# Command tests
+# ---------------------------------------------------------------------------
+
+
+class TestStartCommand:
+    @pytest.mark.asyncio
+    async def test_start_welcome(self):
+        update = _make_update()
+        with patch("app.telegram_bot._is_user_allowed", return_value=True):
+            await start_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Welcome" in reply
+        assert "/new" in reply
+
+
+class TestNewCommand:
+    @pytest.mark.asyncio
+    async def test_creates_session(self):
+        update = _make_update(chat_id=456)
+        db = FakeDB()
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await new_command(update, MagicMock())
+        assert len(db.added) == 1
+        session = db.added[0]
+        assert session.platform == "telegram"
+        assert session.telegram_chat_id == 456
+        reply = update.message.reply_text.call_args[0][0]
+        assert "New chat session created" in reply
+
+
+class TestSessionsCommand:
+    @pytest.mark.asyncio
+    async def test_no_sessions(self):
+        update = _make_update()
+        db = FakeDB(results=[FakeResult([])])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await sessions_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "No sessions found" in reply
+
+    @pytest.mark.asyncio
+    async def test_lists_sessions(self):
+        session = _make_session(title="My Chat")
+        update = _make_update()
+        db = FakeDB(results=[FakeResult([session])])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await sessions_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "My Chat" in reply
+
+
+class TestStatusCommand:
+    @pytest.mark.asyncio
+    async def test_shows_counts(self):
+        update = _make_update()
+        db = FakeDB(results=[FakeResult(42), FakeResult(30)])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await status_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "42" in reply
+        assert "30" in reply
+
+
+class TestVideosCommand:
+    @pytest.mark.asyncio
+    async def test_no_videos(self):
+        update = _make_update()
+        db = FakeDB(results=[FakeResult([])])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await videos_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "No chat-enabled videos" in reply
+
+
+# ---------------------------------------------------------------------------
+# Message handling tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandleMessage:
+    @pytest.mark.asyncio
+    async def test_auto_creates_session_and_responds(self):
+        update = _make_update(text="What is this about?")
+        session = _make_session(title=None)
+        # First execute: find session -> none. Second: reload with messages
+        db = FakeDB(results=[FakeResult([]), FakeResult(session)])
+        # Override add to capture the new session
+        original_add = db.add
+
+        def track_add(obj):
+            original_add(obj)
+            if isinstance(obj, ChatSession):
+                obj.id = session.id
+
+        db.add = track_add
+
+        chat_result = {
+            "content": "This is about testing.",
+            "sources": [],
+            "model": "test-model",
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+        }
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+            patch("app.telegram_bot.chat_with_context", return_value=chat_result),
+        ):
+            await handle_message(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "This is about testing." in reply
+
+    @pytest.mark.asyncio
+    async def test_uses_existing_session(self):
+        update = _make_update(text="Follow up question")
+        session = _make_session(title="Existing Chat")
+        db = FakeDB(results=[FakeResult([session]), FakeResult(session)])
+
+        chat_result = {
+            "content": "Follow up answer.",
+            "sources": [
+                {"video_title": "Cool Video", "start_time": 125, "video_id": "abc"},
+            ],
+            "model": "test-model",
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+        }
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+            patch("app.telegram_bot.chat_with_context", return_value=chat_result),
+        ):
+            await handle_message(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Follow up answer." in reply
+        assert "Cool Video @ 2:05" in reply
+
+
+# ---------------------------------------------------------------------------
+# Response formatting tests
+# ---------------------------------------------------------------------------
+
+
+class TestFormatResponse:
+    def test_no_sources(self):
+        result = format_response_with_sources("Hello", [])
+        assert result == "Hello"
+
+    def test_with_sources(self):
+        sources = [
+            {"video_title": "Video A", "start_time": 90},
+            {"video_title": "Video B", "start_time": None},
+        ]
+        result = format_response_with_sources("Answer text", sources)
+        assert "Sources:" in result
+        assert "[Video A @ 1:30]" in result
+        assert "[Video B]" in result
+
+    def test_deduplicates_sources(self):
+        sources = [
+            {"video_title": "Video A", "start_time": 90},
+            {"video_title": "Video A", "start_time": 90},
+        ]
+        result = format_response_with_sources("Answer", sources)
+        assert result.count("[Video A @ 1:30]") == 1
+
+
+# ---------------------------------------------------------------------------
+# Message splitting tests
+# ---------------------------------------------------------------------------
+
+
+class TestSplitMessage:
+    def test_short_message_no_split(self):
+        assert split_message("short") == ["short"]
+
+    def test_exact_limit(self):
+        text = "x" * 4096
+        assert split_message(text) == [text]
+
+    def test_splits_at_newline(self):
+        text = "a" * 4000 + "\n" + "b" * 200
+        chunks = split_message(text)
+        assert len(chunks) == 2
+        assert chunks[0] == "a" * 4000
+        assert chunks[1] == "b" * 200
+
+    def test_splits_at_space(self):
+        text = "word " * 1000  # 5000 chars
+        chunks = split_message(text)
+        assert len(chunks) >= 2
+        for chunk in chunks:
+            assert len(chunk) <= 4096
+
+    def test_hard_split_no_whitespace(self):
+        text = "x" * 5000
+        chunks = split_message(text)
+        assert len(chunks) == 2
+        assert len(chunks[0]) == 4096
+        assert len(chunks[1]) == 904
+
+    def test_splits_long_message_multiple_chunks(self):
+        text = "a" * 10000
+        chunks = split_message(text)
+        assert len(chunks) == 3
+        total = sum(len(c) for c in chunks)
+        assert total == 10000

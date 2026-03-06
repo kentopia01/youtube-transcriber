@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     chat_max_history: int = 10
     chat_retrieval_top_k: int = 10
 
+    # Telegram bot
+    telegram_bot_token: str = ""
+    telegram_allowed_users: list[int] = []
+
+    # Native database URL (for processes running outside Docker)
+    database_url_native: str = "postgresql+asyncpg://transcriber:transcriber@localhost:5432/transcriber"
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"

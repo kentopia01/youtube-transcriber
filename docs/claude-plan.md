@@ -1,24 +1,29 @@
-# QAClaw Phase 3 QA: Web Dashboard Chat UI
+# Phase 4: Telegram Bot — Implementation Plan
 
 ## Goal
-QA review of Phase 3 (Web Chat UI) implementation — code review, test coverage, bug fixes.
+Add a Telegram bot that lets users chat with their video transcript library via the same RAG pipeline used by the web chat UI.
 
 ## Assumptions
-- Phase 3 implementation (BuildClaw) is complete per commit 561e92f
-- All Phase 2 backend tests passing
-- Review covers templates, routes, CSS, nav changes, JS interactions
+- Phases 1-3 (toggles, chat backend, web UI) are complete and working
+- The bot runs as a standalone process alongside the web app
+- It shares the same Postgres database and chat service
+- `python-telegram-bot>=21.0` is the library of choice
 
 ## Steps
-1. Read Phase 3 plan from `docs/CHAT_FEATURE_PLAN.md`
-2. Code review: `chat.html`, `chat_sidebar.html`, `chat_messages.html`, page routes, CSS, `base.html` nav
-3. Verify page routes return 200 for `/chat` and `/chat/{session_id}`
-4. Verify new chat creates session via API and redirects correctly
-5. Verify send message flow (fetch POST, display response, source cards)
-6. Verify sidebar session list groups by date correctly
-7. Verify delete/rename session works in sidebar
-8. Check markdown rendering script (marked.js) included, source citation card structure
-9. Check responsive sidebar collapse logic present
-10. Check CSS matches existing design system (no conflicting styles)
-11. Fix any bugs, add missing tests
-12. Run full suite: `.venv/bin/pytest -v`
-13. Update handoff docs and commit
+
+1. **Config** — Add `telegram_bot_token`, `telegram_allowed_users`, `database_url_native` to `app/config.py`
+2. **Dependency** — Add `python-telegram-bot>=21.0` to `pyproject.toml` main deps
+3. **Bot module** (`app/telegram_bot.py`):
+   - `/start` — welcome message
+   - `/new` — create new chat session (platform='telegram')
+   - `/sessions` — list last 10 sessions for this Telegram chat
+   - `/status` — show chat-enabled video count + total
+   - `/videos` — list chat-enabled video titles
+   - Regular messages — route through `chat_with_context()` RAG pipeline
+   - Access control via `telegram_allowed_users` allowlist
+   - Response formatting with source citations `[Video Title @ timestamp]`
+   - Message splitting at 4096 char Telegram limit
+4. **Entry point** — `scripts/run_telegram_bot.py` standalone script
+5. **launchd plist** — `com.sentryclaw.yt-telegram-bot.plist` template
+6. **Tests** — 23 tests covering commands, access control, message handling, formatting, splitting
+7. **README** — Setup instructions, commands reference, launchd installation
