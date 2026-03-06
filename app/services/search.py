@@ -11,11 +11,14 @@ logger = structlog.get_logger()
 _search_model_cache: dict = {}
 
 
-def encode_query(query: str, model_cache_dir: str = "/data/models") -> list[float]:
+def encode_query(query: str, model_cache_dir: str | None = None) -> list[float]:
     """Encode a search query into an embedding vector.
 
     Uses nomic-embed-text-v1.5 with search_query: prefix for asymmetric retrieval.
     """
+    if model_cache_dir is None:
+        model_cache_dir = settings.model_cache_dir
+
     if "model" not in _search_model_cache:
         from sentence_transformers import SentenceTransformer
 

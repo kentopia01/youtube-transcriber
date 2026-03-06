@@ -9,8 +9,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 
-# Activate venv
-source .venv/bin/activate
+# Activate native venv (has sentence-transformers for RAG search)
+source .venv-native/bin/activate
 
 # Load native environment
 set -a
