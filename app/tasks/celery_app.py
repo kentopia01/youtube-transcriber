@@ -23,6 +23,7 @@ celery.conf.update(
     include=[
         "app.tasks.download",
         "app.tasks.transcribe",
+        "app.tasks.diarize",
         "app.tasks.summarize",
         "app.tasks.embed",
         "app.tasks.channel_sync",
