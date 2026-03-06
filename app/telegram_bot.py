@@ -326,7 +326,7 @@ def create_bot_application() -> Application:
 def run_bot() -> None:
     app = create_bot_application()
     logger.info("telegram_bot_starting")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 
 if __name__ == "__main__":
