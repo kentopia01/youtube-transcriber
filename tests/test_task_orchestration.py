@@ -19,6 +19,8 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
         assert parts == (
             "tasks.download_audio",
             "tasks.transcribe_audio",
+            "tasks.diarize_and_align",
+            "tasks.cleanup_transcript",
             "tasks.summarize_transcription",
             "tasks.generate_embeddings",
         )
@@ -33,6 +35,8 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
     assert [c[0] for c in calls] == [
         "tasks.download_audio",
         "tasks.transcribe_audio",
+        "tasks.diarize_and_align",
+        "tasks.cleanup_transcript",
         "tasks.summarize_transcription",
         "tasks.generate_embeddings",
     ]
@@ -40,6 +44,8 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
     assert calls[1][1] is None
     assert calls[2][1] is None
     assert calls[3][1] is None
+    assert calls[4][1] is None
+    assert calls[5][1] is None
 
 
 @dataclass
