@@ -37,11 +37,14 @@
                 <a href="/library" class="nav-link {% if '/library' in request.url.path %}is-active{% endif %}">
                     <i class="iconoir-book" style="font-size:0.95rem"></i> Library
                 </a>
+                <a href="/chat" class="nav-link {% if '/chat' in request.url.path %}is-active{% endif %}">
+                    <i class="iconoir-chat-bubble" style="font-size:0.95rem"></i> Chat
+                </a>
             </div>
 
             <div class="nav-actions">
                 <a href="/search" class="btn btn-nav btn-sm">
-                    <i class="iconoir-chat-bubble" style="font-size:0.9rem"></i> Chat with Library
+                    <i class="iconoir-search" style="font-size:0.9rem"></i> Search
                 </a>
                 <a href="/" class="btn btn-nav-primary btn-sm">
                     <i class="iconoir-plus" style="font-size:0.9rem"></i> Submit
@@ -64,9 +67,12 @@
             <a href="/library" class="nav-link {% if '/library' in request.url.path %}is-active{% endif %}">
                 <i class="iconoir-book"></i> Library
             </a>
+            <a href="/chat" class="nav-link {% if '/chat' in request.url.path %}is-active{% endif %}">
+                <i class="iconoir-chat-bubble"></i> Chat
+            </a>
             <div class="nav-actions-mobile">
                 <a href="/search" class="btn btn-nav btn-sm flex-1 text-center">
-                    <i class="iconoir-chat-bubble"></i> Chat with Library
+                    <i class="iconoir-search"></i> Search
                 </a>
                 <a href="/" class="btn btn-nav-primary btn-sm flex-1 text-center">
                     <i class="iconoir-plus"></i> Submit
@@ -75,7 +81,7 @@
         </div>
     </nav>
 
-    <main class="page-shell">
+    <main class="{% block main_class %}page-shell{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 

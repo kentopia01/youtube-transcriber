@@ -1,0 +1,53 @@
+{% for msg in session.messages %}
+<div class="chat-msg">
+    {% if msg.role == 'user' %}
+    <div class="chat-msg-avatar is-user"><i class="iconoir-user" style="font-size:0.85rem"></i></div>
+    <div class="chat-msg-body">
+        <div class="chat-msg-role">You</div>
+        <div class="chat-msg-content">{{ msg.content | e | replace('\n', '<br>') }}</div>
+    </div>
+    {% else %}
+    <div class="chat-msg-avatar is-assistant"><i class="iconoir-spark" style="font-size:0.85rem"></i></div>
+    <div class="chat-msg-body">
+        <div class="chat-msg-role">Assistant</div>
+        <div class="chat-msg-content chat-md-content">{{ msg.content | e }}</div>
+        {% if msg.sources and msg.sources|length > 0 %}
+        <div class="chat-sources">
+            <button class="chat-sources-toggle" onclick="toggleSources(this, 'src-{{ msg.id }}')">
+                <i class="iconoir-bookmark" style="font-size:0.7rem"></i>
+                {{ msg.sources|length }} source{{ "s" if msg.sources|length > 1 }}
+                <i class="iconoir-nav-arrow-down chevron"></i>
+            </button>
+            <div class="chat-sources-list" id="src-{{ msg.id }}">
+                {% for src in msg.sources %}
+                <div class="chat-source-card">
+                    <div class="chat-source-header">
+                        <span class="chat-source-title">{{ src.video_title or "" }}</span>
+                        {% if src.start_time is not none %}
+                        <span class="chat-source-time">{{ (src.start_time // 60)|int }}:{{ "%02d" % (src.start_time % 60)|int }}</span>
+                        {% endif %}
+                        {% if src.similarity is not none %}
+                        <span class="chat-source-similarity">{{ (src.similarity * 100)|round|int }}%</span>
+                        {% endif %}
+                    </div>
+                    <div class="chat-source-snippet">{{ src.chunk_text or "" }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+<script>
+// Render markdown for server-rendered assistant messages
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof marked !== 'undefined') {
+        document.querySelectorAll('.chat-md-content').forEach(function(el) {
+            el.innerHTML = marked.parse(el.textContent);
+        });
+    }
+});
+</script>

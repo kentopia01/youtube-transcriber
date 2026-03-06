@@ -584,3 +584,84 @@ class TestVideosPage:
         client = _build_client(self._build_videos_db())
         resp = client.get("/videos")
         _assert_no_daisyui(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Chat page
+# ---------------------------------------------------------------------------
+
+
+def _make_chat_session(**overrides):
+    from datetime import timezone
+    defaults = dict(
+        id=uuid.uuid4(),
+        title="Test Chat Session",
+        platform="web",
+        created_at=_NOW.replace(tzinfo=timezone.utc) if _NOW.tzinfo is None else _NOW,
+        updated_at=_NOW.replace(tzinfo=timezone.utc) if _NOW.tzinfo is None else _NOW,
+        messages=[],
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+class TestChatPage:
+    def _build_chat_db(self, sessions=None):
+        """Chat page does: execute_1=sessions list, execute_2=session detail, scalar=video count."""
+        if sessions is None:
+            sessions = [_make_chat_session()]
+        return MockDB(
+            execute_1=sessions,
+            execute_2=sessions[0] if sessions else None,
+            scalar=5,
+            default=[],
+        )
+
+    def test_chat_page_renders_200(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert resp.status_code == 200
+
+    def test_chat_page_has_layout(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        html = resp.text
+        assert "chat-sidebar" in html
+        assert "chat-messages" in html
+        assert "chat-input" in html
+        assert "chat-send-btn" in html
+
+    def test_chat_page_shows_video_count(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert "5 videos active" in resp.text
+
+    def test_chat_page_has_new_chat_button(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert "New Chat" in resp.text
+
+    def test_chat_page_empty_state(self):
+        db = MockDB(execute_1=[], scalar=3, default=[])
+        client = _build_client(db)
+        resp = client.get("/chat")
+        assert resp.status_code == 200
+        assert "Chat with your library" in resp.text
+
+    def test_chat_page_no_daisyui(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        _assert_no_daisyui(resp.text)
+
+    def test_chat_session_page_404(self):
+        db = MockDB(execute_1=None, scalar=0, default=[])
+        client = _build_client(db)
+        resp = client.get(f"/chat/{uuid.uuid4()}")
+        assert resp.status_code == 404
+
+    def test_chat_nav_link_in_base(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        html = resp.text
+        assert 'href="/chat"' in html
+        assert "is-active" in html

@@ -1,0 +1,23 @@
+{% for label, group_sessions in session_groups %}
+    <div class="chat-sidebar-group-label">{{ label }}</div>
+    {% for s in group_sessions %}
+    <a href="/chat/{{ s.id }}"
+       class="chat-session-item {% if current_session_id and s.id|string == current_session_id|string %}is-active{% endif %}"
+       data-session-id="{{ s.id }}">
+        <span class="chat-session-title">{{ s.title or "New Chat" }}</span>
+        <span class="chat-session-actions">
+            <button class="chat-session-action-btn is-delete"
+                    onclick="deleteSession(event, '{{ s.id }}')"
+                    title="Delete">
+                <i class="iconoir-trash" style="font-size:0.8rem"></i>
+            </button>
+        </span>
+    </a>
+    {% endfor %}
+{% endfor %}
+
+{% if not sessions %}
+<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:0.82rem">
+    No chat sessions yet
+</div>
+{% endif %}

@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - YouTube Transcriber{% endblock %}
+
+{% block main_class %}{% endblock %}
+
+{% block content %}
+<div class="chat-page-shell">
+    <!-- Mobile sidebar overlay -->
+    <div class="chat-sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="chat-sidebar" id="chat-sidebar">
+        <div class="chat-sidebar-header">
+            <button class="btn btn-primary btn-sm" style="width:100%" onclick="createNewSession()">
+                <i class="iconoir-plus" style="font-size:0.85rem"></i> New Chat
+            </button>
+        </div>
+        <div class="chat-sidebar-list" id="session-list">
+            {% include "partials/chat_sidebar.html" %}
+        </div>
+    </aside>
+
+    <!-- Main chat area -->
+    <div class="chat-main">
+        <div class="chat-header">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+                <button class="chat-mobile-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+                    <i class="iconoir-menu"></i>
+                </button>
+                <span class="chat-header-title" id="chat-title">
+                    {{ session.title or "New Chat" if session else "Chat" }}
+                </span>
+            </div>
+            <span class="chat-video-count">
+                <i class="iconoir-video-camera" style="font-size:0.7rem"></i>
+                {{ active_video_count }} video{{ "s" if active_video_count != 1 }} active
+            </span>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-messages-inner" id="chat-messages-inner">
+                {% if session and session.messages %}
+                    {% include "partials/chat_messages.html" %}
+                {% else %}
+                <div class="chat-empty">
+                    <div class="chat-empty-icon"><i class="iconoir-chat-bubble"></i></div>
+                    <div class="chat-empty-title">Chat with your library</div>
+                    <div class="chat-empty-desc">
+                        Ask questions about your video transcripts. Answers are grounded in your content with source citations.
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="chat-input-bar">
+            <div class="chat-input-inner">
+                <textarea class="chat-input-field"
+                          id="chat-input"
+                          placeholder="Ask about your videos..."
+                          rows="1"
+                          {% if not session %}disabled{% endif %}
+                          onkeydown="handleInputKey(event)"></textarea>
+                <button class="chat-send-btn"
+                        id="chat-send-btn"
+                        {% if not session %}disabled{% endif %}
+                        onclick="sendMessage()"
+                        aria-label="Send">
+                    <i class="iconoir-send" style="font-size:1rem"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+<script>
+(function() {
+    const SESSION_ID = {{ ("'" + session.id|string + "'") | safe if session else "null" }};
+    let isStreaming = false;
+
+    // --- Markdown setup ---
+    marked.setOptions({
+        breaks: true,
+        gfm: true,
+    });
+
+    function renderMarkdown(text) {
+        return marked.parse(text);
+    }
+
+    // --- Auto-resize textarea ---
+    const input = document.getElementById('chat-input');
+    input.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 128) + 'px';
+    });
+
+    // --- Send on Enter (Shift+Enter for newline) ---
+    window.handleInputKey = function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    };
+
+    // --- Auto-scroll ---
+    function scrollToBottom() {
+        const container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // --- Create new session ---
+    window.createNewSession = async function() {
+        try {
+            const resp = await fetch('/api/chat/sessions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({platform: 'web'})
+            });
+            const data = await resp.json();
+            window.location.href = '/chat/' + data.id;
+        } catch (err) {
+            console.error('Failed to create session:', err);
+        }
+    };
+
+    // --- Send message ---
+    window.sendMessage = async function() {
+        if (isStreaming || !SESSION_ID) return;
+        const text = input.value.trim();
+        if (!text) return;
+
+        isStreaming = true;
+        input.value = '';
+        input.style.height = 'auto';
+        document.getElementById('chat-send-btn').disabled = true;
+
+        // Remove empty state if present
+        const empty = document.querySelector('.chat-empty');
+        if (empty) empty.remove();
+
+        const inner = document.getElementById('chat-messages-inner');
+
+        // Add user message
+        inner.insertAdjacentHTML('beforeend', buildMessageHTML('user', text));
+        scrollToBottom();
+
+        // Add thinking indicator
+        const thinkingId = 'thinking-' + Date.now();
+        inner.insertAdjacentHTML('beforeend',
+            '<div id="' + thinkingId + '" class="chat-msg">' +
+            '  <div class="chat-msg-avatar is-assistant"><i class="iconoir-spark" style="font-size:0.85rem"></i></div>' +
+            '  <div class="chat-msg-body"><div class="chat-thinking">' +
+            '    <div class="chat-thinking-dots"><span></span><span></span><span></span></div>' +
+            '    <span class="chat-thinking-text">Thinking...</span>' +
+            '  </div></div>' +
+            '</div>'
+        );
+        scrollToBottom();
+
+        try {
+            const resp = await fetch('/api/chat/sessions/' + SESSION_ID + '/messages', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: text})
+            });
+
+            const thinkingEl = document.getElementById(thinkingId);
+            if (thinkingEl) thinkingEl.remove();
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                inner.insertAdjacentHTML('beforeend', buildMessageHTML('assistant', 'Error: ' + (errData.detail || 'Something went wrong. Please try again.')));
+                scrollToBottom();
+                return;
+            }
+
+            const data = await resp.json();
+
+            // Add assistant message
+            inner.insertAdjacentHTML('beforeend', buildMessageHTML('assistant', data.content, data.sources));
+            scrollToBottom();
+
+            // Update session title in sidebar if it changed
+            if (data.content) {
+                refreshSidebar();
+            }
+        } catch (err) {
+            const thinkingEl = document.getElementById(thinkingId);
+            if (thinkingEl) thinkingEl.remove();
+            inner.insertAdjacentHTML('beforeend', buildMessageHTML('assistant', 'Error: Network error. Please check your connection.'));
+            scrollToBottom();
+        } finally {
+            isStreaming = false;
+            document.getElementById('chat-send-btn').disabled = false;
+            input.focus();
+        }
+    };
+
+    // --- Build message HTML ---
+    function buildMessageHTML(role, content, sources) {
+        const isUser = role === 'user';
+        const avatarClass = isUser ? 'is-user' : 'is-assistant';
+        const avatarIcon = isUser
+            ? '<i class="iconoir-user" style="font-size:0.85rem"></i>'
+            : '<i class="iconoir-spark" style="font-size:0.85rem"></i>';
+        const roleLabel = isUser ? 'You' : 'Assistant';
+        const rendered = isUser ? escapeHTML(content).replace(/\n/g, '<br>') : renderMarkdown(content);
+
+        let sourcesHTML = '';
+        if (sources && sources.length > 0) {
+            const sid = 'src-' + Date.now();
+            sourcesHTML = '<div class="chat-sources">' +
+                '<button class="chat-sources-toggle" onclick="toggleSources(this, \'' + sid + '\')">' +
+                '<i class="iconoir-bookmark" style="font-size:0.7rem"></i> ' +
+                sources.length + ' source' + (sources.length > 1 ? 's' : '') +
+                ' <i class="iconoir-nav-arrow-down chevron"></i>' +
+                '</button>' +
+                '<div class="chat-sources-list" id="' + sid + '">';
+            for (const s of sources) {
+                const time = s.start_time != null ? formatTime(s.start_time) : '';
+                const sim = s.similarity != null ? Math.round(s.similarity * 100) + '%' : '';
+                sourcesHTML += '<div class="chat-source-card">' +
+                    '<div class="chat-source-header">' +
+                    '<span class="chat-source-title">' + escapeHTML(s.video_title || '') + '</span>' +
+                    (time ? '<span class="chat-source-time">' + time + '</span>' : '') +
+                    (sim ? '<span class="chat-source-similarity">' + sim + '</span>' : '') +
+                    '</div>' +
+                    '<div class="chat-source-snippet">' + escapeHTML(s.chunk_text || '') + '</div>' +
+                    '</div>';
+            }
+            sourcesHTML += '</div></div>';
+        }
+
+        return '<div class="chat-msg">' +
+            '<div class="chat-msg-avatar ' + avatarClass + '">' + avatarIcon + '</div>' +
+            '<div class="chat-msg-body">' +
+            '<div class="chat-msg-role">' + roleLabel + '</div>' +
+            '<div class="chat-msg-content">' + rendered + '</div>' +
+            sourcesHTML +
+            '</div></div>';
+    }
+
+    function escapeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatTime(seconds) {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // --- Toggle source cards ---
+    window.toggleSources = function(btn, listId) {
+        const list = document.getElementById(listId);
+        btn.classList.toggle('is-open');
+        list.classList.toggle('is-open');
+    };
+
+    // --- Sidebar interactions ---
+    async function refreshSidebar() {
+        try {
+            const resp = await fetch('/api/chat/sessions');
+            const sessions = await resp.json();
+            const listEl = document.getElementById('session-list');
+
+            // Group by date
+            const groups = {};
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+
+            for (const s of sessions) {
+                const d = new Date(s.updated_at);
+                let label;
+                if (d >= today) label = 'Today';
+                else if (d >= yesterday) label = 'Yesterday';
+                else if (d >= weekAgo) label = 'This Week';
+                else label = 'Older';
+                if (!groups[label]) groups[label] = [];
+                groups[label].push(s);
+            }
+
+            let html = '';
+            for (const label of ['Today', 'Yesterday', 'This Week', 'Older']) {
+                if (!groups[label]) continue;
+                html += '<div class="chat-sidebar-group-label">' + label + '</div>';
+                for (const s of groups[label]) {
+                    const active = s.id === SESSION_ID ? ' is-active' : '';
+                    html += '<a href="/chat/' + s.id + '" class="chat-session-item' + active + '" data-session-id="' + s.id + '">' +
+                        '<span class="chat-session-title">' + escapeHTML(s.title || 'New Chat') + '</span>' +
+                        '<span class="chat-session-actions">' +
+                        '<button class="chat-session-action-btn is-delete" onclick="deleteSession(event, \'' + s.id + '\')" title="Delete"><i class="iconoir-trash" style="font-size:0.8rem"></i></button>' +
+                        '</span></a>';
+                }
+            }
+
+            if (!sessions.length) {
+                html = '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:0.82rem">No chat sessions yet</div>';
+            }
+            listEl.innerHTML = html;
+        } catch (err) {
+            console.error('Failed to refresh sidebar:', err);
+        }
+    }
+
+    window.deleteSession = async function(e, sessionId) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm('Delete this chat session?')) return;
+        try {
+            await fetch('/api/chat/sessions/' + sessionId, {method: 'DELETE'});
+            if (sessionId === SESSION_ID) {
+                window.location.href = '/chat';
+            } else {
+                refreshSidebar();
+            }
+        } catch (err) {
+            console.error('Failed to delete session:', err);
+        }
+    };
+
+    window.renameSession = function(e, sessionId) {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = e.target.closest('.chat-session-item');
+        const titleEl = item.querySelector('.chat-session-title');
+        const currentTitle = titleEl.textContent.trim();
+
+        const inp = document.createElement('input');
+        inp.className = 'chat-session-title-input';
+        inp.value = currentTitle;
+        titleEl.replaceWith(inp);
+        inp.focus();
+        inp.select();
+
+        async function save() {
+            const newTitle = inp.value.trim();
+            if (newTitle && newTitle !== currentTitle) {
+                try {
+                    await fetch('/api/chat/sessions/' + sessionId, {
+                        method: 'PATCH',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({title: newTitle})
+                    });
+                    if (sessionId === SESSION_ID) {
+                        document.getElementById('chat-title').textContent = newTitle;
+                    }
+                } catch (err) {
+                    console.error('Rename failed:', err);
+                }
+            }
+            refreshSidebar();
+        }
+
+        inp.addEventListener('blur', save);
+        inp.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+            if (ev.key === 'Escape') { refreshSidebar(); }
+        });
+    };
+
+    // --- Mobile sidebar toggle ---
+    window.toggleSidebar = function() {
+        document.getElementById('chat-sidebar').classList.toggle('is-open');
+        document.getElementById('sidebar-overlay').classList.toggle('is-open');
+    };
+
+    // --- Double-click to rename ---
+    document.getElementById('session-list').addEventListener('dblclick', function(e) {
+        const item = e.target.closest('.chat-session-item');
+        if (item) {
+            const sid = item.dataset.sessionId;
+            if (sid) renameSession(e, sid);
+        }
+    });
+
+    // Scroll to bottom on load
+    scrollToBottom();
+})();
+</script>
+{% endblock %}

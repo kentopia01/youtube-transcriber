@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
@@ -8,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.dependencies import get_db
 from app.models.batch import Batch
 from app.models.channel import Channel
+from app.models.chat_session import ChatSession
 from app.models.job import Job
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
@@ -246,6 +248,119 @@ async def channel_detail(
     return request.app.state.templates.TemplateResponse(
         "channel_detail.html",
         {"request": request, "channel": channel, "videos": videos},
+    )
+
+
+def _group_sessions_by_date(sessions):
+    """Group chat sessions into (label, sessions_list) tuples for sidebar."""
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    from datetime import timedelta
+    yesterday = today - timedelta(days=1)
+    week_ago = today - timedelta(days=7)
+
+    groups = {}
+    order = ["Today", "Yesterday", "This Week", "Older"]
+    for s in sessions:
+        dt = s.updated_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt >= today:
+            label = "Today"
+        elif dt >= yesterday:
+            label = "Yesterday"
+        elif dt >= week_ago:
+            label = "This Week"
+        else:
+            label = "Older"
+        groups.setdefault(label, []).append(s)
+    return [(label, groups[label]) for label in order if label in groups]
+
+
+@router.get("/chat")
+async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
+    # Get all sessions for sidebar
+    sessions_result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.platform == "web")
+        .order_by(ChatSession.updated_at.desc())
+        .limit(50)
+    )
+    sessions = sessions_result.scalars().all()
+
+    # Load most recent session if exists
+    session = None
+    if sessions:
+        from sqlalchemy.orm import selectinload as _sil
+        s_result = await db.execute(
+            select(ChatSession)
+            .where(ChatSession.id == sessions[0].id)
+            .options(_sil(ChatSession.messages))
+        )
+        session = s_result.scalar_one_or_none()
+
+    # Count active videos
+    active_video_count = await db.scalar(
+        select(func.count(Video.id)).where(Video.chat_enabled == True)
+    ) or 0
+
+    return request.app.state.templates.TemplateResponse(
+        "chat.html",
+        {
+            "request": request,
+            "sessions": sessions,
+            "session_groups": _group_sessions_by_date(sessions),
+            "session": session,
+            "current_session_id": session.id if session else None,
+            "active_video_count": active_video_count,
+        },
+    )
+
+
+@router.get("/chat/{session_id}")
+async def chat_session_page(
+    request: Request,
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy.orm import selectinload as _sil
+
+    # Load the requested session with messages
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == session_id)
+        .options(_sil(ChatSession.messages))
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        return request.app.state.templates.TemplateResponse(
+            "error.html", {"request": request, "message": "Chat session not found"}, status_code=404
+        )
+
+    # Get all sessions for sidebar
+    sessions_result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.platform == "web")
+        .order_by(ChatSession.updated_at.desc())
+        .limit(50)
+    )
+    sessions = sessions_result.scalars().all()
+
+    # Count active videos
+    active_video_count = await db.scalar(
+        select(func.count(Video.id)).where(Video.chat_enabled == True)
+    ) or 0
+
+    return request.app.state.templates.TemplateResponse(
+        "chat.html",
+        {
+            "request": request,
+            "sessions": sessions,
+            "session_groups": _group_sessions_by_date(sessions),
+            "session": session,
+            "current_session_id": session.id,
+            "active_video_count": active_video_count,
+        },
     )
 
 
