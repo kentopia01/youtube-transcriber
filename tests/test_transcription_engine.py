@@ -1,5 +1,7 @@
 """Tests for the pluggable transcription engine system."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from app.services.transcription import (
@@ -7,6 +9,7 @@ from app.services.transcription import (
     MLXWhisperEngine,
     TranscriptResult,
     get_engine,
+    transcribe_audio,
 )
 
 
@@ -60,3 +63,65 @@ class TestFasterWhisperEngineInit:
         assert engine.model_size == "base"
         assert engine.device == "cpu"
         assert engine._model is None  # lazy init
+
+
+class TestLanguageDetection:
+    """Tests for language detection flow (Phase 1)."""
+
+    @patch("app.services.transcription.get_engine")
+    def test_mlx_auto_language_calls_detect(self, mock_get_engine):
+        """When engine=mlx and language=auto, detect_language is called."""
+        mock_engine = MagicMock()
+        mock_engine.detect_language.return_value = "ja"
+        mock_engine.transcribe.return_value = TranscriptResult(
+            text="こんにちは世界", language="ja", segments=[], processing_time=1.0
+        )
+        mock_get_engine.return_value = mock_engine
+
+        result = transcribe_audio(
+            "/fake/audio.wav",
+            engine_type="mlx",
+            whisper_language="auto",
+        )
+
+        mock_engine.detect_language.assert_called_once_with("/fake/audio.wav")
+        mock_engine.transcribe.assert_called_once_with("/fake/audio.wav", language="ja")
+        assert result["language"] == "ja"
+
+    @patch("app.services.transcription.get_engine")
+    def test_mlx_forced_language_skips_detect(self, mock_get_engine):
+        """When language is forced (not auto), detect_language is NOT called."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe.return_value = TranscriptResult(
+            text="hello world", language="en", segments=[], processing_time=0.5
+        )
+        mock_get_engine.return_value = mock_engine
+
+        result = transcribe_audio(
+            "/fake/audio.wav",
+            engine_type="mlx",
+            whisper_language="en",
+        )
+
+        mock_engine.detect_language.assert_not_called()
+        mock_engine.transcribe.assert_called_once_with("/fake/audio.wav", language="en")
+        assert result["language"] == "en"
+
+    @patch("app.services.transcription.get_engine")
+    def test_faster_whisper_skips_detect(self, mock_get_engine):
+        """Faster-whisper engine does not call detect_language (Whisper handles it)."""
+        mock_engine = MagicMock()
+        mock_engine.transcribe.return_value = TranscriptResult(
+            text="hello world", language="en", segments=[], processing_time=0.5
+        )
+        mock_get_engine.return_value = mock_engine
+
+        result = transcribe_audio(
+            "/fake/audio.wav",
+            engine_type="faster-whisper",
+            whisper_language="auto",
+        )
+
+        mock_engine.detect_language.assert_not_called()
+        mock_engine.transcribe.assert_called_once_with("/fake/audio.wav", language=None)
+        assert result["language"] == "en"
