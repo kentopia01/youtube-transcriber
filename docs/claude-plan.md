@@ -1,11 +1,11 @@
-# QAClaw Phase 2 QA Round 7 — Chat Backend Final QA
+# QAClaw Phase 2 QA Round 9 — Chat Backend Final QA
 
 ## Goal
 Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all acceptance criteria, add remaining edge case tests.
 
 ## Assumptions
 - Phase 1 (toggle system) complete and tested
-- Phase 2 implemented by BuildClaw, six prior QA rounds completed
+- Phase 2 implemented by BuildClaw, eight prior QA rounds completed
 - All prior bugs fixed; this round fills remaining test gaps
 
 ## Steps
@@ -17,22 +17,19 @@ Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all a
    - Search integration (services/search.py chat_enabled_only param)
    - Router inclusion (main.py)
 3. No bugs found — implementation matches spec
-4. Added 12 new edge case tests (Round 7):
-   - Message over 100k rejected (422)
-   - Title over 255 rejected (422)
-   - _fmt_ts(0) returns "0:00"
-   - _fmt_ts fractional seconds truncated
-   - Auto-title exactly 50 chars: no ellipsis
-   - Auto-title 51 chars: truncated with "..."
-   - Default platform is "web"
-   - Delete response includes session_id
-   - Sources include all 6 required fields
-   - User message has no model/token fields
-   - Empty chunk list produces empty string
-   - Default list pagination works
-5. Run full suite: 545 passed, 0 failed
+4. Added 9 new edge case tests (Round 9):
+   - Singleton _get_anthropic_client caching
+   - Rename single char boundary (min_length=1)
+   - Token guard: only question survives when all history is huge
+   - Extra fields in create session body are ignored
+   - Model comes from settings, not hardcoded
+   - _build_messages context prefix format verified
+   - DB commit called after send_message
+   - System prompt passed as system param, not message
+   - Assistant message has correct session_id
+5. Run full suite: 559 passed, 0 failed
 6. Commit and push
 
 ## Test Coverage (cumulative)
-- 95 tests in test_chat.py across 12 test classes
-- 545 tests total across all test files
+- 104 tests in test_chat.py across 14 test classes (9 rounds)
+- 559 tests total across all test files
