@@ -1,25 +1,23 @@
-# QAClaw Phase 2 QA Round 5 — Diff Summary
+# QAClaw Phase 2 QA Round 6 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat.py` | Added 8 new edge case tests in `TestQAClawRound5` class |
-| `docs/claude-diff-summary.md` | Updated to reflect QA Round 5 |
-| `docs/claude-test-results.txt` | Full test output (527 passed) |
+| `tests/test_chat.py` | Added 6 new edge case tests in `TestQAClawRound6` class |
+| `docs/claude-plan.md` | Updated to reflect QA Round 6 |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Round 6 |
 
-## Tests Added (Round 5)
-1. `test_concurrent_messages_both_succeed` — sequential messages to same session both succeed, title not overwritten
-2. `test_system_prompt_mentions_video_transcripts` — system prompt grounds assistant in transcript content
-3. `test_system_prompt_instructs_citation` — system prompt instructs source citation
-4. `test_call_anthropic_passes_correct_params` — unit test for `_call_anthropic` verifying model/system/messages/max_tokens
-5. `test_token_guard_preserves_current_question` — massive history still preserves current question after token guard
-6. `test_send_message_content_type_json_required` — non-JSON body returns 422
-7. `test_create_session_invalid_json_returns_422` — malformed JSON returns 422
-8. `test_assistant_message_has_model_and_tokens` — assistant message object stores model name and token counts
+## Tests Added (Round 6)
+1. `test_duplicate_delete_returns_404` — deleting an already-deleted session returns 404
+2. `test_anthropic_auth_error_returns_graceful_message` — AuthenticationError from Anthropic is handled gracefully
+3. `test_anthropic_timeout_returns_graceful_message` — APITimeoutError from Anthropic is handled gracefully
+4. `test_get_session_zero_messages_returns_empty_list` — session with 0 messages returns messages=[]
+5. `test_send_message_boundary_100k_accepted` — message at exactly 100k chars is accepted
+6. `test_rename_boundary_255_chars_accepted` — title at exactly 255 chars is accepted
 
 ## Bugs Fixed
-None — no bugs found across 5 rounds of QA. Implementation is solid.
+None — no bugs found across 6 rounds of QA. Implementation is solid.
 
 ## Code Review Summary (Full)
 All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
@@ -32,8 +30,8 @@ All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
 - Search integration: chat_enabled_only properly propagated through vector/keyword/hybrid modes
 
 ## Test Coverage Summary
-- **77 tests** in `test_chat.py` covering Phase 2 chat backend
-- **527 tests total** across the full suite, all passing
+- **83 tests** in `test_chat.py` covering Phase 2 chat backend
+- **533 tests total** across the full suite, all passing
 
 ## Risks
 - Pydantic `min_length` does not strip whitespace — `"   "` passes validation. Acceptable for now.

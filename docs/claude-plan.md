@@ -1,11 +1,11 @@
-# QAClaw Phase 2 QA Round 4 — Chat Backend Final QA
+# QAClaw Phase 2 QA Round 6 — Chat Backend Final QA
 
 ## Goal
 Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all acceptance criteria, add remaining edge case tests.
 
 ## Assumptions
 - Phase 1 (toggle system) complete and tested
-- Phase 2 implemented by BuildClaw, three prior QA rounds completed
+- Phase 2 implemented by BuildClaw, five prior QA rounds completed
 - All prior bugs fixed; this round fills remaining test gaps
 
 ## Steps
@@ -17,19 +17,16 @@ Final QA pass on Phase 2 (Chat Backend): comprehensive code review, verify all a
    - Search integration (services/search.py chat_enabled_only param)
    - Model registration (__init__.py), router inclusion (main.py)
 3. No bugs found — implementation matches spec
-4. Added 9 new edge case tests (Round 4):
-   - Format chunks with partial timestamps
-   - Multiple chunks formatting
-   - Multiple sources in response
-   - Session updated_at touched on message
-   - History boundary test (exactly at max)
-   - Empty search results still calls LLM
-   - Empty string title in create
-   - User message save ordering
-   - Rename preserves other fields
-5. Run full suite: 519 passed, 0 failed
+4. Added 6 new edge case tests (Round 6):
+   - Duplicate delete returns 404
+   - Anthropic AuthenticationError handled gracefully
+   - Anthropic APITimeoutError handled gracefully
+   - Session with 0 messages returns empty list
+   - Message at boundary 100k chars accepted
+   - Title at boundary 255 chars accepted
+5. Run full suite: 533 passed, 0 failed
 6. Commit and push
 
 ## Test Coverage (cumulative)
-- 69 tests in test_chat.py across 9 test classes
-- 519 tests total across all test files
+- 83 tests in test_chat.py across 11 test classes
+- 533 tests total across all test files
