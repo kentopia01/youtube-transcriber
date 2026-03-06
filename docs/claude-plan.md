@@ -23,7 +23,7 @@ Add a Telegram bot that lets users chat with their video transcript library via 
    - Access control via `telegram_allowed_users` allowlist
    - Response formatting with source citations `[Video Title @ timestamp]`
    - Message splitting at 4096 char Telegram limit
-4. **Entry point** — `scripts/run_telegram_bot.py` standalone script
-5. **launchd plist** — `com.sentryclaw.yt-telegram-bot.plist` template
+4. **Entry point** — `python -m app.telegram_bot` or `scripts/start_telegram_bot.sh`
+5. **launchd plist** — `com.sentryclaw.yt-chatbot.plist`
 6. **Tests** — 23 tests covering commands, access control, message handling, formatting, splitting
 7. **README** — Setup instructions, commands reference, launchd installation

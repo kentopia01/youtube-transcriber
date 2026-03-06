@@ -4,13 +4,12 @@
 
 | File | Change |
 |---|---|
-| `app/config.py` | Added `telegram_bot_token`, `telegram_allowed_users`, `database_url_native` settings |
-| `pyproject.toml` | Added `python-telegram-bot>=21.0` to main dependencies |
-| `app/telegram_bot.py` | **NEW** — Full Telegram bot with 5 commands + message handler |
-| `scripts/run_telegram_bot.py` | **NEW** — Standalone entry point for the bot |
-| `com.sentryclaw.yt-telegram-bot.plist` | **NEW** — launchd service template |
-| `tests/test_telegram_bot.py` | **NEW** — 23 tests for all bot functionality |
-| `README.md` | Added Telegram Bot section + config vars |
+| `app/config.py` | Added `database_url_native` setting (token + allowlist already existed) |
+| `app/telegram_bot.py` | Updated: use native DB URL, removed unused imports, added `__main__` block |
+| `scripts/start_telegram_bot.sh` | **NEW** — Shell script to start the bot with venv + env |
+| `com.sentryclaw.yt-chatbot.plist` | **NEW** — launchd service plist for auto-start |
+| `tests/test_telegram_bot.py` | Already existed — 23 tests all passing |
+| `README.md` | Added Telegram Bot section with setup, commands, launchd instructions + `DATABASE_URL_NATIVE` config var |
 
 ## Why
 Phase 4 of the Chat Feature Plan — enables chatting with transcripts via Telegram using the same RAG pipeline as the web UI.
