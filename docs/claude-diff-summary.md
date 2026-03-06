@@ -1,56 +1,48 @@
-# QAClaw Phase 2 QA Rounds 8-10 — Diff Summary
+# QAClaw Phase 2 QA Round 11 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat.py` | Added 5 tests in Round 8 + 9 tests in Round 9 + 4 tests in Round 10 |
-| `docs/claude-diff-summary.md` | Updated to reflect QA Rounds 8-10 |
-| `docs/claude-test-results.txt` | Updated with full suite results |
+| `tests/test_chat.py` | Added 14 new tests in `TestQAClawRound11` class |
+| `docs/claude-plan.md` | Updated to reflect QA Round 11 |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Round 11 |
+| `docs/claude-test-results.txt` | Updated with 576-test results |
 
-## Tests Added (Round 8 — code-review-driven gaps)
-1. `test_empty_string_title_blocks_auto_title` — documents `title=""` does NOT trigger auto-title
-2. `test_odd_number_history_messages` — non-paired history (3 msgs) works correctly
-3. `test_newlines_in_message_content_preserved` — newlines in content preserved through pipeline
-4. `test_search_query_text_passed_correctly` — question passed as both embedding and text query
-5. `test_max_tokens_4096_in_anthropic_call` — verifies model arg passed to _call_anthropic
-
-## Tests Added (Round 9 — final gap tests)
-1. `test_get_anthropic_client_singleton` — verifies client is cached (only one instantiation)
-2. `test_rename_single_char_boundary` — rename to exactly 1 char succeeds (min_length boundary)
-3. `test_token_guard_only_question_survives` — single 800k history message fully dropped, only question remains
-4. `test_create_session_extra_fields_ignored` — unknown fields in body don't cause errors
-5. `test_model_from_settings_not_hardcoded` — model passed to Anthropic comes from settings.chat_model
-6. `test_build_messages_context_prefix_present` — verifies "Context from video transcripts:" and "Question:" format
-7. `test_send_message_db_commit_called` — both user+assistant messages added and committed
-8. `test_system_prompt_passed_as_system_not_message` — system prompt is separate from messages list
-9. `test_send_message_returns_correct_session_id` — assistant message has correct session_id
-
-## Tests Added (Round 10 — isolation & ORM checks)
-1. `test_session_isolation_different_sessions` — messages from session A do not appear in session B's history
-2. `test_models_importable_from_package` — ChatSession and ChatMessage importable from app.models
-3. `test_chat_message_fk_references_chat_sessions` — FK on session_id correctly targets chat_sessions.id
-4. `test_chat_session_cascade_delete_orphan` — relationship cascade includes delete-orphan
+## Tests Added (Round 11)
+1. `test_migration_downgrade_drops_tables_in_order` — verifies FK-safe drop order: index, chat_messages, chat_sessions
+2. `test_migration_upgrade_creates_tables_and_index` — verifies create_table and create_index calls
+3. `test_get_anthropic_client_passes_api_key` — singleton passes settings.anthropic_api_key to Anthropic()
+4. `test_format_chunks_hours_with_end_time` — timestamps in HH:MM:SS format with both start and end
+5. `test_create_session_platform_passthrough` — custom platform values stored as-is
+6. `test_chat_message_out_schema_from_attributes` — ChatMessageOut validates ORM-like objects
+7. `test_chat_session_out_schema_from_attributes` — ChatSessionOut validates ORM-like objects
+8. `test_chat_session_detail_schema_with_messages` — ChatSessionDetail includes nested messages
+9. `test_chat_uses_run_in_executor` — _call_anthropic invoked via asyncio.run_in_executor
+10. `test_limit_zero_returns_422` — limit=0 rejected by ge=1 constraint
+11. `test_send_message_user_msg_has_correct_session_id` — both user and assistant messages reference correct session
+12. `test_chat_source_out_schema_validation` — ChatSourceOut serializes all fields correctly
+13. `test_chat_source_out_optional_fields` — start_time, end_time, similarity default to None
 
 ## Bugs Fixed
-None — no bugs found across 10 rounds of QA. Implementation is solid.
+None — no bugs found across 11 rounds of QA. Implementation is solid.
 
 ## Code Review Summary (Full)
 All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
-- **Models**: proper SQLAlchemy mapped columns, JSONB sources, relationship cascade, onupdate for updated_at
-- **Schemas**: Pydantic validation with min/max length, from_attributes, ChatSourceOut structure
-- **Service**: RAG pipeline with chat_enabled_only=True, history trimming to chat_max_history*2, 150k token guard, graceful error handling for missing API key and API errors, sync Anthropic call in executor, singleton client
-- **Router**: complete CRUD (create/list/get/delete/rename), auto-title on first message, history built from loaded messages, updated_at touch
+- **Migration 006**: chat_sessions + chat_messages tables, FK with CASCADE, session_id index, correct downgrade order
+- **Models**: proper SQLAlchemy mapped columns, JSONB sources, relationship cascade with delete-orphan, onupdate for updated_at
+- **Schemas**: Pydantic validation with min/max length, from_attributes config, ChatSourceOut with optional fields
+- **Service**: RAG pipeline with chat_enabled_only=True, history trimming to chat_max_history*2, 150k token guard, graceful error handling for missing API key and API errors, sync Anthropic call in executor, singleton client with API key
+- **Router**: complete CRUD (create/list/get/delete/rename), auto-title on first message, history built from loaded messages, updated_at touch, selectinload for eager loading
 - **Config**: all 3 chat settings present with correct defaults (model=claude-sonnet-4-20250514, max_history=10, top_k=10)
-- **Search integration**: chat_enabled_only properly propagated through vector/keyword/hybrid modes
-- **Anthropic API call**: correct model from settings, system prompt with video transcript grounding, max_tokens=4096
+- **Search integration**: chat_enabled_only properly propagated through vector/keyword/hybrid modes via _build_where_clause
 
 ## Test Coverage Summary
-- **113 tests** in `test_chat.py` covering Phase 2 chat backend (10 rounds)
-- **563 tests total** across the full suite, all passing
+- **126 tests** in `test_chat.py` covering Phase 2 chat backend (11 rounds)
+- **576 tests total** across the full suite, all passing
 
 ## Risks
 - `title=""` is treated differently from `title=None` — empty string blocks auto-title. Acceptable but worth noting for Phase 3 UI.
 - Pydantic `min_length` does not strip whitespace — `"   "` passes validation. Acceptable for now.
 - Token estimation (4 chars/token) is rough but sufficient as a safety guard.
-- Migration 006 exists at `alembic/versions/006_create_chat_tables.py`.
+- Platform field has no enum validation — any string is accepted. Fine for now, but Phase 4 (Telegram) may want to restrict.

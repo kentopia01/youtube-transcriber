@@ -2308,3 +2308,206 @@ class TestQAClawRound11:
         assert src.start_time is None
         assert src.end_time is None
         assert src.similarity is None
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 12 — Deep edge cases from final QA pass
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound12:
+    """RateLimitError, history order in prompt, None timestamps in sources,
+    huge question-only token guard, history excludes current user message."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_rate_limit_error_handled_gracefully(self, mock_encode, mock_search, mock_llm):
+        """Anthropic RateLimitError should return user-friendly error, not crash."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.side_effect = anthropic.RateLimitError(
+            message="rate limited",
+            response=MagicMock(status_code=429, headers={}),
+            body=None,
+        )
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+
+        assert "error occurred" in result["content"]
+        assert result["prompt_tokens"] == 0
+        assert result["completion_tokens"] == 0
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_history_order_preserved_in_llm_call(self, mock_encode, mock_search, mock_llm):
+        """History messages should appear in chronological order in the LLM prompt."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        history = [
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "Second question"},
+            {"role": "assistant", "content": "Second answer"},
+        ]
+
+        db = AsyncMock()
+        await chat_with_context("Third question", history, db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        assert len(messages) == 5
+        assert messages[0]["content"] == "First question"
+        assert messages[1]["content"] == "First answer"
+        assert messages[2]["content"] == "Second question"
+        assert messages[3]["content"] == "Second answer"
+        assert "Third question" in messages[4]["content"]
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_sources_with_none_timestamps_valid(self, mock_encode, mock_search, mock_llm):
+        """Chunks with None start_time/end_time should produce valid sources."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": uuid.uuid4(),
+                "video_title": "No Timestamps",
+                "chunk_text": "some text",
+                "start_time": None,
+                "end_time": None,
+                "speaker": None,
+                "similarity": 0.75,
+            }
+        ]
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+
+        assert len(result["sources"]) == 1
+        assert result["sources"][0]["start_time"] is None
+        assert result["sources"][0]["end_time"] is None
+        assert result["sources"][0]["video_title"] == "No Timestamps"
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_token_guard_huge_question_no_history(self, mock_encode, mock_search, mock_llm):
+        """If the question alone exceeds 150k tokens (no history), LLM is still called.
+
+        The while loop `len(messages) > 1` prevents dropping the sole message.
+        """
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        huge_question = "X" * 800_000  # ~200k tokens
+        db = AsyncMock()
+        result = await chat_with_context(huge_question, [], db)
+
+        mock_llm.assert_called_once()
+        assert result["content"] == "Answer"
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        assert len(messages) == 1
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_history_excludes_current_user_message(self, mock_chat):
+        """History passed to chat_with_context should NOT include the just-added user message.
+
+        The router builds history from eagerly-loaded session.messages, so the
+        new user_msg (added via session_id, not relationship) should not appear.
+        """
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        existing_msg = _make_message(uuid.uuid4(), role="user", content="prior question")
+        existing_reply = _make_message(uuid.uuid4(), role="assistant", content="prior answer")
+        s = _make_session(title="History Test")
+        s.messages = [existing_msg, existing_reply]
+
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "new question"},
+        )
+        assert resp.status_code == 200
+
+        call_kwargs = mock_chat.call_args[1]
+        assert len(call_kwargs["history"]) == 2
+        assert call_kwargs["history"][0]["content"] == "prior question"
+        assert call_kwargs["history"][1]["content"] == "prior answer"
+        assert call_kwargs["question"] == "new question"
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_no_context_prompt_still_well_formed(self, mock_encode, mock_search, mock_llm):
+        """When search returns empty, the prompt should still have the context prefix."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "No relevant info.",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("what is this?", [], db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        user_msg = messages[-1]["content"]
+        assert "Context from video transcripts:" in user_msg
+        assert "Question: what is this?" in user_msg
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_assistant_message_role_is_always_assistant(self, mock_chat):
+        """The saved assistant message should always have role='assistant'."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Role Check")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "check role"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "assistant"
+        assistant_msg = db.added[1]
+        assert assistant_msg.role == "assistant"
