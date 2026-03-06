@@ -49,6 +49,7 @@ async def search(
         db=db,
         query_embedding=query_embedding,
         limit=10,
+        query=query,
     )
 
     # For HTMX, return HTML partial

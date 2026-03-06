@@ -70,7 +70,7 @@ def test_submit_channel_rejects_non_channel_url():
 
 
 def test_search_api_accepts_form_for_htmx(monkeypatch):
-    async def fake_semantic_search(db, query_embedding, limit=10, channel_id=None):
+    async def fake_semantic_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
         return [
             {
                 "video_id": str(uuid.uuid4()),
@@ -98,7 +98,7 @@ def test_search_api_accepts_form_for_htmx(monkeypatch):
 
 
 def test_search_api_accepts_json_payload(monkeypatch):
-    async def fake_semantic_search(db, query_embedding, limit=10, channel_id=None):
+    async def fake_semantic_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
         return [{"video_id": str(uuid.uuid4()), "video_title": "Result", "chunk_text": "x", "similarity": 0.8}]
 
     monkeypatch.setattr("app.services.search.encode_query", lambda query, model_cache_dir=None: [0.3, 0.4])

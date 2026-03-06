@@ -1,27 +1,25 @@
-# QAClaw Round 1: Diff Summary
+# Phase 4: Hybrid Search -- Diff Summary
 
 ## What Changed
 
-### Bug Fix: `app/services/embedding.py`
-- **Lines 55-57**: `_split_at_sentence_boundaries` had a dead `pass` statement inside a `target_tokens` check. Chunks only flushed at `max_tokens` (400), ignoring `target_tokens` (300). Replaced with actual flush logic so chunks split near the target size.
-
-### New Tests: `tests/test_embedding_service.py`
-Added 4 new test classes (16 tests total):
-- `TestTargetTokensSplitting` -- verifies chunks flush at target, not max; handles single long sentences
-- `TestEdgeCases` -- single segment, empty text, missing speaker key, mixed speakers, all-empty segments
-- `TestChunkAndEmbed` -- mocked model tests: 768d output, search_document prefix, empty input, multi-speaker
-
-### New Tests: `tests/test_config.py`
-Added 5 tests for new embedding config defaults:
-- `embedding_model`, `embedding_dimensions`, `chunk_target_tokens`, `chunk_max_tokens`, overridability
+| File | Change |
+|---|---|
+| `alembic/versions/004_add_tsvector_hybrid_search.py` | New migration: adds `search_vector tsvector` column, GIN index, auto-update trigger, backfills existing rows |
+| `app/models/embedding_chunk.py` | Added `search_vector` column (TSVECTOR type) |
+| `app/config.py` | Added `search_mode: str = "hybrid"` setting |
+| `app/services/search.py` | Rewrote with 3 search modes: `_vector_search`, `_keyword_search`, `_hybrid_search` (RRF fusion). Dispatcher `semantic_search()` routes by config or override. |
+| `app/routers/search.py` | Passes `query=query` text to `semantic_search()` for BM25 matching |
+| `tests/test_hybrid_search.py` | New: 21 tests covering all modes, RRF dispatch, fallbacks, config |
+| `tests/test_api_endpoints.py` | Updated 4 fake_search mocks to accept `**kwargs` |
+| `tests/test_feature_smoke.py` | Updated 2 fake_search mocks to accept `**kwargs` |
+| `README.md` | Already had hybrid search docs (pre-populated) |
 
 ## Why
-- The target_tokens bug meant all chunks tended toward 400 tokens instead of the intended 200-400 range
-- Test coverage for the new embedding pipeline was thin -- no mocked integration tests, no edge case coverage
+Pure vector search misses exact matches on proper nouns, technical terms, and acronyms. Hybrid BM25+vector with RRF gives best-of-both-worlds retrieval.
 
 ## Risks
-- The target_tokens fix changes chunking behavior -- existing re-embedded content would need re-embedding again (but since Phase 3 hasn't run in production yet, this is a no-op risk)
-- No live database migration testing (reviewed by code inspection only)
+- **Migration must run before hybrid mode works** -- the `search_vector` column and GIN index are required. Run `alembic upgrade head` before deploying.
+- **Backfill on large tables** -- the migration backfills all existing rows. On very large datasets this could be slow; consider running during off-peak.
 
 ## Plan Deviations
-- None. All work follows QACLAW_TASK.md Round 1 scope.
+- None. Implementation matches the plan exactly.

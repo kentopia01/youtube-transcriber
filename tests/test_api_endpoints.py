@@ -133,7 +133,7 @@ class TestSearchEndpoint:
         assert resp.status_code == 200
 
     def test_htmx_form_search(self, monkeypatch):
-        async def fake_search(db, query_embedding, limit=10, channel_id=None):
+        async def fake_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
             return [
                 {
                     "video_id": str(uuid.uuid4()),
@@ -162,7 +162,7 @@ class TestSearchEndpoint:
         assert "91.0% match" in resp.text
 
     def test_json_search(self, monkeypatch):
-        async def fake_search(db, query_embedding, limit=10, channel_id=None):
+        async def fake_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
             return [
                 {
                     "video_id": str(uuid.uuid4()),
@@ -187,7 +187,7 @@ class TestSearchEndpoint:
         assert body["results"][0]["video_title"] == "JSON Result"
 
     def test_htmx_empty_results(self, monkeypatch):
-        async def fake_search(db, query_embedding, limit=10, channel_id=None):
+        async def fake_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
             return []
 
         monkeypatch.setattr(
@@ -206,7 +206,7 @@ class TestSearchEndpoint:
         assert "No results" in resp.text
 
     def test_search_no_daisyui_in_results(self, monkeypatch):
-        async def fake_search(db, query_embedding, limit=10, channel_id=None):
+        async def fake_search(db, query_embedding, limit=10, channel_id=None, **kwargs):
             return [
                 {
                     "video_id": str(uuid.uuid4()),

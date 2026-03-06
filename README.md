@@ -141,6 +141,7 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `EMBEDDING_DIMENSIONS` | `768` | Embedding vector dimensions |
 | `CHUNK_TARGET_TOKENS` | `300` | Target chunk size in tokens |
 | `CHUNK_MAX_TOKENS` | `400` | Maximum chunk size in tokens |
+| `SEARCH_MODE` | `hybrid` | Search strategy: `vector`, `hybrid`, or `keyword` |
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 
 See `.env.example` for the full list with all defaults.
@@ -251,6 +252,24 @@ Transcripts are chunked and embedded for semantic search using `nomic-ai/nomic-e
 - **Asymmetric retrieval** — uses `search_document:` prefix for chunks, `search_query:` prefix for queries
 - **Configurable chunk size** — target 300 tokens, max 400 tokens (via `CHUNK_TARGET_TOKENS`, `CHUNK_MAX_TOKENS`)
 
+### Hybrid Search (BM25 + Vector)
+
+Search combines keyword matching and vector similarity using Reciprocal Rank Fusion (RRF):
+
+- **BM25 keyword search** — PostgreSQL `tsvector`/`tsquery` full-text search on chunk text. Excels at exact matches for proper nouns, technical terms, and acronyms.
+- **Vector similarity** — cosine similarity on 768d nomic embeddings. Excels at semantic/conceptual matching.
+- **RRF fusion** — ranks candidates by `score = 1/(k + rank_bm25) + 1/(k + rank_vector)` where k=60. Items that rank highly in both methods get boosted; items found by only one method still surface.
+
+Three search modes are available via the `SEARCH_MODE` environment variable:
+
+| Mode | Description |
+|---|---|
+| `hybrid` (default) | BM25 + vector with RRF fusion |
+| `vector` | Pure cosine similarity only |
+| `keyword` | Pure PostgreSQL full-text search only |
+
+The `search_vector` tsvector column is auto-populated by a database trigger on INSERT/UPDATE, backed by a GIN index for fast lookups.
+
 To re-embed all existing videos after upgrading:
 ```bash
 python scripts/reembed_all.py              # re-embed all completed videos
@@ -301,6 +320,7 @@ python -m pytest tests/test_v2_smoke.py -v  # requires Docker services running
 | `test_diarization.py` | Diarization logic | Speaker overlap, boundary handling |
 | `test_transcript_cleanup.py` | LLM cleanup | Chunking, speaker label handling, API fallback |
 | `test_v2_smoke.py` | Integration smoke tests | Docker services, API V2 fields, end-to-end submission |
+| `test_search_service.py` | Hybrid search | Vector/keyword/hybrid modes, RRF scoring, edge cases |
 | `test_api_endpoints.py` | API validation | Input validation, search, job cancel/retry |
 | `test_task_orchestration.py` | Celery pipeline | Chain construction, batch progress |
 | `test_filler_removal.py` | Regex filler removal | Legacy filler word cleaning (V1 fallback) |

@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = 300
     chunk_max_tokens: int = 400
 
+    # Search
+    search_mode: str = "hybrid"  # "vector", "hybrid", or "keyword"
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"
