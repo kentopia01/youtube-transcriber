@@ -493,3 +493,45 @@ class TestChatWithContext:
 
         assert result["sources"] == []
         assert "don't have enough" in result["content"]
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.encode_query", side_effect=ImportError("No module named 'sentence_transformers'"))
+    async def test_chat_graceful_when_search_fails(self, mock_encode, mock_llm):
+        from app.services.chat import chat_with_context
+
+        mock_llm.return_value = {
+            "content": "I couldn't find relevant context.",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 10,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+
+        assert result["sources"] == []
+        assert result["content"] == "I couldn't find relevant context."
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat.settings")
+    @patch("app.services.chat.encode_query")
+    async def test_chat_returns_error_when_api_key_missing(self, mock_encode, mock_settings):
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_settings.anthropic_api_key = ""
+        mock_settings.chat_retrieval_top_k = 10
+        mock_settings.chat_max_history = 10
+        mock_settings.chat_model = "claude-sonnet-4-20250514"
+        mock_settings.search_mode = "hybrid"
+
+        db = AsyncMock()
+        # semantic_search will fail due to mock settings, but encode_query is mocked
+        # The key check happens before the LLM call
+        with patch("app.services.chat.semantic_search", new_callable=AsyncMock, return_value=[]):
+            result = await chat_with_context("question", [], db)
+
+        assert "unavailable" in result["content"].lower() or "api key" in result["content"].lower()
+        assert result["sources"] == []
+        assert result["prompt_tokens"] == 0

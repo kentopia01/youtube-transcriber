@@ -98,15 +98,18 @@ async def chat_with_context(
     Returns:
         Dict with content, sources, model, prompt_tokens, completion_tokens.
     """
-    query_embedding = encode_query(question)
-
-    chunks = await semantic_search(
-        db,
-        query_embedding=query_embedding,
-        limit=settings.chat_retrieval_top_k,
-        query=question,
-        chat_enabled_only=True,
-    )
+    try:
+        query_embedding = encode_query(question)
+        chunks = await semantic_search(
+            db,
+            query_embedding=query_embedding,
+            limit=settings.chat_retrieval_top_k,
+            query=question,
+            chat_enabled_only=True,
+        )
+    except Exception as exc:
+        logger.warning("search_failed", error=str(exc))
+        chunks = []
 
     context_text = _format_chunks_for_context(chunks)
 
@@ -122,6 +125,16 @@ async def chat_with_context(
         while len(messages) > 1 and estimated_tokens > 150_000:
             removed = messages.pop(0)
             estimated_tokens -= len(removed["content"]) // 4
+
+    if not settings.anthropic_api_key:
+        logger.warning("chat_missing_api_key")
+        return {
+            "content": "Chat is unavailable: Anthropic API key is not configured.",
+            "sources": [],
+            "model": settings.chat_model,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
 
     loop = asyncio.get_event_loop()
     llm_result = await loop.run_in_executor(

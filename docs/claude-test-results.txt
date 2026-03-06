@@ -1,48 +1,13 @@
-BuildClaw Phase 2: Chat Backend - Test Results
-================================================
+BuildClaw Phase 2: Chat Backend Error Handling — Test Results
+=============================================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 505 passed, 0 failed, 42 warnings in 4.87s
+Result: 507 passed, 0 failed, 42 warnings in 5.10s
 
-New tests added (26) in tests/test_chat_backend.py:
-  TestCreateSession::test_create_session_returns_201_fields
-  TestCreateSession::test_create_session_default_platform
-  TestCreateSession::test_create_session_no_body
-  TestListSessions::test_list_sessions_empty
-  TestListSessions::test_list_sessions_returns_sessions
-  TestGetSession::test_get_session_with_messages
-  TestGetSession::test_get_nonexistent_session_returns_404
-  TestDeleteSession::test_delete_session
-  TestDeleteSession::test_delete_nonexistent_session_returns_404
-  TestRenameSession::test_rename_session
-  TestRenameSession::test_rename_nonexistent_session_returns_404
-  TestRenameSession::test_rename_missing_title_returns_422
-  TestSendMessage::test_send_message_returns_assistant_response
-  TestSendMessage::test_send_message_includes_sources
-  TestSendMessage::test_auto_title_on_first_message
-  TestSendMessage::test_auto_title_short_message_no_ellipsis
-  TestSendMessage::test_existing_title_not_overwritten
-  TestSendMessage::test_send_message_nonexistent_session_returns_404
-  TestSendMessage::test_chat_enabled_only_filter_used
-  TestChatServiceHelpers::test_fmt_ts_minutes_seconds
-  TestChatServiceHelpers::test_fmt_ts_hours
-  TestChatServiceHelpers::test_format_chunks_for_context
-  TestChatServiceHelpers::test_build_messages_with_history
-  TestChatServiceHelpers::test_build_messages_empty_history
-  TestChatWithContext::test_chat_with_context_calls_search_with_chat_enabled
-  TestChatWithContext::test_chat_returns_empty_sources_when_no_chunks
+New tests added (2) in tests/test_chat_backend.py:
+  TestChatWithContext::test_chat_graceful_when_search_fails — PASSED
+  TestChatWithContext::test_chat_returns_error_when_api_key_missing — PASSED
 
-Total suite: 505 passed (479 prior + 26 new)
-
-Files changed:
-  alembic/versions/006_create_chat_tables.py (new)
-  app/models/chat_session.py (new)
-  app/models/chat_message.py (new)
-  app/models/__init__.py (updated)
-  app/config.py (updated)
-  app/schemas/chat.py (new)
-  app/services/chat.py (new)
-  app/routers/chat.py (new)
-  app/main.py (updated)
-  tests/test_chat_backend.py (new)
+Chat test totals: 57 tests across test_chat.py (29) + test_chat_backend.py (28)
+Full suite: 507 passed

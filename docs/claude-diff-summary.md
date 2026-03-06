@@ -1,29 +1,18 @@
-# BuildClaw Phase 2: Chat Backend — Diff Summary
+# BuildClaw Phase 2: Chat Backend — Error Handling Hardening
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `alembic/versions/006_create_chat_tables.py` | New migration: chat_sessions + chat_messages tables with CASCADE FK, index on session_id |
-| `app/models/chat_session.py` | New model: ChatSession (UUID PK, title nullable, platform, telegram_chat_id, timestamps) |
-| `app/models/chat_message.py` | New model: ChatMessage (UUID PK, session FK, role, content, sources JSONB, model, token counts) |
-| `app/models/__init__.py` | Registered ChatSession and ChatMessage |
-| `app/config.py` | Added chat_model, chat_max_history, chat_retrieval_top_k settings |
-| `app/schemas/chat.py` | New Pydantic schemas: ChatSessionCreate, ChatSessionRename, ChatMessageSend, ChatSourceOut, ChatMessageOut, ChatSessionOut, ChatSessionDetail |
-| `app/services/chat.py` | New RAG chat service: encode query, hybrid search (chat_enabled_only=True), build prompt with context + history, call Anthropic via run_in_executor, token limit safeguard |
-| `app/routers/chat.py` | New router: 6 endpoints for session CRUD + send message with RAG response + auto-title |
-| `app/main.py` | Registered chat router |
-| `tests/test_chat_backend.py` | 26 tests: session CRUD, message send, sources, auto-title, service helpers, RAG integration |
+| `app/services/chat.py` | Wrapped search (encode_query + semantic_search) in try/except — on failure, logs warning and continues with empty chunks. Added early return when `anthropic_api_key` is empty. |
+| `tests/test_chat_backend.py` | Added 2 tests: `test_chat_graceful_when_search_fails` (ImportError from sentence_transformers), `test_chat_returns_error_when_api_key_missing` |
 
 ## Why
-Phase 2 of the Chat with Transcripts feature. Adds the full backend: database tables, RAG retrieval pipeline, Anthropic LLM integration, and REST API for chat sessions and messages.
+- `encode_query()` imports `sentence_transformers` which may not be available in test/web environments
+- Missing API key should produce a clear error message, not an exception
 
 ## Risks
-- Anthropic API calls use sync client in run_in_executor — works but adds slight overhead vs native async client
-- Session title auto-generation is simple (first 50 chars) — could be enhanced with LLM-generated titles later
-- No rate limiting on chat API endpoints yet
-- Token costs from Sonnet calls — configurable via chat_model setting
-- Token estimation for 150k limit is rough (chars / 4) — sufficient as a safety net
+- None — purely additive error handling; all 507 tests pass
 
 ## Plan Deviations
-- None — implementation follows the plan exactly
+- None
