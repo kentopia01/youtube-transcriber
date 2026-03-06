@@ -1,11 +1,11 @@
-# QAClaw Phase 2 QA Rounds 8-9 — Diff Summary
+# QAClaw Phase 2 QA Rounds 8-10 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat.py` | Added 5 tests in `TestQAClawRound8` + 9 tests in `TestQAClawRound9` |
-| `docs/claude-diff-summary.md` | Updated to reflect QA Rounds 8-9 |
+| `tests/test_chat.py` | Added 5 tests in Round 8 + 9 tests in Round 9 + 4 tests in Round 10 |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Rounds 8-10 |
 | `docs/claude-test-results.txt` | Updated with full suite results |
 
 ## Tests Added (Round 8 — code-review-driven gaps)
@@ -26,8 +26,14 @@
 8. `test_system_prompt_passed_as_system_not_message` — system prompt is separate from messages list
 9. `test_send_message_returns_correct_session_id` — assistant message has correct session_id
 
+## Tests Added (Round 10 — isolation & ORM checks)
+1. `test_session_isolation_different_sessions` — messages from session A do not appear in session B's history
+2. `test_models_importable_from_package` — ChatSession and ChatMessage importable from app.models
+3. `test_chat_message_fk_references_chat_sessions` — FK on session_id correctly targets chat_sessions.id
+4. `test_chat_session_cascade_delete_orphan` — relationship cascade includes delete-orphan
+
 ## Bugs Fixed
-None — no bugs found across 9 rounds of QA. Implementation is solid.
+None — no bugs found across 10 rounds of QA. Implementation is solid.
 
 ## Code Review Summary (Full)
 All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
@@ -40,11 +46,11 @@ All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
 - **Anthropic API call**: correct model from settings, system prompt with video transcript grounding, max_tokens=4096
 
 ## Test Coverage Summary
-- **112 tests** in `test_chat.py` covering Phase 2 chat backend (9 rounds)
+- **113 tests** in `test_chat.py` covering Phase 2 chat backend (10 rounds)
 - **563 tests total** across the full suite, all passing
 
 ## Risks
 - `title=""` is treated differently from `title=None` — empty string blocks auto-title. Acceptable but worth noting for Phase 3 UI.
 - Pydantic `min_length` does not strip whitespace — `"   "` passes validation. Acceptable for now.
 - Token estimation (4 chars/token) is rough but sufficient as a safety guard.
-- Migration 006 exists at `alembic/versions/006_create_chat_tables.py` (not `migrations/versions/`).
+- Migration 006 exists at `alembic/versions/006_create_chat_tables.py`.

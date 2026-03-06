@@ -2103,13 +2103,23 @@ class TestQAClawRound11:
     """Gaps from fresh code review: migration up/down, singleton API key,
     schema from_attributes, hours format, run_in_executor, limit=0."""
 
+    def _load_migration(self):
+        """Load migration module from file path."""
+        import importlib.util
+        import pathlib
+        migration_path = pathlib.Path(__file__).parent.parent / "alembic" / "versions" / "006_create_chat_tables.py"
+        spec = importlib.util.spec_from_file_location("migration_006", migration_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
     def test_migration_downgrade_drops_tables_in_order(self):
         """Downgrade should drop chat_messages before chat_sessions (FK dependency)."""
-        from alembic.versions.006_create_chat_tables import downgrade
         from unittest.mock import call
 
-        with patch("alembic.versions.006_create_chat_tables.op") as mock_op:
-            downgrade()
+        mod = self._load_migration()
+        with patch.object(mod, "op") as mock_op:
+            mod.downgrade()
 
             calls = mock_op.method_calls
             call_names = [c[0] for c in calls]
@@ -2119,10 +2129,9 @@ class TestQAClawRound11:
 
     def test_migration_upgrade_creates_tables_and_index(self):
         """Upgrade should create chat_sessions, chat_messages, and index."""
-        from alembic.versions.006_create_chat_tables import upgrade
-
-        with patch("alembic.versions.006_create_chat_tables.op") as mock_op:
-            upgrade()
+        mod = self._load_migration()
+        with patch.object(mod, "op") as mock_op:
+            mod.upgrade()
 
             call_names = [c[0] for c in mock_op.method_calls]
             assert "create_table" in call_names
