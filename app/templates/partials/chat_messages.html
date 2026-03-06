@@ -4,7 +4,7 @@
     <div class="chat-msg-avatar is-user"><i class="iconoir-user" style="font-size:0.85rem"></i></div>
     <div class="chat-msg-body">
         <div class="chat-msg-role">You</div>
-        <div class="chat-msg-content">{{ msg.content | e | replace('\n', '<br>') }}</div>
+        <div class="chat-msg-content" style="white-space:pre-wrap">{{ msg.content | e }}</div>
     </div>
     {% else %}
     <div class="chat-msg-avatar is-assistant"><i class="iconoir-spark" style="font-size:0.85rem"></i></div>

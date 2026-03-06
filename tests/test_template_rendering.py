@@ -283,6 +283,7 @@ class TestBaseLayout:
         assert 'href="/"' in html
         assert 'href="/queue"' in html
         assert 'href="/library"' in html
+        assert 'href="/chat"' in html
         assert 'href="/videos"' not in html
         assert 'href="/channels"' not in html
         assert "Chat with Library" in html
@@ -665,3 +666,221 @@ class TestChatPage:
         html = resp.text
         assert 'href="/chat"' in html
         assert "is-active" in html
+
+    def test_chat_page_has_marked_js(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert "marked" in resp.text
+
+    def test_chat_page_has_mobile_sidebar_toggle(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        html = resp.text
+        assert "chat-mobile-toggle" in html
+        assert "sidebar-overlay" in html
+        assert "toggleSidebar" in html
+
+    def test_chat_page_has_send_on_enter(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert "handleInputKey" in resp.text
+
+    def test_chat_page_sidebar_shows_session(self):
+        session = _make_chat_session(title="My Test Session")
+        client = _build_client(self._build_chat_db(sessions=[session]))
+        resp = client.get("/chat")
+        assert "My Test Session" in resp.text
+
+    def test_chat_page_sidebar_date_grouping(self):
+        session = _make_chat_session(title="Grouped Session")
+        client = _build_client(self._build_chat_db(sessions=[session]))
+        resp = client.get("/chat")
+        html = resp.text
+        assert "chat-sidebar-group-label" in html
+        # _NOW is 2025-06-01 which is in the "Older" group relative to real now
+        assert "Older" in html
+
+    def test_chat_session_page_with_messages(self):
+        sid = uuid.uuid4()
+        messages = [
+            SimpleNamespace(
+                id=uuid.uuid4(), role="user", content="Hello",
+                sources=None, created_at=_NOW,
+            ),
+            SimpleNamespace(
+                id=uuid.uuid4(), role="assistant",
+                content="Hi! Based on your transcripts...",
+                sources=[{
+                    "video_title": "Test Video",
+                    "start_time": 120,
+                    "end_time": 180,
+                    "similarity": 0.92,
+                    "chunk_text": "Some transcript chunk",
+                }],
+                created_at=_NOW,
+            ),
+        ]
+        session = _make_chat_session(id=sid, title="Session With Msgs", messages=messages)
+        # session page: execute_1=session detail, execute_2=sessions list, scalar=video count
+        db = MockDB(execute_1=session, execute_2=[session], scalar=3, default=[])
+        client = _build_client(db)
+        resp = client.get(f"/chat/{sid}")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "Hello" in html
+        assert "chat-msg-avatar" in html
+        assert "chat-source-card" in html
+        assert "Test Video" in html
+        assert "92%" in html
+        assert "chat-md-content" in html
+
+    def test_chat_page_input_disabled_when_no_session(self):
+        db = MockDB(execute_1=[], scalar=0, default=[])
+        client = _build_client(db)
+        resp = client.get("/chat")
+        html = resp.text
+        assert "disabled" in html
+
+    def test_chat_page_main_class_override(self):
+        """Chat page should override main_class to remove page-shell."""
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        html = resp.text
+        # chat.html sets block main_class to empty, so main tag shouldn't have page-shell
+        assert 'class="chat-page-shell"' in html
+
+    def test_chat_page_new_design_markers(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        _assert_new_design(resp.text)
+        _assert_no_daisyui(resp.text)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _group_sessions_by_date helper
+# ---------------------------------------------------------------------------
+
+
+class TestGroupSessionsByDate:
+    def test_empty_sessions(self):
+        from app.routers.pages import _group_sessions_by_date
+        result = _group_sessions_by_date([])
+        assert result == []
+
+    def test_today_group(self):
+        from app.routers.pages import _group_sessions_by_date
+        now = datetime.now(timezone.utc)
+        s = SimpleNamespace(updated_at=now)
+        groups = _group_sessions_by_date([s])
+        assert len(groups) == 1
+        assert groups[0][0] == "Today"
+        assert groups[0][1] == [s]
+
+    def test_multiple_groups_ordered(self):
+        from app.routers.pages import _group_sessions_by_date
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        today_s = SimpleNamespace(updated_at=now)
+        old_s = SimpleNamespace(updated_at=now - timedelta(days=30))
+        groups = _group_sessions_by_date([today_s, old_s])
+        labels = [g[0] for g in groups]
+        assert labels == ["Today", "Older"]
+
+    def test_naive_datetime_handled(self):
+        from app.routers.pages import _group_sessions_by_date
+        # Sessions with naive datetime (no tzinfo) should not crash
+        naive_dt = datetime(2020, 1, 1, 12, 0, 0)
+        s = SimpleNamespace(updated_at=naive_dt)
+        groups = _group_sessions_by_date([s])
+        assert len(groups) == 1
+        assert groups[0][0] == "Older"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Chat UI XSS and edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestChatXSSAndEdgeCases:
+    """Verify XSS escaping, newline handling, and edge cases in chat templates."""
+
+    def _build_session_with_messages(self, messages):
+        sid = uuid.uuid4()
+        session = _make_chat_session(id=sid, messages=messages)
+        db = MockDB(execute_1=session, execute_2=[session], scalar=1, default=[])
+        return _build_client(db), sid
+
+    def _make_msg(self, role="user", content="hi", sources=None):
+        return SimpleNamespace(
+            id=uuid.uuid4(), role=role, content=content,
+            sources=sources, created_at=_NOW,
+        )
+
+    def test_user_message_script_tag_escaped(self):
+        msgs = [self._make_msg("user", "<script>alert('xss')</script>")]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        assert "<script>alert(" not in html.split("chat-msg-content")[1]
+        assert "&lt;script&gt;" in html
+
+    def test_user_message_html_injection_escaped(self):
+        msgs = [self._make_msg("user", '<img src=x onerror="alert(1)">')]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        assert 'onerror="alert(1)"' not in html
+
+    def test_assistant_message_escaped_before_marked(self):
+        """Assistant content is escaped in template; marked.js processes it client-side."""
+        msgs = [self._make_msg("assistant", '<div onclick="evil()">Click</div>')]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        assert 'onclick="evil()"' not in html
+
+    def test_source_title_xss_escaped(self):
+        sources = [{"video_title": "<b onmouseover=alert(1)>evil</b>",
+                     "chunk_text": "safe text", "start_time": 0, "end_time": 5, "similarity": 0.9}]
+        msgs = [self._make_msg("assistant", "Answer.", sources=sources)]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        # The raw <b> tag should be escaped — no unescaped HTML attribute injection
+        assert '<b onmouseover=alert(1)>' not in html
+        assert '&lt;b onmouseover=alert(1)&gt;' in html
+
+    def test_source_chunk_text_xss_escaped(self):
+        sources = [{"video_title": "Safe Title",
+                     "chunk_text": "<script>steal()</script>", "start_time": 0, "end_time": 5, "similarity": 0.8}]
+        msgs = [self._make_msg("assistant", "Answer.", sources=sources)]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        assert "<script>steal()</script>" not in html
+
+    def test_user_message_newlines_use_pre_wrap(self):
+        """User messages should use white-space:pre-wrap for newline rendering."""
+        msgs = [self._make_msg("user", "line1\nline2\nline3")]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        assert "pre-wrap" in html
+
+    def test_empty_sources_no_source_section(self):
+        msgs = [self._make_msg("assistant", "No sources here.", sources=[])]
+        client, sid = self._build_session_with_messages(msgs)
+        resp = client.get(f"/chat/{sid}")
+        html = resp.text
+        # "chat-source-card" appears in JS code; check that no actual source cards rendered
+        # by verifying the sources toggle button is absent in the message area
+        msg_area = html.split("chat-messages-inner")[1].split("chat-input-bar")[0]
+        assert "chat-sources-toggle" not in msg_area
+
+    def test_session_title_xss_escaped_in_sidebar(self):
+        session = _make_chat_session(title="<script>alert('sidebar')</script>")
+        db = MockDB(execute_1=[session], execute_2=session, scalar=0, default=[])
+        client = _build_client(db)
+        resp = client.get("/chat")
+        html = resp.text
+        assert "<script>alert(" not in html.split("chat-sidebar")[1]

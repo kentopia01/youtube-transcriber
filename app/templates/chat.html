@@ -210,7 +210,8 @@
             ? '<i class="iconoir-user" style="font-size:0.85rem"></i>'
             : '<i class="iconoir-spark" style="font-size:0.85rem"></i>';
         const roleLabel = isUser ? 'You' : 'Assistant';
-        const rendered = isUser ? escapeHTML(content).replace(/\n/g, '<br>') : renderMarkdown(content);
+        const rendered = isUser ? escapeHTML(content) : renderMarkdown(content);
+        const preWrap = isUser ? ' style="white-space:pre-wrap"' : '';
 
         let sourcesHTML = '';
         if (sources && sources.length > 0) {
@@ -241,7 +242,7 @@
             '<div class="chat-msg-avatar ' + avatarClass + '">' + avatarIcon + '</div>' +
             '<div class="chat-msg-body">' +
             '<div class="chat-msg-role">' + roleLabel + '</div>' +
-            '<div class="chat-msg-content">' + rendered + '</div>' +
+            '<div class="chat-msg-content"' + preWrap + '>' + rendered + '</div>' +
             sourcesHTML +
             '</div></div>';
     }
