@@ -40,7 +40,7 @@ class TestConfigDefaults:
 
     def test_cleanup_model_default(self):
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")
-        assert s.cleanup_model == "claude-haiku-4-20250514"
+        assert s.cleanup_model == "claude-haiku-4-5-20251001"
 
     def test_hf_token_default_empty(self, monkeypatch):
         monkeypatch.delenv("HF_TOKEN", raising=False)

@@ -1,26 +1,29 @@
-# Phase 1: Chat Toggle System — Diff Summary
+# QAClaw Phase 1 Review — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `app/models/video.py` | Added `chat_enabled` Boolean column (server_default true) |
-| `app/models/channel.py` | Added `chat_enabled` Boolean column (server_default true) |
-| `alembic/versions/005_add_chat_enabled.py` | **New** — migration adds chat_enabled to both tables |
-| `app/schemas/video.py` | Added `ChatToggle` Pydantic schema |
-| `app/routers/videos.py` | Added `PATCH /{video_id}/chat-toggle` endpoint |
-| `app/routers/channels.py` | Added `PATCH /{channel_id}/chat-toggle` endpoint (bulk-updates all channel videos) |
-| `app/services/search.py` | `_build_where_clause` now accepts `chat_enabled_only`; all search functions and dispatcher pass it through |
-| `app/templates/library.html` | Video cards wrapped in `.video-card-wrapper` with toggle switch; channel cards wrapped similarly; JS for dimming |
-| `app/static/css/main.css` | Added section 31: chat toggle switch styles, `.is-chat-disabled` opacity dimming |
-| `tests/test_chat_toggle.py` | **New** — 14 tests covering toggle API, channel bulk update, search filter |
+| `tests/test_chat_toggle.py` | Added 7 edge case tests: invalid body, invalid UUID, channel missing body, channel 0 videos, empty search results for all 3 modes |
+| `tests/test_config.py` | Fixed stale model ID assertion (claude-haiku-4-20250514 → claude-haiku-4-5-20251001) |
+| `docs/claude-plan.md` | Updated with QA review plan |
+| `docs/claude-diff-summary.md` | Updated with QA review changes |
+| `docs/claude-test-results.txt` | Updated with full test results |
 
 ## Why
-Phase 1 of Chat with Transcripts feature — users need to control which videos are included in chat context via toggles.
+QA review of Phase 1 Toggle System — found missing edge case test coverage and a pre-existing test failure.
 
 ## Risks
-- Channel toggle iterates all videos in Python (no bulk SQL UPDATE). Fine for typical channel sizes (<500 videos), but could be slow for very large channels.
-- HTMX toggle sends PATCH with `hx-vals='js:...'` which requires JS evaluation — won't work if JS is disabled.
+- None. All changes are test-only (no production code modified).
+- Phase 1 implementation code reviewed and found correct.
+
+## Code Review Findings
+- Migration 005: Clean, correct server_default, proper downgrade
+- Models: chat_enabled columns match migration
+- API: Proper 404 handling, Pydantic validation, channel bulk-update iterates all videos
+- Search: chat_enabled_only filter correctly threaded through all 3 modes (vector/keyword/hybrid)
+- UI: HTMX toggles with hx-swap="none", JS-based dimming via toggleCardDim
+- CSS: .is-chat-disabled opacity 0.6 dimming applied correctly
 
 ## Plan Deviations
-- None. All planned steps completed as specified.
+- None. All planned review steps completed.

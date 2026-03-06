@@ -1,42 +1,29 @@
-Phase 1: Chat Toggle System - Test Results
-============================================
+QAClaw Phase 1 Review - Test Results
+=====================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 435 passed, 1 failed (pre-existing), 42 warnings in 4.65s
+Result: 443 passed, 0 failed, 42 warnings in 4.67s
 
-Pre-existing failure (NOT related to this change):
+New tests added (7) in tests/test_chat_toggle.py:
+  TestVideoChatToggle::test_toggle_invalid_enabled_value_returns_422
+  TestVideoChatToggle::test_toggle_invalid_uuid_returns_422
+  TestChannelChatToggle::test_toggle_channel_missing_body_returns_422
+  TestChannelChatToggle::test_toggle_channel_zero_videos
+  TestSemanticSearchChatFilter::test_search_returns_empty_when_all_disabled
+  TestSemanticSearchChatFilter::test_keyword_search_returns_empty_when_all_disabled
+  TestSemanticSearchChatFilter::test_hybrid_search_returns_empty_when_all_disabled
+
+Pre-existing fix:
   tests/test_config.py::TestConfigDefaults::test_cleanup_model_default
-  - Test expects old model ID "claude-haiku-4-20250514" but config was
-    updated to "claude-haiku-4-5-20251001" in prior commit 43df5c4
+  - Updated expected model ID from "claude-haiku-4-20250514" to "claude-haiku-4-5-20251001"
 
-New tests added (14) in tests/test_chat_toggle.py:
-  TestVideoChatToggle::test_toggle_video_on
-  TestVideoChatToggle::test_toggle_video_off
-  TestVideoChatToggle::test_toggle_nonexistent_video_returns_404
-  TestVideoChatToggle::test_toggle_missing_body_returns_422
-  TestChannelChatToggle::test_toggle_channel_updates_all_videos
-  TestChannelChatToggle::test_toggle_channel_on
-  TestChannelChatToggle::test_toggle_nonexistent_channel_returns_404
-  TestBuildWhereClauseChatEnabled::test_chat_enabled_only_adds_filter
-  TestBuildWhereClauseChatEnabled::test_channel_and_chat_enabled
-  TestBuildWhereClauseChatEnabled::test_neither_filter
-  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_vector
-  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_keyword
-  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_hybrid
-  TestSemanticSearchChatFilter::test_default_chat_enabled_only_is_false
+Total chat toggle tests: 21 (14 original + 7 new)
+Total suite: 443 passed
 
 Files changed:
-  app/models/video.py
-  app/models/channel.py
-  alembic/versions/005_add_chat_enabled.py (new)
-  app/schemas/video.py
-  app/routers/videos.py
-  app/routers/channels.py
-  app/services/search.py
-  app/templates/library.html
-  app/static/css/main.css
-  tests/test_chat_toggle.py (new)
+  tests/test_chat_toggle.py (7 new edge case tests)
+  tests/test_config.py (stale model ID fix)
   docs/claude-plan.md
   docs/claude-diff-summary.md
   docs/claude-test-results.txt

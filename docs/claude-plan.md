@@ -1,23 +1,19 @@
-# Phase 1: Toggle System — Implementation Plan
+# QAClaw Phase 1 Review Plan
 
 ## Goal
-Add chat_enabled toggle to videos and channels, with API endpoints, search filter support, and library UI toggles. This is Phase 1 of the "Chat with Transcripts" feature plan.
+Review and test all Phase 1 (Toggle System) changes for the Chat with Transcripts feature.
 
 ## Assumptions
-- Existing Alembic migration chain ends at 004
-- HTMX is already loaded in base.html
-- Toggle defaults to true (all existing videos/channels are chat-enabled)
-- Existing search page behavior unchanged (chat_enabled_only defaults to False)
+- Phase 1 was implemented by BuildClaw in commit 1f09505
+- All changes are on main branch
+- Pre-existing test failure in test_config.py (stale model ID) unrelated to Phase 1
 
 ## Steps
-1. Add `chat_enabled BOOLEAN NOT NULL DEFAULT true` to Video and Channel SQLAlchemy models
-2. Create Alembic migration 005 with `server_default=sa.text("true")`
-3. Add `ChatToggle` Pydantic schema (`enabled: bool`)
-4. Add `PATCH /api/videos/{video_id}/chat-toggle` endpoint
-5. Add `PATCH /api/channels/{channel_id}/chat-toggle` endpoint (bulk-updates all channel videos)
-6. Update `_build_where_clause()` to accept `chat_enabled_only` param, adding `v.chat_enabled = true` filter
-7. Thread `chat_enabled_only` through `_vector_search`, `_keyword_search`, `_hybrid_search`, and `semantic_search`
-8. Add toggle switch UI to video cards and channel cards in library.html
-9. Add CSS for toggle pill switch with dimming (opacity 0.6) for disabled items
-10. Write tests: video toggle on/off, channel bulk toggle, 404 cases, search filter pass-through
-11. Run full test suite — verify all pass
+1. Read CHAT_FEATURE_PLAN.md Phase 1 spec
+2. Code review: migration 005, toggle API endpoints, search filter, UI toggles, CSS
+3. Verify: toggle persistence, channel bulk-update, search filter in all 3 modes, HTMX, dimming CSS
+4. Check edge cases: 404 for nonexistent resources, missing/invalid body, empty channel, all-disabled search
+5. Add missing tests for uncovered edge cases (7 new tests)
+6. Fix pre-existing broken test (stale model ID in test_config.py)
+7. Run full test suite — 443 passed, 0 failed
+8. Commit and push

@@ -127,6 +127,22 @@ class TestVideoChatToggle:
         )
         assert resp.status_code == 422
 
+    def test_toggle_invalid_enabled_value_returns_422(self):
+        client = _build_client()
+        resp = client.patch(
+            f"/api/videos/{uuid.uuid4()}/chat-toggle",
+            json={"enabled": "notabool"},
+        )
+        assert resp.status_code == 422
+
+    def test_toggle_invalid_uuid_returns_422(self):
+        client = _build_client()
+        resp = client.patch(
+            "/api/videos/not-a-uuid/chat-toggle",
+            json={"enabled": True},
+        )
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # Channel chat toggle (bulk updates videos)
@@ -176,6 +192,31 @@ class TestChannelChatToggle:
             json={"enabled": False},
         )
         assert resp.status_code == 404
+
+    def test_toggle_channel_missing_body_returns_422(self):
+        client = _build_client()
+        resp = client.patch(
+            f"/api/channels/{uuid.uuid4()}/chat-toggle",
+            json={},
+        )
+        assert resp.status_code == 422
+
+    def test_toggle_channel_zero_videos(self):
+        """Channel with 0 videos — toggle should succeed without error."""
+        channel = SimpleNamespace(
+            id=uuid.uuid4(), chat_enabled=True, name="Empty Channel",
+        )
+        db = StubDB(execute_results=[channel, []])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/channels/{channel.id}/chat-toggle",
+            json={"enabled": False},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["chat_enabled"] is False
+        assert body["videos_updated"] == 0
+        assert channel.chat_enabled is False
 
 
 # ---------------------------------------------------------------------------
@@ -257,3 +298,39 @@ class TestSemanticSearchChatFilter:
         call_args = mock_vector.call_args
         # Default should be False
         assert call_args[0][-1] is False or call_args[1].get("chat_enabled_only", False) is False
+
+    @pytest.mark.asyncio
+    @patch("app.services.search._vector_search", new_callable=AsyncMock)
+    async def test_search_returns_empty_when_all_disabled(self, mock_vector):
+        """Search with chat_enabled_only=True returns empty list, not error."""
+        mock_vector.return_value = []
+        db = AsyncMock()
+        results = await semantic_search(
+            db, FAKE_EMBEDDING, limit=10,
+            search_mode="vector", chat_enabled_only=True,
+        )
+        assert results == []
+
+    @pytest.mark.asyncio
+    @patch("app.services.search._keyword_search", new_callable=AsyncMock)
+    async def test_keyword_search_returns_empty_when_all_disabled(self, mock_keyword):
+        """Keyword search with chat_enabled_only=True returns empty list, not error."""
+        mock_keyword.return_value = []
+        db = AsyncMock()
+        results = await semantic_search(
+            db, FAKE_EMBEDDING, limit=10, query="test",
+            search_mode="keyword", chat_enabled_only=True,
+        )
+        assert results == []
+
+    @pytest.mark.asyncio
+    @patch("app.services.search._hybrid_search", new_callable=AsyncMock)
+    async def test_hybrid_search_returns_empty_when_all_disabled(self, mock_hybrid):
+        """Hybrid search with chat_enabled_only=True returns empty list, not error."""
+        mock_hybrid.return_value = []
+        db = AsyncMock()
+        results = await semantic_search(
+            db, FAKE_EMBEDDING, limit=10, query="test",
+            search_mode="hybrid", chat_enabled_only=True,
+        )
+        assert results == []
