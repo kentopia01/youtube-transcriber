@@ -1,13 +1,38 @@
-BuildClaw Phase 2: Chat Backend Error Handling — Test Results
-=============================================================
+BuildClaw Phase 2: Chat Backend — Test Results
+===============================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 507 passed, 0 failed, 42 warnings in 5.10s
+Result: 507 passed, 0 failed, 42 warnings in 4.88s
 
-New tests added (2) in tests/test_chat_backend.py:
+Chat backend tests (28) in tests/test_chat_backend.py:
+  TestCreateSession::test_create_session_returns_201_fields — PASSED
+  TestCreateSession::test_create_session_default_platform — PASSED
+  TestCreateSession::test_create_session_no_body — PASSED
+  TestListSessions::test_list_sessions_empty — PASSED
+  TestListSessions::test_list_sessions_returns_sessions — PASSED
+  TestGetSession::test_get_session_with_messages — PASSED
+  TestGetSession::test_get_nonexistent_session_returns_404 — PASSED
+  TestDeleteSession::test_delete_session — PASSED
+  TestDeleteSession::test_delete_nonexistent_session_returns_404 — PASSED
+  TestRenameSession::test_rename_session — PASSED
+  TestRenameSession::test_rename_nonexistent_session_returns_404 — PASSED
+  TestRenameSession::test_rename_missing_title_returns_422 — PASSED
+  TestSendMessage::test_send_message_returns_assistant_response — PASSED
+  TestSendMessage::test_send_message_includes_sources — PASSED
+  TestSendMessage::test_auto_title_on_first_message — PASSED
+  TestSendMessage::test_auto_title_short_message_no_ellipsis — PASSED
+  TestSendMessage::test_existing_title_not_overwritten — PASSED
+  TestSendMessage::test_send_message_nonexistent_session_returns_404 — PASSED
+  TestSendMessage::test_chat_enabled_only_filter_used — PASSED
+  TestChatServiceHelpers::test_fmt_ts_minutes_seconds — PASSED
+  TestChatServiceHelpers::test_fmt_ts_hours — PASSED
+  TestChatServiceHelpers::test_format_chunks_for_context — PASSED
+  TestChatServiceHelpers::test_build_messages_with_history — PASSED
+  TestChatServiceHelpers::test_build_messages_empty_history — PASSED
+  TestChatWithContext::test_chat_with_context_calls_search_with_chat_enabled — PASSED
+  TestChatWithContext::test_chat_returns_empty_sources_when_no_chunks — PASSED
   TestChatWithContext::test_chat_graceful_when_search_fails — PASSED
   TestChatWithContext::test_chat_returns_error_when_api_key_missing — PASSED
 
-Chat test totals: 57 tests across test_chat.py (29) + test_chat_backend.py (28)
 Full suite: 507 passed

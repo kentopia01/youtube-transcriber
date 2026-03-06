@@ -1,18 +1,27 @@
-# BuildClaw Phase 2: Chat Backend — Error Handling Hardening
+# BuildClaw Phase 2: Chat Backend — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `app/services/chat.py` | Wrapped search (encode_query + semantic_search) in try/except — on failure, logs warning and continues with empty chunks. Added early return when `anthropic_api_key` is empty. |
-| `tests/test_chat_backend.py` | Added 2 tests: `test_chat_graceful_when_search_fails` (ImportError from sentence_transformers), `test_chat_returns_error_when_api_key_missing` |
+| `app/models/chat_session.py` | New — ChatSession model (UUID PK, title, platform, telegram_chat_id, timestamps, messages relationship) |
+| `app/models/chat_message.py` | New — ChatMessage model (UUID PK, FK session_id, role, content, JSONB sources, model, token counts) |
+| `app/models/__init__.py` | Added ChatSession + ChatMessage imports |
+| `alembic/versions/006_create_chat_tables.py` | New — migration creating chat_sessions, chat_messages tables + session_id index |
+| `app/config.py` | Added chat_model, chat_max_history, chat_retrieval_top_k settings |
+| `app/schemas/chat.py` | New — Pydantic schemas (ChatSessionCreate, ChatSessionRename, ChatMessageSend, ChatSourceOut, ChatMessageOut, ChatSessionOut, ChatSessionDetail) |
+| `app/services/chat.py` | New — RAG pipeline: encode_query -> hybrid search (chat_enabled_only=True) -> build prompt with history -> Anthropic call -> sources. Includes 150k token guard, graceful error handling |
+| `app/routers/chat.py` | New — 6 API endpoints (POST/GET/DELETE/PATCH sessions, POST messages). Auto-title on first message |
+| `app/main.py` | Registered chat router |
+| `tests/test_chat_backend.py` | New — 28 tests: session CRUD (7), send message (7), service helpers (5), RAG integration (4), error handling (2), chat_enabled filter (1), validation (2) |
 
 ## Why
-- `encode_query()` imports `sentence_transformers` which may not be available in test/web environments
-- Missing API key should produce a clear error message, not an exception
+Phase 2 of CHAT_FEATURE_PLAN.md — enables conversational chat grounded in video transcript content via RAG.
 
 ## Risks
-- None — purely additive error handling; all 507 tests pass
+- `encode_query()` requires sentence_transformers — handled with try/except fallback
+- Missing API key — returns clear error message instead of exception
+- Token overflow — 150k token limit with history trimming
 
 ## Plan Deviations
-- None
+- None — all items from Phase 2 spec implemented as planned
