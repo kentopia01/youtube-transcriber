@@ -1,37 +1,28 @@
-# QAClaw Phase 2 QA Round 11 — Fresh Code Review & Final Gaps
+# QAClaw Phase 2 QA Round 12 — Final Deep Edge Cases
 
 ## Goal
-Fresh comprehensive QA pass on Phase 2 (Chat Backend): full code review, verify all acceptance criteria, add remaining edge case tests.
+Final QA pass on Phase 2 (Chat Backend): verify remaining edge cases not covered by prior 11 rounds, add targeted tests for RateLimitError, history ordering, None timestamps, token guard boundary, and history isolation.
 
 ## Assumptions
 - Phase 1 (toggle system) complete and tested
-- Phase 2 implemented by BuildClaw, ten prior QA rounds completed
-- All prior bugs fixed; this round adds migration tests, schema validation tests, and remaining gaps
+- Phase 2 implemented by BuildClaw, 11 prior QA rounds completed
+- All prior bugs fixed; this round targets deep edge cases
 
 ## Steps
 1. Read CHAT_FEATURE_PLAN.md Phase 2 section — verified spec alignment
-2. Full code review of all Phase 2 files:
-   - Migration 006: correct schema, CASCADE FK, session_id index
-   - Models (chat_session.py, chat_message.py): proper ORM mapping, relationships
-   - Service (services/chat.py): RAG pipeline, token guard, error handling, run_in_executor
-   - Router (routers/chat.py): complete CRUD, message flow, auto-title
-   - Schemas (schemas/chat.py): validation boundaries, from_attributes
-   - Config (config.py): all 3 chat settings with correct defaults
-   - Search (services/search.py): chat_enabled_only propagated to all 3 modes
-3. No bugs found — implementation matches spec
-4. Added 14 new tests in Round 11:
-   - Migration upgrade/downgrade verification
-   - Anthropic client passes API key from settings
-   - Format chunks with hours-long timestamps
-   - Platform passthrough for custom values
-   - Schema from_attributes for ChatMessageOut, ChatSessionOut, ChatSessionDetail
-   - run_in_executor used for Anthropic calls
-   - limit=0 returns 422
-   - User/assistant messages have correct session_id
-   - ChatSourceOut schema validation and optional fields
-5. Run full suite: 576 passed, 0 failed
+2. Full code review of all Phase 2 files (migration 006, models, services, routers, config, schemas, search integration)
+3. No bugs found — implementation matches spec exactly
+4. Identified 7 untested edge cases and added Round 12 tests:
+   - Anthropic RateLimitError (429) handled gracefully
+   - History messages maintain chronological order in LLM prompt
+   - Sources with None start_time/end_time don't crash
+   - Token guard when question alone exceeds 150k tokens (no history)
+   - History passed to chat excludes the just-added user message
+   - Empty context prompt still well-formed with prefix
+   - Assistant message always has role='assistant'
+5. Run full suite: 583 passed, 0 failed
 6. Commit and push
 
 ## Test Coverage (cumulative)
-- 126 tests in test_chat.py across 17 test classes (11 rounds)
-- 576 tests total across all test files
+- 133 tests in test_chat.py across 19 test classes (12 rounds)
+- 583 tests total across all test files

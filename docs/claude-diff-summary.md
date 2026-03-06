@@ -1,31 +1,25 @@
-# QAClaw Phase 2 QA Round 11 — Diff Summary
+# QAClaw Phase 2 QA Round 12 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat.py` | Added 14 new tests in `TestQAClawRound11` class |
-| `docs/claude-plan.md` | Updated to reflect QA Round 11 |
-| `docs/claude-diff-summary.md` | Updated to reflect QA Round 11 |
-| `docs/claude-test-results.txt` | Updated with 576-test results |
+| `tests/test_chat.py` | Added 7 new tests in `TestQAClawRound12` class |
+| `docs/claude-plan.md` | Updated to reflect QA Round 12 |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Round 12 |
+| `docs/claude-test-results.txt` | Updated with 583-test results |
 
-## Tests Added (Round 11)
-1. `test_migration_downgrade_drops_tables_in_order` — verifies FK-safe drop order: index, chat_messages, chat_sessions
-2. `test_migration_upgrade_creates_tables_and_index` — verifies create_table and create_index calls
-3. `test_get_anthropic_client_passes_api_key` — singleton passes settings.anthropic_api_key to Anthropic()
-4. `test_format_chunks_hours_with_end_time` — timestamps in HH:MM:SS format with both start and end
-5. `test_create_session_platform_passthrough` — custom platform values stored as-is
-6. `test_chat_message_out_schema_from_attributes` — ChatMessageOut validates ORM-like objects
-7. `test_chat_session_out_schema_from_attributes` — ChatSessionOut validates ORM-like objects
-8. `test_chat_session_detail_schema_with_messages` — ChatSessionDetail includes nested messages
-9. `test_chat_uses_run_in_executor` — _call_anthropic invoked via asyncio.run_in_executor
-10. `test_limit_zero_returns_422` — limit=0 rejected by ge=1 constraint
-11. `test_send_message_user_msg_has_correct_session_id` — both user and assistant messages reference correct session
-12. `test_chat_source_out_schema_validation` — ChatSourceOut serializes all fields correctly
-13. `test_chat_source_out_optional_fields` — start_time, end_time, similarity default to None
+## Tests Added (Round 12)
+1. `test_rate_limit_error_handled_gracefully` — Anthropic RateLimitError (429) returns user-friendly error, not crash
+2. `test_history_order_preserved_in_llm_call` — 4 history messages + current question appear in correct chronological order
+3. `test_sources_with_none_timestamps_valid` — chunks with None start_time/end_time produce valid sources dict
+4. `test_token_guard_huge_question_no_history` — 800k-char question with no history still calls LLM (while loop terminates at len==1)
+5. `test_history_excludes_current_user_message` — new user message added via session_id doesn't leak into eagerly-loaded history
+6. `test_no_context_prompt_still_well_formed` — empty search results still produce "Context from video transcripts:" prefix
+7. `test_assistant_message_role_is_always_assistant` — saved assistant message has role='assistant' in both response and DB
 
 ## Bugs Fixed
-None — no bugs found across 11 rounds of QA. Implementation is solid.
+None — no bugs found across 12 rounds of QA. Implementation is solid.
 
 ## Code Review Summary (Full)
 All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
@@ -38,8 +32,8 @@ All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
 - **Search integration**: chat_enabled_only properly propagated through vector/keyword/hybrid modes via _build_where_clause
 
 ## Test Coverage Summary
-- **126 tests** in `test_chat.py` covering Phase 2 chat backend (11 rounds)
-- **576 tests total** across the full suite, all passing
+- **133 tests** in `test_chat.py` covering Phase 2 chat backend (12 rounds)
+- **583 tests total** across the full suite, all passing
 
 ## Risks
 - `title=""` is treated differently from `title=None` — empty string blocks auto-title. Acceptable but worth noting for Phase 3 UI.
