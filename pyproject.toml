@@ -27,6 +27,7 @@ worker = [
     "faster-whisper>=1.1.0",
     "sentence-transformers>=3.3.0",
     "tiktoken>=0.8.0",
+    "einops>=0.8.0",
 ]
 dev = [
     "pytest>=8.0",
