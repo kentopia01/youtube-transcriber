@@ -242,6 +242,27 @@ class TestSemanticSearchDispatch:
         assert "plainto_tsquery" in sql_text
 
 
+class TestHybridSearchSQLStructure:
+    """Verify hybrid search SQL uses FULL OUTER JOIN for correct RRF."""
+
+    @pytest.mark.asyncio
+    async def test_full_outer_join_not_left_join(self):
+        """Must use FULL OUTER JOIN so keyword-only matches are included."""
+        db = _make_mock_db([])
+        await _hybrid_search(db, "test", [0.1] * 768, limit=5, channel_id=None)
+        sql_text = str(db.execute.call_args[0][0].text)
+        assert "FULL OUTER JOIN" in sql_text
+        assert "LEFT JOIN keyword_ranked" not in sql_text
+
+    @pytest.mark.asyncio
+    async def test_coalesce_on_display_columns(self):
+        """Display columns must COALESCE for one-sided RRF matches."""
+        db = _make_mock_db([])
+        await _hybrid_search(db, "test", [0.1] * 768, limit=5, channel_id=None)
+        sql_text = str(db.execute.call_args[0][0].text)
+        assert "COALESCE(vr.id, kr.id)" in sql_text
+
+
 class TestConfigSearchMode:
     """Test search_mode config setting."""
 

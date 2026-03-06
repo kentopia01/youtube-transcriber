@@ -302,3 +302,85 @@ class TestEdgeCases:
             db, "日本語テスト 한국어", FAKE_EMBEDDING, limit=10, channel_id=None
         )
         # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_hybrid_search_single_word_query(self):
+        """Single-word queries should work in hybrid mode."""
+        db = _fake_db_result([])
+        await _hybrid_search(db, "Python", FAKE_EMBEDDING, limit=10, channel_id=None)
+        call_args = db.execute.call_args
+        params = call_args[0][1]
+        assert params["query"] == "Python"
+
+    @pytest.mark.asyncio
+    async def test_hybrid_search_very_long_query(self):
+        """Very long queries should not crash."""
+        long_query = "artificial intelligence " * 200  # ~400 words
+        db = _fake_db_result([])
+        await _hybrid_search(
+            db, long_query, FAKE_EMBEDDING, limit=10, channel_id=None
+        )
+        # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_keyword_search_sql_injection_patterns(self):
+        """SQL injection patterns are safely parameterized."""
+        db = _fake_db_result([])
+        injection_queries = [
+            "'; DROP TABLE embedding_chunks; --",
+            "' OR '1'='1",
+            "UNION SELECT * FROM users",
+            "1; DELETE FROM videos",
+            "' AND 1=1 --",
+        ]
+        for q in injection_queries:
+            await _keyword_search(db, q, limit=10, channel_id=None)
+            # Verify query text is passed as a parameter, not interpolated
+            call_args = db.execute.call_args
+            params = call_args[0][1]
+            assert params["query"] == q
+
+    @pytest.mark.asyncio
+    async def test_hybrid_search_sql_injection_patterns(self):
+        """SQL injection patterns are safely parameterized in hybrid mode."""
+        db = _fake_db_result([])
+        await _hybrid_search(
+            db, "'; DROP TABLE embedding_chunks; --",
+            FAKE_EMBEDDING, limit=10, channel_id=None,
+        )
+        call_args = db.execute.call_args
+        params = call_args[0][1]
+        assert params["query"] == "'; DROP TABLE embedding_chunks; --"
+
+
+class TestHybridSearchSQL:
+    """Verify the hybrid search SQL structure is correct."""
+
+    @pytest.mark.asyncio
+    async def test_uses_full_outer_join(self):
+        """Hybrid search must use FULL OUTER JOIN to capture keyword-only matches."""
+        db = _fake_db_result([])
+        await _hybrid_search(db, "test", FAKE_EMBEDDING, limit=10, channel_id=None)
+        sql_text = str(db.execute.call_args[0][0])
+        assert "FULL OUTER JOIN" in sql_text
+
+    @pytest.mark.asyncio
+    async def test_keyword_ranked_has_display_columns(self):
+        """keyword_ranked CTE must include display columns for keyword-only results."""
+        db = _fake_db_result([])
+        await _hybrid_search(db, "test", FAKE_EMBEDDING, limit=10, channel_id=None)
+        sql_text = str(db.execute.call_args[0][0])
+        # After FULL OUTER JOIN, keyword-only results need COALESCE for display
+        assert "COALESCE(vr.id, kr.id)" in sql_text
+        assert "COALESCE(vr.chunk_text, kr.chunk_text)" in sql_text
+
+    @pytest.mark.asyncio
+    async def test_both_rrf_components_use_coalesce(self):
+        """Both vector_rank and keyword_rank must COALESCE to 0 for one-sided matches."""
+        db = _fake_db_result([])
+        await _hybrid_search(db, "test", FAKE_EMBEDDING, limit=10, channel_id=None)
+        sql_text = str(db.execute.call_args[0][0])
+        # Vector rank should COALESCE for keyword-only items
+        assert "COALESCE(1.0 / (:rrf_k + vr.vector_rank), 0)" in sql_text
+        # Keyword rank should COALESCE for vector-only items
+        assert "COALESCE(1.0 / (:rrf_k + kr.keyword_rank), 0)" in sql_text

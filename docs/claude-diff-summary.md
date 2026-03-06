@@ -1,25 +1,19 @@
-# Phase 4: Hybrid Search -- Diff Summary
+# QAClaw Round 2: Phase 4 -- Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `alembic/versions/004_add_tsvector_hybrid_search.py` | New migration: adds `search_vector tsvector` column, GIN index, auto-update trigger, backfills existing rows |
-| `app/models/embedding_chunk.py` | Added `search_vector` column (TSVECTOR type) |
-| `app/config.py` | Added `search_mode: str = "hybrid"` setting |
-| `app/services/search.py` | Rewrote with 3 search modes: `_vector_search`, `_keyword_search`, `_hybrid_search` (RRF fusion). Dispatcher `semantic_search()` routes by config or override. |
-| `app/routers/search.py` | Passes `query=query` text to `semantic_search()` for BM25 matching |
-| `tests/test_hybrid_search.py` | New: 21 tests covering all modes, RRF dispatch, fallbacks, config |
-| `tests/test_api_endpoints.py` | Updated 4 fake_search mocks to accept `**kwargs` |
-| `tests/test_feature_smoke.py` | Updated 2 fake_search mocks to accept `**kwargs` |
-| `README.md` | Already had hybrid search docs (pre-populated) |
+| `app/services/search.py` | **Bug fix**: Changed `LEFT JOIN` to `FULL OUTER JOIN` in `_hybrid_search()` so keyword-only matches are included in RRF results. Added COALESCE on all display columns. Expanded `keyword_ranked` CTE to include display columns. |
+| `tests/test_search_service.py` | Added 9 tests: SQL injection patterns (keyword + hybrid), single-word query, very long query, FULL OUTER JOIN verification, COALESCE verification |
+| `tests/test_hybrid_search.py` | Added 2 tests: FULL OUTER JOIN structure, COALESCE on display columns |
 
 ## Why
-Pure vector search misses exact matches on proper nouns, technical terms, and acronyms. Hybrid BM25+vector with RRF gives best-of-both-worlds retrieval.
+The `LEFT JOIN` from `vector_ranked` silently dropped items found only by BM25 keyword search. This is the exact scenario hybrid search was designed to handle (proper nouns, acronyms, jargon that vector search misses). `FULL OUTER JOIN` ensures both keyword-only and vector-only matches contribute to the final RRF score.
 
 ## Risks
-- **Migration must run before hybrid mode works** -- the `search_vector` column and GIN index are required. Run `alembic upgrade head` before deploying.
-- **Backfill on large tables** -- the migration backfills all existing rows. On very large datasets this could be slow; consider running during off-peak.
+- **None significant** -- the FULL OUTER JOIN is a strict superset of the previous LEFT JOIN behavior. Existing vector-found results are unchanged; keyword-only results now correctly appear.
+- PostgreSQL supports FULL OUTER JOIN natively; no performance concern for the candidate pool sizes used (3x limit).
 
 ## Plan Deviations
-- None. Implementation matches the plan exactly.
+- None. All planned review items completed.

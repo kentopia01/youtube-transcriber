@@ -181,6 +181,12 @@ async def _hybrid_search(
         keyword_ranked AS (
             SELECT
                 ec.id,
+                ec.video_id,
+                v.title as video_title,
+                ec.chunk_text,
+                ec.start_time,
+                ec.end_time,
+                ec.speaker,
                 ROW_NUMBER() OVER (
                     ORDER BY ts_rank(ec.search_vector, plainto_tsquery('english', :query)) DESC
                 ) as keyword_rank
@@ -192,17 +198,17 @@ async def _hybrid_search(
             LIMIT {candidate_limit}
         )
         SELECT
-            vr.id,
-            vr.video_id,
-            vr.video_title,
-            vr.chunk_text,
-            vr.start_time,
-            vr.end_time,
-            vr.speaker,
-            (1.0 / (:rrf_k + vr.vector_rank))
+            COALESCE(vr.id, kr.id) as id,
+            COALESCE(vr.video_id, kr.video_id) as video_id,
+            COALESCE(vr.video_title, kr.video_title) as video_title,
+            COALESCE(vr.chunk_text, kr.chunk_text) as chunk_text,
+            COALESCE(vr.start_time, kr.start_time) as start_time,
+            COALESCE(vr.end_time, kr.end_time) as end_time,
+            COALESCE(vr.speaker, kr.speaker) as speaker,
+            COALESCE(1.0 / (:rrf_k + vr.vector_rank), 0)
                 + COALESCE(1.0 / (:rrf_k + kr.keyword_rank), 0) as rrf_score
         FROM vector_ranked vr
-        LEFT JOIN keyword_ranked kr ON vr.id = kr.id
+        FULL OUTER JOIN keyword_ranked kr ON vr.id = kr.id
         ORDER BY rrf_score DESC
         LIMIT :limit
     """
