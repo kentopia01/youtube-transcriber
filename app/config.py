@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # LLM summarization
     summary_model: str = "claude-haiku-4-20250514"
 
+    # Embedding
+    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    embedding_dimensions: int = 768
+    chunk_target_tokens: int = 300
+    chunk_max_tokens: int = 400
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"

@@ -42,7 +42,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
 
         try:
             segments = [
-                {"start": s.start_time, "end": s.end_time, "text": s.text}
+                {"start": s.start_time, "end": s.end_time, "text": s.text, "speaker": s.speaker}
                 for s in transcription.segments
             ]
 
@@ -61,6 +61,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
                     end_time=chunk.get("end_time"),
                     embedding=chunk["embedding"],
                     token_count=chunk.get("token_count"),
+                    speaker=chunk.get("speaker"),
                 )
                 db.add(ec)
 
