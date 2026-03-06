@@ -1,58 +1,27 @@
-# Diff Summary: Embedding & Chunking Upgrade (Phases 1-3)
+# QAClaw Round 1: Diff Summary
 
 ## What Changed
 
-### `app/config.py`
-- **Added** `embedding_model`, `embedding_dimensions`, `chunk_target_tokens`, `chunk_max_tokens` settings
+### Bug Fix: `app/services/embedding.py`
+- **Lines 55-57**: `_split_at_sentence_boundaries` had a dead `pass` statement inside a `target_tokens` check. Chunks only flushed at `max_tokens` (400), ignoring `target_tokens` (300). Replaced with actual flush logic so chunks split near the target size.
 
-### `app/services/embedding.py`
-- **Replaced** entire file — new model loading with `nomic-ai/nomic-embed-text-v1.5` + `trust_remote_code=True`
-- **Added** `_build_speaker_chunks()`: groups segments by speaker, merges short groups, splits long groups at sentence boundaries
-- **Added** `_split_at_sentence_boundaries()`: splits text at `.!?` targeting configurable token counts
-- **Replaced** fixed 500-token window chunking with speaker-aware semantic chunking
-- **Added** `search_document:` prefix to chunk texts before encoding
+### New Tests: `tests/test_embedding_service.py`
+Added 4 new test classes (16 tests total):
+- `TestTargetTokensSplitting` -- verifies chunks flush at target, not max; handles single long sentences
+- `TestEdgeCases` -- single segment, empty text, missing speaker key, mixed speakers, all-empty segments
+- `TestChunkAndEmbed` -- mocked model tests: 768d output, search_document prefix, empty input, multi-speaker
 
-### `app/services/search.py`
-- **Replaced** direct `SentenceTransformer` instantiation with cached model using `settings.embedding_model`
-- **Added** `search_query:` prefix to queries before encoding
-- **Added** `speaker` field to search results SQL and return dicts
-
-### `app/models/embedding_chunk.py`
-- **Changed** `Vector(384)` to `Vector(768)`
-- **Added** `speaker: Mapped[str | None]` column
-
-### `app/tasks/embed.py`
-- **Changed** segment extraction to include `speaker` field
-- **Changed** EmbeddingChunk creation to pass `speaker` from chunk data
-
-### `alembic/versions/003_upgrade_embeddings_768d_and_speaker.py` (NEW)
-- Truncates existing embedding_chunks
-- Drops and recreates HNSW index
-- Resizes embedding column from vector(384) to vector(768)
-- Adds speaker column
-
-### `scripts/reembed_all.py` (NEW)
-- Standalone script to re-embed all completed videos
-- Supports `--dry-run` and `--video-id UUID` flags
-- Batch commits every 10 videos
-
-### `scripts/download_models.py`
-- **Added** `download_embedding_model()` to pre-download nomic-embed-text-v1.5
-
-### `README.md`
-- Updated pipeline diagram to show nomic model
-- Added "Semantic Embeddings" section describing model, chunking, and re-embed script
-- Added 4 new config variables to configuration table
+### New Tests: `tests/test_config.py`
+Added 5 tests for new embedding config defaults:
+- `embedding_model`, `embedding_dimensions`, `chunk_target_tokens`, `chunk_max_tokens`, overridability
 
 ## Why
-- all-MiniLM-L6-v2 is bottom-tier on MTEB; nomic-embed-text-v1.5 is top-5 with 768d vectors
-- Fixed 500-token window chunking splits mid-sentence and mid-speaker-turn, destroying semantic coherence
-- Speaker-aware chunking preserves turn boundaries for better retrieval, especially for multi-speaker content
+- The target_tokens bug meant all chunks tended toward 400 tokens instead of the intended 200-400 range
+- Test coverage for the new embedding pipeline was thin -- no mocked integration tests, no edge case coverage
 
 ## Risks
-- **Existing embeddings are truncated** by migration 003 — search will be broken until `scripts/reembed_all.py` runs
-- **nomic model is ~550MB** — first load takes longer than MiniLM. Mitigated by `download_models.py`
-- **trust_remote_code=True** is required by nomic model (it uses custom code for task prefixes)
+- The target_tokens fix changes chunking behavior -- existing re-embedded content would need re-embedding again (but since Phase 3 hasn't run in production yet, this is a no-op risk)
+- No live database migration testing (reviewed by code inspection only)
 
 ## Plan Deviations
-- Phases 1 and 2 were implemented together in one commit since the chunking rewrite naturally fits with the model swap
+- None. All work follows QACLAW_TASK.md Round 1 scope.

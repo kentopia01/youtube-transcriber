@@ -1,27 +1,32 @@
-Test Results -- Embedding & Chunking Upgrade (Phases 1-3)
-==========================================================
+Test Results -- QAClaw Round 1 (Phases 1-3)
+============================================
 Date: 2026-03-06
 Python: 3.13.12
 pytest: 9.0.2
 
-Command: .venv/bin/pytest tests/ -v --ignore=tests/test_v2_smoke.py
-Result: 338 passed, 42 warnings in 1.08s
+Command: .venv/bin/pytest -v
+Result: 366 passed, 42 warnings in 5.54s
 
-New tests added (11):
-  - TestSentenceBoundarySplitting::test_short_text_returns_single_chunk -- PASSED
-  - TestSentenceBoundarySplitting::test_long_text_splits_at_sentences -- PASSED
-  - TestSentenceBoundarySplitting::test_empty_text_returns_original -- PASSED
-  - TestSpeakerAwareChunking::test_single_speaker_short -- PASSED
-  - TestSpeakerAwareChunking::test_different_speakers_create_separate_chunks -- PASSED
-  - TestSpeakerAwareChunking::test_same_speaker_groups_merged -- PASSED
-  - TestSpeakerAwareChunking::test_no_speaker_label_treated_as_single_group -- PASSED
-  - TestSpeakerAwareChunking::test_long_monologue_splits_at_sentences -- PASSED
-  - TestSpeakerAwareChunking::test_empty_segments_returns_empty -- PASSED
-  - TestSpeakerAwareChunking::test_chunk_preserves_timestamps -- PASSED
-  - TestSpeakerAwareChunking::test_consecutive_same_speaker_segments_merge -- PASSED
+New tests added by QAClaw (16):
+  - TestTargetTokensSplitting::test_chunks_flush_at_target_not_max -- PASSED
+  - TestTargetTokensSplitting::test_single_long_sentence_exceeding_max -- PASSED
+  - TestEdgeCases::test_single_segment_video -- PASSED
+  - TestEdgeCases::test_segment_with_empty_text -- PASSED
+  - TestEdgeCases::test_segments_with_no_speaker_key -- PASSED
+  - TestEdgeCases::test_mixed_speaker_and_no_speaker -- PASSED
+  - TestEdgeCases::test_chunk_has_token_count -- PASSED
+  - TestEdgeCases::test_all_empty_text_segments -- PASSED
+  - TestChunkAndEmbed::test_returns_768d_embeddings -- PASSED
+  - TestChunkAndEmbed::test_search_document_prefix_applied -- PASSED
+  - TestChunkAndEmbed::test_empty_segments_returns_empty -- PASSED
+  - TestChunkAndEmbed::test_multiple_speakers_produce_multiple_chunks -- PASSED
+  - TestConfigDefaults::test_embedding_model_default -- PASSED
+  - TestConfigDefaults::test_embedding_dimensions_default -- PASSED
+  - TestConfigDefaults::test_chunk_target_tokens_default -- PASSED
+  - TestConfigDefaults::test_chunk_max_tokens_default -- PASSED
+  - TestConfigDefaults::test_embedding_settings_overridable -- PASSED
 
-Skipped test files:
-  - tests/test_v2_smoke.py (requires `requests` package, integration-only)
-  - tests/test_transcript_cleanup.py (collected via other imports, passes when tiktoken installed)
+Bug fixed (1):
+  - _split_at_sentence_boundaries: target_tokens was ignored (dead pass statement)
 
-All 338 tests pass. No regressions.
+All 366 tests pass. No regressions.

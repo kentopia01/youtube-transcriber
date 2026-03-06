@@ -52,9 +52,10 @@ def _split_at_sentence_boundaries(text: str, target_tokens: int, max_tokens: int
         current_sentences.append(sentence)
         current_tokens += sent_tokens
 
-        if current_tokens >= target_tokens and sent_tokens <= max_tokens:
-            # We've hit our target; save this chunk if next sentence would exceed max
-            pass  # Let the max_tokens check handle it on next iteration
+        if current_tokens >= target_tokens:
+            chunks.append(" ".join(current_sentences))
+            current_sentences = []
+            current_tokens = 0
 
     if current_sentences:
         chunks.append(" ".join(current_sentences))

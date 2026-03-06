@@ -1,9 +1,14 @@
 """Tests for the embedding chunking logic (without ML model)."""
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 import pytest
 
 from app.services.embedding import (
     _build_speaker_chunks,
+    _count_tokens,
     _split_at_sentence_boundaries,
+    chunk_and_embed,
 )
 
 
@@ -120,3 +125,150 @@ class TestLegacyChunkTextSplitting:
         ]
         total_words = sum(len(s["text"].split()) for s in segments)
         assert total_words > 500
+
+
+class TestTargetTokensSplitting:
+    """Verify that _split_at_sentence_boundaries actually respects target_tokens."""
+
+    def test_chunks_flush_at_target_not_max(self):
+        """Chunks should flush near target_tokens, not wait until max_tokens."""
+        sentences = [f"Sentence {i} has a moderate amount of tokens in it." for i in range(30)]
+        text = " ".join(sentences)
+        chunks = _split_at_sentence_boundaries(text, target_tokens=40, max_tokens=100)
+        assert len(chunks) > 1
+        # Each chunk (except maybe the last) should be around target, not near max
+        for chunk in chunks[:-1]:
+            token_count = _count_tokens(chunk)
+            assert token_count >= 40, f"Chunk too small: {token_count} tokens"
+            assert token_count < 100, f"Chunk too large (near max): {token_count} tokens"
+
+    def test_single_long_sentence_exceeding_max(self):
+        """A single sentence longer than max_tokens should still be returned."""
+        long_sentence = "word " * 500  # Very long single sentence, no period breaks
+        chunks = _split_at_sentence_boundaries(long_sentence.strip(), target_tokens=50, max_tokens=100)
+        assert len(chunks) >= 1
+        # The text is preserved (not silently dropped)
+        assert "word" in chunks[0]
+
+
+class TestEdgeCases:
+    """Edge cases from the QA task: empty segments, single segment, no text, mixed speakers."""
+
+    def test_single_segment_video(self):
+        segments = [
+            {"start": 0.0, "end": 60.0, "text": "This is the only segment.", "speaker": "SPEAKER_00"},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        assert len(chunks) == 1
+        assert chunks[0]["text"] == "This is the only segment."
+        assert chunks[0]["start_time"] == 0.0
+        assert chunks[0]["end_time"] == 60.0
+
+    def test_segment_with_empty_text(self):
+        segments = [
+            {"start": 0.0, "end": 1.0, "text": "", "speaker": "SPEAKER_00"},
+            {"start": 1.0, "end": 5.0, "text": "Real content here.", "speaker": "SPEAKER_00"},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        assert len(chunks) == 1
+        assert "Real content" in chunks[0]["text"]
+
+    def test_segments_with_no_speaker_key(self):
+        """Segments missing the 'speaker' key entirely should default to None."""
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "First line."},
+            {"start": 5.0, "end": 10.0, "text": "Second line."},
+            {"start": 10.0, "end": 15.0, "text": "Third line."},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        assert len(chunks) == 1
+        assert chunks[0]["speaker"] is None
+
+    def test_mixed_speaker_and_no_speaker(self):
+        """Segments with speaker=None should not merge with named speakers."""
+        segments = [
+            {"start": 0.0, "end": 2.0, "text": "Has speaker.", "speaker": "SPEAKER_00"},
+            {"start": 2.0, "end": 4.0, "text": "No speaker."},
+            {"start": 4.0, "end": 6.0, "text": "Speaker again.", "speaker": "SPEAKER_00"},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        assert len(chunks) == 3
+        assert chunks[0]["speaker"] == "SPEAKER_00"
+        assert chunks[1]["speaker"] is None
+        assert chunks[2]["speaker"] == "SPEAKER_00"
+
+    def test_chunk_has_token_count(self):
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Hello world.", "speaker": "SPEAKER_00"},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        assert "token_count" in chunks[0]
+        assert chunks[0]["token_count"] > 0
+
+    def test_all_empty_text_segments(self):
+        segments = [
+            {"start": 0.0, "end": 1.0, "text": ""},
+            {"start": 1.0, "end": 2.0, "text": ""},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=300, max_tokens=400)
+        # Should still produce a chunk (empty text joined), not crash
+        assert len(chunks) >= 1
+
+
+class TestChunkAndEmbed:
+    """Test chunk_and_embed with a mocked embedding model."""
+
+    @patch("app.services.embedding._get_embedding_model")
+    def test_returns_768d_embeddings(self, mock_get_model):
+        mock_model = MagicMock()
+        # Return fake 768d embeddings
+        mock_model.encode.return_value = np.random.randn(1, 768).astype(np.float32)
+        mock_get_model.return_value = mock_model
+
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Hello world.", "speaker": "SPEAKER_00"},
+        ]
+        results = chunk_and_embed(segments, model_cache_dir="/tmp/test")
+        assert len(results) == 1
+        assert len(results[0]["embedding"]) == 768
+        assert results[0]["chunk_index"] == 0
+        assert results[0]["speaker"] == "SPEAKER_00"
+
+    @patch("app.services.embedding._get_embedding_model")
+    def test_search_document_prefix_applied(self, mock_get_model):
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.random.randn(1, 768).astype(np.float32)
+        mock_get_model.return_value = mock_model
+
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Test text."},
+        ]
+        chunk_and_embed(segments, model_cache_dir="/tmp/test")
+
+        # Verify the model was called with search_document: prefix
+        call_args = mock_model.encode.call_args
+        texts = call_args[0][0]
+        assert texts[0].startswith("search_document: ")
+
+    @patch("app.services.embedding._get_embedding_model")
+    def test_empty_segments_returns_empty(self, mock_get_model):
+        results = chunk_and_embed([], model_cache_dir="/tmp/test")
+        assert results == []
+        mock_get_model.assert_not_called()
+
+    @patch("app.services.embedding._get_embedding_model")
+    def test_multiple_speakers_produce_multiple_chunks(self, mock_get_model):
+        mock_model = MagicMock()
+        mock_model.encode.return_value = np.random.randn(3, 768).astype(np.float32)
+        mock_get_model.return_value = mock_model
+
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Speaker A talks.", "speaker": "SPEAKER_00"},
+            {"start": 5.0, "end": 10.0, "text": "Speaker B talks.", "speaker": "SPEAKER_01"},
+            {"start": 10.0, "end": 15.0, "text": "Speaker C talks.", "speaker": "SPEAKER_02"},
+        ]
+        results = chunk_and_embed(segments, model_cache_dir="/tmp/test")
+        assert len(results) == 3
+        assert results[0]["speaker"] == "SPEAKER_00"
+        assert results[1]["speaker"] == "SPEAKER_01"
+        assert results[2]["speaker"] == "SPEAKER_02"

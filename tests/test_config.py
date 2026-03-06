@@ -64,6 +64,35 @@ class TestConfigDefaults:
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")
         assert s.whisper_compute_type == "int8"
 
+    def test_embedding_model_default(self):
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x")
+        assert s.embedding_model == "nomic-ai/nomic-embed-text-v1.5"
+
+    def test_embedding_dimensions_default(self):
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x")
+        assert s.embedding_dimensions == 768
+
+    def test_chunk_target_tokens_default(self):
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x")
+        assert s.chunk_target_tokens == 300
+
+    def test_chunk_max_tokens_default(self):
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x")
+        assert s.chunk_max_tokens == 400
+
+    def test_embedding_settings_overridable(self):
+        s = Settings(
+            database_url="x", database_url_sync="x", redis_url="x",
+            embedding_model="custom/model",
+            embedding_dimensions=512,
+            chunk_target_tokens=200,
+            chunk_max_tokens=300,
+        )
+        assert s.embedding_model == "custom/model"
+        assert s.embedding_dimensions == 512
+        assert s.chunk_target_tokens == 200
+        assert s.chunk_max_tokens == 300
+
 
 class TestNativeVsDockerConfig:
     """Test configuration differences between native and Docker modes."""
