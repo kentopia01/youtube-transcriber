@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.routers import channels, jobs, pages, search, transcriptions, videos
+from app.routers import channels, chat, jobs, pages, search, transcriptions, videos
 
 structlog.configure(
     processors=[
@@ -37,6 +37,7 @@ def create_app() -> FastAPI:
     application.include_router(search.router)
     application.include_router(jobs.router)
     application.include_router(transcriptions.router)
+    application.include_router(chat.router)
 
     return application
 

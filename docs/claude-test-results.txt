@@ -1,24 +1,48 @@
-QAClaw Phase 1 Review (Round 2) - Test Results
+BuildClaw Phase 2: Chat Backend - Test Results
 ================================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 450 passed, 0 failed, 42 warnings in 4.51s
+Result: 505 passed, 0 failed, 42 warnings in 4.87s
 
-New tests added in this round (7) in tests/test_chat_toggle.py:
-  TestVideoChatToggle::test_toggle_idempotent_already_enabled
-  TestVideoChatToggle::test_toggle_idempotent_already_disabled
-  TestVideoChatToggle::test_toggle_response_contains_correct_video_id
-  TestChannelChatToggle::test_toggle_channel_idempotent_already_disabled
-  TestChannelChatToggle::test_toggle_channel_invalid_uuid_returns_422
-  TestChannelChatToggle::test_toggle_channel_response_contains_channel_id
-  TestBuildWhereClauseChatEnabled::test_channel_id_only
+New tests added (26) in tests/test_chat_backend.py:
+  TestCreateSession::test_create_session_returns_201_fields
+  TestCreateSession::test_create_session_default_platform
+  TestCreateSession::test_create_session_no_body
+  TestListSessions::test_list_sessions_empty
+  TestListSessions::test_list_sessions_returns_sessions
+  TestGetSession::test_get_session_with_messages
+  TestGetSession::test_get_nonexistent_session_returns_404
+  TestDeleteSession::test_delete_session
+  TestDeleteSession::test_delete_nonexistent_session_returns_404
+  TestRenameSession::test_rename_session
+  TestRenameSession::test_rename_nonexistent_session_returns_404
+  TestRenameSession::test_rename_missing_title_returns_422
+  TestSendMessage::test_send_message_returns_assistant_response
+  TestSendMessage::test_send_message_includes_sources
+  TestSendMessage::test_auto_title_on_first_message
+  TestSendMessage::test_auto_title_short_message_no_ellipsis
+  TestSendMessage::test_existing_title_not_overwritten
+  TestSendMessage::test_send_message_nonexistent_session_returns_404
+  TestSendMessage::test_chat_enabled_only_filter_used
+  TestChatServiceHelpers::test_fmt_ts_minutes_seconds
+  TestChatServiceHelpers::test_fmt_ts_hours
+  TestChatServiceHelpers::test_format_chunks_for_context
+  TestChatServiceHelpers::test_build_messages_with_history
+  TestChatServiceHelpers::test_build_messages_empty_history
+  TestChatWithContext::test_chat_with_context_calls_search_with_chat_enabled
+  TestChatWithContext::test_chat_returns_empty_sources_when_no_chunks
 
-Total chat toggle tests: 28 (21 from round 1 + 7 new)
-Total suite: 450 passed (443 from round 1 + 7 new)
+Total suite: 505 passed (479 prior + 26 new)
 
 Files changed:
-  tests/test_chat_toggle.py (7 new edge case tests)
-  docs/claude-plan.md
-  docs/claude-diff-summary.md
-  docs/claude-test-results.txt
+  alembic/versions/006_create_chat_tables.py (new)
+  app/models/chat_session.py (new)
+  app/models/chat_message.py (new)
+  app/models/__init__.py (updated)
+  app/config.py (updated)
+  app/schemas/chat.py (new)
+  app/services/chat.py (new)
+  app/routers/chat.py (new)
+  app/main.py (updated)
+  tests/test_chat_backend.py (new)

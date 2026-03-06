@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Search
     search_mode: str = "hybrid"  # "vector", "hybrid", or "keyword"
 
+    # Chat
+    chat_model: str = "claude-sonnet-4-20250514"
+    chat_max_history: int = 10
+    chat_retrieval_top_k: int = 10
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"
