@@ -24,6 +24,6 @@ mkdir -p data/audio data/models
 # Start Celery worker
 exec celery -A app.tasks.celery_app worker \
     --loglevel="${LOG_LEVEL:-info}" \
-    --concurrency=1 \
+    --pool=solo \
     --hostname="native-worker@%h" \
     -Q celery

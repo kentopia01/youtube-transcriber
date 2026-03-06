@@ -42,31 +42,38 @@ services:
       redis:
         condition: service_healthy
 
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    env_file: .env
-    volumes:
-      - audio_data:/data/audio
-      - model_cache:/data/models
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  flower:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app flower --port=5555
-    ports:
-      - "5555:5555"
-    env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
+  # NOTE: Worker and Flower have been replaced by the native macOS worker.
+  # The native worker uses MLX (Metal-accelerated) transcription which cannot
+  # run inside Docker. See scripts/start_worker.sh and com.sentryclaw.yt-worker.plist.
+  #
+  # To use the Docker worker instead (e.g., on Linux), uncomment below and set
+  # TRANSCRIPTION_ENGINE=faster-whisper in .env.
+  #
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.worker
+  #   env_file: .env
+  #   volumes:
+  #     - audio_data:/data/audio
+  #     - model_cache:/data/models
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #
+  # flower:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   command: celery -A app.tasks.celery_app flower --port=5555
+  #   ports:
+  #     - "5555:5555"
+  #   env_file: .env
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
 
 volumes:
   pgdata:
