@@ -86,7 +86,7 @@ YouTube URL → yt-dlp (download) → MLX Whisper (transcribe, Metal GPU)
   → Language Detection (whisper-tiny, first 30s)
   → Speaker Diarization (pyannote.audio, CPU) [optional]
   → LLM Cleanup (Anthropic Haiku) [optional]
-  → Summarize (Anthropic Sonnet) → Embed (MiniLM)
+  → Summarize (Anthropic Haiku) → Embed (MiniLM)
 ```
 
 ## Architecture

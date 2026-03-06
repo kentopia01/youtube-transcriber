@@ -22,13 +22,13 @@ def reap_stale_jobs(db_url: str, timeout_hours: float, dry_run: bool):
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=timeout_hours)
 
-    # Find stale jobs
+    # Find stale jobs (use COALESCE: started_at if running, else created_at)
     cur.execute("""
-        SELECT id, video_id, status, started_at, updated_at
+        SELECT id, video_id, status, started_at, COALESCE(started_at, created_at) AS anchor
         FROM jobs
         WHERE status IN ('running', 'processing', 'downloading', 'transcribing',
                          'diarizing', 'cleaning', 'summarizing', 'embedding')
-        AND updated_at < %s
+        AND COALESCE(started_at, created_at) < %s
     """, (cutoff,))
 
     stale_jobs = cur.fetchall()
@@ -39,8 +39,8 @@ def reap_stale_jobs(db_url: str, timeout_hours: float, dry_run: bool):
         return 0
 
     print(f"Found {len(stale_jobs)} stale job(s):")
-    for job_id, video_id, status, started_at, updated_at in stale_jobs:
-        age = datetime.now(timezone.utc) - updated_at.replace(tzinfo=timezone.utc)
+    for job_id, video_id, status, started_at, anchor in stale_jobs:
+        age = datetime.now(timezone.utc) - anchor.replace(tzinfo=timezone.utc)
         print(f"  Job {job_id}: status={status}, stale for {age}")
 
         if not dry_run:

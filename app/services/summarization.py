@@ -33,7 +33,7 @@ def _count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
 
-def summarize_text(text: str, video_title: str = "", api_key: str = "") -> dict:
+def summarize_text(text: str, video_title: str = "", api_key: str = "", model: str = "") -> dict:
     """Summarize transcript text using Claude API.
 
     For long transcripts (>100k tokens), uses chunk-then-consolidate approach.
@@ -43,10 +43,12 @@ def summarize_text(text: str, video_title: str = "", api_key: str = "") -> dict:
         raise ValueError("ANTHROPIC_API_KEY is required for summarization")
 
     client = anthropic.Anthropic(api_key=api_key)
-    model = "claude-sonnet-4-20250514"
+    if not model:
+        from app.config import settings
+        model = settings.summary_model
 
     token_count = _count_tokens(text)
-    logger.info("summarizing", token_count=token_count, title=video_title)
+    logger.info("summarizing", token_count=token_count, title=video_title, model=model)
 
     if token_count <= MAX_TOKENS_PER_CHUNK:
         return _summarize_single(client, model, text, video_title)

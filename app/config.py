@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # LLM cleanup
     cleanup_model: str = "claude-haiku-4-20250514"
 
+    # LLM summarization
+    summary_model: str = "claude-haiku-4-20250514"
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"

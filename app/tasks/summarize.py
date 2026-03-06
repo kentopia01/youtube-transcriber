@@ -42,6 +42,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
                 transcription.full_text,
                 video_title=video.title,
                 api_key=settings.anthropic_api_key,
+                model=settings.summary_model,
             )
 
             summary = Summary(
