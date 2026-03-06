@@ -959,3 +959,179 @@ class TestAnthropicErrorHandling:
         assert messages[1]["content"] == "prior answer"
         assert "Important content" in messages[2]["content"]
         assert "new question" in messages[2]["content"]
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 3 — Additional Edge Cases
+# ---------------------------------------------------------------------------
+
+class TestAdditionalEdgeCases:
+    """Extra edge cases for Phase 2 QA completeness."""
+
+    def test_create_session_with_telegram_platform(self):
+        """Creating a session with platform='telegram' should work."""
+        db = StubDB()
+        client = _build_client(db)
+        resp = client.post(
+            "/api/chat/sessions",
+            json={"platform": "telegram"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["platform"] == "telegram"
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_auto_title_not_set_on_second_message(self, mock_chat):
+        """Auto-title should only fire on the first message (when title is None)."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title=None)
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+
+        # First message sets title
+        client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "First question"},
+        )
+        assert s.title == "First question"
+
+        # Simulate second message — title already set, should not change
+        db2 = StubDB(execute_results=[s])
+        client2 = _build_client(db2)
+        client2.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "Second question is much longer"},
+        )
+        assert s.title == "First question"
+
+    def test_get_session_invalid_uuid_returns_422(self):
+        """Invalid UUID format in path should return 422."""
+        client = _build_client()
+        resp = client.get("/api/chat/sessions/not-a-uuid")
+        assert resp.status_code == 422
+
+    def test_delete_session_invalid_uuid_returns_422(self):
+        """Invalid UUID format in delete path should return 422."""
+        client = _build_client()
+        resp = client.delete("/api/chat/sessions/not-a-uuid")
+        assert resp.status_code == 422
+
+    def test_send_message_invalid_session_uuid_returns_422(self):
+        """Invalid UUID format in message path should return 422."""
+        client = _build_client()
+        resp = client.post(
+            "/api/chat/sessions/not-a-uuid/messages",
+            json={"content": "hi"},
+        )
+        assert resp.status_code == 422
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_sources_none_when_no_chunks(self, mock_chat):
+        """When RAG returns no sources, assistant message sources should be empty list."""
+        mock_chat.return_value = {
+            "content": "I don't have enough context to answer.",
+            "sources": [],
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+        s = _make_session(title="No Sources")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "something obscure"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["sources"] == []
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_source_structure_matches_schema(self, mock_encode, mock_search, mock_llm):
+        """Verify each source dict has all required keys from ChatSourceOut."""
+        from app.services.chat import chat_with_context
+
+        vid_id = uuid.uuid4()
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": vid_id,
+                "video_title": "My Video",
+                "chunk_text": "some content",
+                "start_time": 5.0,
+                "end_time": 15.0,
+                "speaker": None,
+                "similarity": 0.85,
+            }
+        ]
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+
+        assert len(result["sources"]) == 1
+        src = result["sources"][0]
+        assert src["video_id"] == str(vid_id)
+        assert src["video_title"] == "My Video"
+        assert src["chunk_text"] == "some content"
+        assert src["start_time"] == 5.0
+        assert src["end_time"] == 15.0
+        assert src["similarity"] == 0.85
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_empty_history_produces_single_message(self, mock_encode, mock_search, mock_llm):
+        """With no history, only the current question message is sent to LLM."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("my question", [], db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert "my question" in messages[0]["content"]
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_retrieval_top_k_passed_to_search(self, mock_encode, mock_search, mock_llm):
+        """Verify chat_retrieval_top_k from settings is passed as limit."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("question", [], db)
+
+        _, kwargs = mock_search.call_args
+        assert kwargs["limit"] == 10  # default chat_retrieval_top_k
