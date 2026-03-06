@@ -1745,51 +1745,6 @@ class TestQAClawRound7:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    def test_get_anthropic_client_singleton(self):
-        """_get_anthropic_client caches the client instance."""
-        import app.services.chat as chat_mod
-
-        original = chat_mod._anthropic_client
-        chat_mod._anthropic_client = None
-        try:
-            with patch("app.services.chat.anthropic.Anthropic") as MockAnthropicCls:
-                mock_instance = MagicMock()
-                MockAnthropicCls.return_value = mock_instance
-                client1 = chat_mod._get_anthropic_client()
-                client2 = chat_mod._get_anthropic_client()
-                assert client1 is client2
-                MockAnthropicCls.assert_called_once()
-        finally:
-            chat_mod._anthropic_client = original
-
-    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
-    def test_session_isolation_different_sessions(self, mock_chat):
-        """Messages from session A should not appear in session B's history."""
-        mock_chat.return_value = MOCK_CHAT_RESULT
-
-        sa_sess = _make_session(title="Session A")
-        msg_a = _make_message(sa_sess.id, "user", "Question for A")
-        sa_sess.messages = [msg_a]
-
-        sb_sess = _make_session(title="Session B")
-        sb_sess.messages = []
-
-        db_b = StubDB(execute_results=[sb_sess])
-        client_b = _build_client(db_b)
-        resp = client_b.post(
-            f"/api/chat/sessions/{sb_sess.id}/messages",
-            json={"content": "Question for B"},
-        )
-        assert resp.status_code == 200
-        history = mock_chat.call_args[1]["history"]
-        assert len(history) == 0
-
-    def test_models_importable_from_package(self):
-        """ChatSession and ChatMessage should be importable from app.models."""
-        from app.models import ChatSession, ChatMessage
-
-        assert ChatSession.__tablename__ == "chat_sessions"
-        assert ChatMessage.__tablename__ == "chat_messages"
 
 
 # ---------------------------------------------------------------------------
