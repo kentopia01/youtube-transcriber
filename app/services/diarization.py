@@ -35,8 +35,8 @@ def diarize(
     logger.info("diarization_starting", audio=audio_path)
 
     pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
-        use_auth_token=hf_token,
+        "pyannote/speaker-diarization-community-1",
+        token=hf_token,
     )
 
     # Build kwargs for speaker hints

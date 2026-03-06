@@ -45,7 +45,7 @@ def download_pyannote_model():
         from pyannote.audio import Pipeline
         Pipeline.from_pretrained(
             "pyannote/speaker-diarization-community-1",
-            use_auth_token=hf_token
+            token=hf_token
         )
         print("   ✅ pyannote model cached")
     except Exception as e:
