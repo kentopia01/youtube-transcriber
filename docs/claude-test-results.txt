@@ -1,27 +1,53 @@
-Phase 4: Telegram Bot — Test Results
-=====================================
+Phase 4: Telegram Bot — QAClaw QA Test Results
+=================================================
 
 Command: .venv/bin/pytest -v
 Date: 2026-03-06
 
-Telegram bot tests (23 new tests):
+Telegram bot tests (39 tests — 23 original + 16 added by QAClaw):
+
+  Access control (9 tests):
   tests/test_telegram_bot.py::TestAccessControl::test_allowed_when_list_empty PASSED
   tests/test_telegram_bot.py::TestAccessControl::test_allowed_when_in_list PASSED
   tests/test_telegram_bot.py::TestAccessControl::test_denied_when_not_in_list PASSED
   tests/test_telegram_bot.py::TestAccessControl::test_start_denied PASSED
   tests/test_telegram_bot.py::TestAccessControl::test_new_denied PASSED
   tests/test_telegram_bot.py::TestAccessControl::test_message_denied PASSED
+  tests/test_telegram_bot.py::TestAccessControlAdditional::test_sessions_denied PASSED
+  tests/test_telegram_bot.py::TestAccessControlAdditional::test_status_denied PASSED
+  tests/test_telegram_bot.py::TestAccessControlAdditional::test_videos_denied PASSED
+
+  Command handlers (6 tests):
   tests/test_telegram_bot.py::TestStartCommand::test_start_welcome PASSED
   tests/test_telegram_bot.py::TestNewCommand::test_creates_session PASSED
   tests/test_telegram_bot.py::TestSessionsCommand::test_no_sessions PASSED
   tests/test_telegram_bot.py::TestSessionsCommand::test_lists_sessions PASSED
   tests/test_telegram_bot.py::TestStatusCommand::test_shows_counts PASSED
   tests/test_telegram_bot.py::TestVideosCommand::test_no_videos PASSED
+  tests/test_telegram_bot.py::TestVideosCommandListing::test_lists_videos PASSED
+
+  Message handling (6 tests):
   tests/test_telegram_bot.py::TestHandleMessage::test_auto_creates_session_and_responds PASSED
   tests/test_telegram_bot.py::TestHandleMessage::test_uses_existing_session PASSED
+  tests/test_telegram_bot.py::TestHandleMessageEdgeCases::test_empty_text_ignored PASSED
+  tests/test_telegram_bot.py::TestHandleMessageEdgeCases::test_error_in_chat_returns_error_message PASSED
+  tests/test_telegram_bot.py::TestHandleMessageEdgeCases::test_auto_title_from_first_message PASSED
+  tests/test_telegram_bot.py::TestHandleMessageEdgeCases::test_long_title_truncated PASSED
+
+  Response formatting (4 tests):
   tests/test_telegram_bot.py::TestFormatResponse::test_no_sources PASSED
   tests/test_telegram_bot.py::TestFormatResponse::test_with_sources PASSED
   tests/test_telegram_bot.py::TestFormatResponse::test_deduplicates_sources PASSED
+  tests/test_telegram_bot.py::TestFormatResponseMaxSources::test_limits_to_five_sources PASSED
+
+  Source citation formatting (5 tests):
+  tests/test_telegram_bot.py::TestFormatSourceCitation::test_with_seconds_only PASSED
+  tests/test_telegram_bot.py::TestFormatSourceCitation::test_with_minutes_and_seconds PASSED
+  tests/test_telegram_bot.py::TestFormatSourceCitation::test_with_hours PASSED
+  tests/test_telegram_bot.py::TestFormatSourceCitation::test_no_start_time PASSED
+  tests/test_telegram_bot.py::TestFormatSourceCitation::test_missing_title PASSED
+
+  Message splitting (6 tests):
   tests/test_telegram_bot.py::TestSplitMessage::test_short_message_no_split PASSED
   tests/test_telegram_bot.py::TestSplitMessage::test_exact_limit PASSED
   tests/test_telegram_bot.py::TestSplitMessage::test_splits_at_newline PASSED
@@ -29,4 +55,8 @@ Telegram bot tests (23 new tests):
   tests/test_telegram_bot.py::TestSplitMessage::test_hard_split_no_whitespace PASSED
   tests/test_telegram_bot.py::TestSplitMessage::test_splits_long_message_multiple_chunks PASSED
 
-Full suite: 635 passed, 67 warnings in 5.69s
+  Bot application creation (2 tests):
+  tests/test_telegram_bot.py::TestCreateBotApplication::test_raises_without_token PASSED
+  tests/test_telegram_bot.py::TestCreateBotApplication::test_creates_application_with_token PASSED
+
+Full suite: 651 passed, 67 warnings in 5.75s

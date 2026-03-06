@@ -9,7 +9,9 @@ import pytest
 from app.models.chat_session import ChatSession
 from app.telegram_bot import (
     DENIED_TEXT,
+    _format_source_citation,
     _is_user_allowed,
+    create_bot_application,
     format_response_with_sources,
     handle_message,
     new_command,
@@ -297,7 +299,7 @@ class TestHandleMessage:
             await handle_message(update, MagicMock())
         reply = update.message.reply_text.call_args[0][0]
         assert "Follow up answer." in reply
-        assert "Cool Video @ 2:05" in reply
+        assert "\U0001f4f9 Cool Video @ 2:05" in reply
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +319,8 @@ class TestFormatResponse:
         ]
         result = format_response_with_sources("Answer text", sources)
         assert "Sources:" in result
-        assert "[Video A @ 1:30]" in result
-        assert "[Video B]" in result
+        assert "[\U0001f4f9 Video A @ 1:30]" in result
+        assert "[\U0001f4f9 Video B]" in result
 
     def test_deduplicates_sources(self):
         sources = [
@@ -326,7 +328,7 @@ class TestFormatResponse:
             {"video_title": "Video A", "start_time": 90},
         ]
         result = format_response_with_sources("Answer", sources)
-        assert result.count("[Video A @ 1:30]") == 1
+        assert result.count("[\U0001f4f9 Video A @ 1:30]") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -369,3 +371,193 @@ class TestSplitMessage:
         assert len(chunks) == 3
         total = sum(len(c) for c in chunks)
         assert total == 10000
+
+
+# ---------------------------------------------------------------------------
+# Source citation formatting tests
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSourceCitation:
+    def test_with_seconds_only(self):
+        result = _format_source_citation({"video_title": "Test", "start_time": 45})
+        assert result == "[\U0001f4f9 Test @ 0:45]"
+
+    def test_with_minutes_and_seconds(self):
+        result = _format_source_citation({"video_title": "Test", "start_time": 125})
+        assert result == "[\U0001f4f9 Test @ 2:05]"
+
+    def test_with_hours(self):
+        result = _format_source_citation({"video_title": "Test", "start_time": 3661})
+        assert result == "[\U0001f4f9 Test @ 1:01:01]"
+
+    def test_no_start_time(self):
+        result = _format_source_citation({"video_title": "Test", "start_time": None})
+        assert result == "[\U0001f4f9 Test]"
+
+    def test_missing_title(self):
+        result = _format_source_citation({"start_time": 10})
+        assert result == "[\U0001f4f9 Unknown @ 0:10]"
+
+
+# ---------------------------------------------------------------------------
+# Videos command — listing videos
+# ---------------------------------------------------------------------------
+
+
+class TestVideosCommandListing:
+    @pytest.mark.asyncio
+    async def test_lists_videos(self):
+        update = _make_update()
+        db = FakeDB(results=[FakeResult(["Video One", "Video Two"])])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+        ):
+            await videos_command(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "Video One" in reply
+        assert "Video Two" in reply
+        assert "2" in reply  # count
+
+
+# ---------------------------------------------------------------------------
+# Access control — additional denied commands
+# ---------------------------------------------------------------------------
+
+
+class TestAccessControlAdditional:
+    @pytest.mark.asyncio
+    async def test_sessions_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await sessions_command(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+    @pytest.mark.asyncio
+    async def test_status_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await status_command(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+    @pytest.mark.asyncio
+    async def test_videos_denied(self):
+        update = _make_update(user_id=999)
+        with patch("app.telegram_bot._is_user_allowed", return_value=False):
+            await videos_command(update, MagicMock())
+        update.message.reply_text.assert_called_once_with(DENIED_TEXT)
+
+
+# ---------------------------------------------------------------------------
+# Handle message — edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestHandleMessageEdgeCases:
+    @pytest.mark.asyncio
+    async def test_empty_text_ignored(self):
+        update = _make_update(text=None)
+        update.message.text = None
+        with patch("app.telegram_bot._is_user_allowed", return_value=True):
+            await handle_message(update, MagicMock())
+        # Should not attempt to reply (no DB call, no error)
+        update.message.reply_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_error_in_chat_returns_error_message(self):
+        update = _make_update(text="Hello")
+        session = _make_session(title="Existing")
+        db = FakeDB(results=[FakeResult([session]), FakeResult(session)])
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+            patch(
+                "app.telegram_bot.chat_with_context",
+                side_effect=RuntimeError("LLM down"),
+            ),
+        ):
+            await handle_message(update, MagicMock())
+        reply = update.message.reply_text.call_args[0][0]
+        assert "error occurred" in reply
+
+    @pytest.mark.asyncio
+    async def test_auto_title_from_first_message(self):
+        update = _make_update(text="Short question")
+        # Use an existing session with title=None so the same object is reused
+        session = _make_session(title=None)
+        # First query returns the session; second reloads it (same object)
+        db = FakeDB(results=[FakeResult([session]), FakeResult(session)])
+
+        chat_result = {
+            "content": "Answer.",
+            "sources": [],
+            "model": "m",
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+        }
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+            patch("app.telegram_bot.chat_with_context", return_value=chat_result),
+        ):
+            await handle_message(update, MagicMock())
+        # Session title should be set from the first message
+        assert session.title == "Short question"
+
+    @pytest.mark.asyncio
+    async def test_long_title_truncated(self):
+        long_text = "x" * 100
+        update = _make_update(text=long_text)
+        session = _make_session(title=None)
+        db = FakeDB(results=[FakeResult([session]), FakeResult(session)])
+
+        chat_result = {
+            "content": "OK.",
+            "sources": [],
+            "model": "m",
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+        }
+        with (
+            patch("app.telegram_bot._is_user_allowed", return_value=True),
+            patch("app.telegram_bot._get_db", return_value=db),
+            patch("app.telegram_bot.chat_with_context", return_value=chat_result),
+        ):
+            await handle_message(update, MagicMock())
+        assert session.title == "x" * 50 + "..."
+
+
+# ---------------------------------------------------------------------------
+# Bot application creation
+# ---------------------------------------------------------------------------
+
+
+class TestCreateBotApplication:
+    def test_raises_without_token(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_bot_token = ""
+            with pytest.raises(ValueError, match="TELEGRAM_BOT_TOKEN"):
+                create_bot_application()
+
+    def test_creates_application_with_token(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_bot_token = "fake-token:12345"
+            app = create_bot_application()
+            # Should have 6 handlers (5 commands + 1 message handler)
+            assert len(app.handlers[0]) == 6
+
+
+# ---------------------------------------------------------------------------
+# Format response — max 5 sources
+# ---------------------------------------------------------------------------
+
+
+class TestFormatResponseMaxSources:
+    def test_limits_to_five_sources(self):
+        sources = [
+            {"video_title": f"Video {i}", "start_time": i * 10}
+            for i in range(10)
+        ]
+        result = format_response_with_sources("Answer", sources)
+        assert result.count("\U0001f4f9") == 5

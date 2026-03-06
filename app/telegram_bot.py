@@ -163,8 +163,8 @@ def _format_source_citation(source: dict) -> str:
         h, remainder = divmod(total, 3600)
         m, s = divmod(remainder, 60)
         ts = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-        return f"[{title} @ {ts}]"
-    return f"[{title}]"
+        return f"[\U0001f4f9 {title} @ {ts}]"
+    return f"[\U0001f4f9 {title}]"
 
 
 def format_response_with_sources(content: str, sources: list[dict]) -> str:
