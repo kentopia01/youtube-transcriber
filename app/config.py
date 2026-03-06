@@ -36,10 +36,10 @@ class Settings(BaseSettings):
     transcript_cleanup_enabled: bool = False
 
     # LLM cleanup
-    cleanup_model: str = "claude-haiku-4-20250514"
+    cleanup_model: str = "claude-haiku-4-5-20251001"
 
     # LLM summarization
-    summary_model: str = "claude-haiku-4-20250514"
+    summary_model: str = "claude-haiku-4-5-20251001"
 
     # Embedding
     embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
