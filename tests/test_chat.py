@@ -2042,3 +2042,260 @@ class TestQAClawRound9:
         assert resp.status_code == 200
         body = resp.json()
         assert body["session_id"] == str(s.id)
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 10 — Final isolation & import tests
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound10:
+    """Session isolation, model package imports, and ORM relationship checks."""
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_session_isolation_different_sessions(self, mock_chat):
+        """Messages from session A should not appear in session B's history."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+
+        sa_sess = _make_session(title="Session A")
+        msg_a = _make_message(sa_sess.id, "user", "Question for A")
+        sa_sess.messages = [msg_a]
+
+        sb_sess = _make_session(title="Session B")
+        sb_sess.messages = []
+
+        db_b = StubDB(execute_results=[sb_sess])
+        client_b = _build_client(db_b)
+        resp = client_b.post(
+            f"/api/chat/sessions/{sb_sess.id}/messages",
+            json={"content": "Question for B"},
+        )
+        assert resp.status_code == 200
+        history = mock_chat.call_args[1]["history"]
+        assert len(history) == 0
+
+    def test_models_importable_from_package(self):
+        """ChatSession and ChatMessage should be importable from app.models."""
+        from app.models import ChatSession, ChatMessage
+
+        assert ChatSession.__tablename__ == "chat_sessions"
+        assert ChatMessage.__tablename__ == "chat_messages"
+
+    def test_chat_message_fk_references_chat_sessions(self):
+        """ChatMessage.session_id FK should reference chat_sessions.id."""
+        from app.models.chat_message import ChatMessage
+        col = ChatMessage.__table__.c.session_id
+        fks = list(col.foreign_keys)
+        assert len(fks) == 1
+        assert fks[0].target_fullname == "chat_sessions.id"
+
+    def test_chat_session_cascade_delete_orphan(self):
+        """ChatSession.messages relationship should have cascade='all, delete-orphan'."""
+        from app.models.chat_session import ChatSession
+        rel = ChatSession.__mapper__.relationships["messages"]
+        assert "delete-orphan" in rel.cascade
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 11 — Fresh review: migration, client, schemas, format, executor
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound11:
+    """Gaps from fresh code review: migration up/down, singleton API key,
+    schema from_attributes, hours format, run_in_executor, limit=0."""
+
+    def test_migration_downgrade_drops_tables_in_order(self):
+        """Downgrade should drop chat_messages before chat_sessions (FK dependency)."""
+        from alembic.versions.006_create_chat_tables import downgrade
+        from unittest.mock import call
+
+        with patch("alembic.versions.006_create_chat_tables.op") as mock_op:
+            downgrade()
+
+            calls = mock_op.method_calls
+            call_names = [c[0] for c in calls]
+            assert call_names == ["drop_index", "drop_table", "drop_table"]
+            assert calls[1] == call.drop_table("chat_messages")
+            assert calls[2] == call.drop_table("chat_sessions")
+
+    def test_migration_upgrade_creates_tables_and_index(self):
+        """Upgrade should create chat_sessions, chat_messages, and index."""
+        from alembic.versions.006_create_chat_tables import upgrade
+
+        with patch("alembic.versions.006_create_chat_tables.op") as mock_op:
+            upgrade()
+
+            call_names = [c[0] for c in mock_op.method_calls]
+            assert "create_table" in call_names
+            assert "create_index" in call_names
+            idx_call = [c for c in mock_op.method_calls if c[0] == "create_index"][0]
+            assert idx_call[1][0] == "ix_chat_messages_session_id"
+
+    def test_get_anthropic_client_passes_api_key(self):
+        """_get_anthropic_client should pass settings.anthropic_api_key."""
+        import app.services.chat as chat_mod
+
+        original = chat_mod._anthropic_client
+        chat_mod._anthropic_client = None
+        try:
+            with patch("app.services.chat.anthropic.Anthropic") as mock_cls:
+                with patch("app.services.chat.settings") as mock_settings:
+                    mock_settings.anthropic_api_key = "sk-test-key-123"
+                    mock_cls.return_value = MagicMock()
+                    chat_mod._get_anthropic_client()
+                    mock_cls.assert_called_once_with(api_key="sk-test-key-123")
+        finally:
+            chat_mod._anthropic_client = original
+
+    def test_format_chunks_hours_with_end_time(self):
+        """Chunk spanning hours should format both start and end correctly."""
+        from app.services.chat import _format_chunks_for_context
+
+        chunks = [
+            {
+                "video_title": "Long Video",
+                "chunk_text": "content",
+                "start_time": 3661.0,
+                "end_time": 7322.0,
+            }
+        ]
+        result = _format_chunks_for_context(chunks)
+        assert "[1] Long Video [1:01:01 - 2:02:02]" in result
+
+    def test_create_session_platform_passthrough(self):
+        """Custom platform value should be stored as-is."""
+        db = StubDB()
+        client = _build_client(db)
+        resp = client.post(
+            "/api/chat/sessions",
+            json={"platform": "custom_bot"},
+        )
+        assert resp.status_code == 200
+        assert db.added[0].platform == "custom_bot"
+
+    def test_chat_message_out_schema_from_attributes(self):
+        """ChatMessageOut should accept ORM-like objects (from_attributes=True)."""
+        from app.schemas.chat import ChatMessageOut
+
+        msg_id = uuid.uuid4()
+        session_id = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        obj = SimpleNamespace(
+            id=msg_id, session_id=session_id, role="assistant",
+            content="Answer", sources=None, model="claude-sonnet-4-20250514",
+            prompt_tokens=100, completion_tokens=50, created_at=now,
+        )
+        out = ChatMessageOut.model_validate(obj, from_attributes=True)
+        assert out.id == msg_id
+        assert out.role == "assistant"
+        assert out.sources is None
+
+    def test_chat_session_out_schema_from_attributes(self):
+        """ChatSessionOut should accept ORM-like objects (from_attributes=True)."""
+        from app.schemas.chat import ChatSessionOut
+
+        sid = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        obj = SimpleNamespace(
+            id=sid, title="My Chat", platform="web",
+            created_at=now, updated_at=now,
+        )
+        out = ChatSessionOut.model_validate(obj, from_attributes=True)
+        assert out.id == sid
+        assert out.title == "My Chat"
+
+    def test_chat_session_detail_schema_with_messages(self):
+        """ChatSessionDetail should include messages list."""
+        from app.schemas.chat import ChatSessionDetail
+
+        sid = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        msg = SimpleNamespace(
+            id=uuid.uuid4(), session_id=sid, role="user",
+            content="Hello", sources=None, model=None,
+            prompt_tokens=None, completion_tokens=None, created_at=now,
+        )
+        obj = SimpleNamespace(
+            id=sid, title="Detail Test", platform="web",
+            created_at=now, updated_at=now, messages=[msg],
+        )
+        out = ChatSessionDetail.model_validate(obj, from_attributes=True)
+        assert len(out.messages) == 1
+        assert out.messages[0].content == "Hello"
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_chat_uses_run_in_executor(self, mock_encode, mock_search, mock_llm):
+        """chat_with_context should call _call_anthropic via run_in_executor."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        with patch("app.services.chat.asyncio.get_running_loop") as mock_loop:
+            mock_loop.return_value = MagicMock()
+            mock_loop.return_value.run_in_executor = AsyncMock(return_value=mock_llm.return_value)
+            result = await chat_with_context("question", [], db)
+
+        assert result["content"] == "Answer"
+        mock_loop.return_value.run_in_executor.assert_called_once()
+
+    def test_limit_zero_returns_422(self):
+        """Limit=0 should return 422 (ge=1 constraint)."""
+        client = _build_client()
+        resp = client.get("/api/chat/sessions?limit=0")
+        assert resp.status_code == 422
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_message_user_msg_has_correct_session_id(self, mock_chat):
+        """User message should be saved with the correct session_id."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Session Ref")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "check ref"},
+        )
+        assert resp.status_code == 200
+        user_msg = db.added[0]
+        assert user_msg.session_id == s.id
+        assistant_msg = db.added[1]
+        assert assistant_msg.session_id == s.id
+
+    def test_chat_source_out_schema_validation(self):
+        """ChatSourceOut should validate and serialize source data."""
+        from app.schemas.chat import ChatSourceOut
+
+        src = ChatSourceOut(
+            video_id="abc-123",
+            video_title="Test Video",
+            chunk_text="some text",
+            start_time=10.5,
+            end_time=20.0,
+            similarity=0.95,
+        )
+        assert src.video_id == "abc-123"
+        assert src.similarity == 0.95
+        assert src.start_time == 10.5
+
+    def test_chat_source_out_optional_fields(self):
+        """ChatSourceOut optional fields should default to None."""
+        from app.schemas.chat import ChatSourceOut
+
+        src = ChatSourceOut(
+            video_id="abc",
+            video_title="Vid",
+            chunk_text="text",
+        )
+        assert src.start_time is None
+        assert src.end_time is None
+        assert src.similarity is None

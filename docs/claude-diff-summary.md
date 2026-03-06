@@ -1,15 +1,21 @@
-# QAClaw Phase 2 QA Round 9 — Diff Summary
+# QAClaw Phase 2 QA Rounds 8-9 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `tests/test_chat.py` | Added 9 new tests in `TestQAClawRound9` class (final code-review gaps) |
-| `docs/claude-plan.md` | Updated to reflect QA Round 9 |
-| `docs/claude-diff-summary.md` | Updated with 559-test results |
+| `tests/test_chat.py` | Added 5 tests in `TestQAClawRound8` + 9 tests in `TestQAClawRound9` |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Rounds 8-9 |
 | `docs/claude-test-results.txt` | Updated with full suite results |
 
-## Tests Added (Round 9)
+## Tests Added (Round 8 — code-review-driven gaps)
+1. `test_empty_string_title_blocks_auto_title` — documents `title=""` does NOT trigger auto-title
+2. `test_odd_number_history_messages` — non-paired history (3 msgs) works correctly
+3. `test_newlines_in_message_content_preserved` — newlines in content preserved through pipeline
+4. `test_search_query_text_passed_correctly` — question passed as both embedding and text query
+5. `test_max_tokens_4096_in_anthropic_call` — verifies model arg passed to _call_anthropic
+
+## Tests Added (Round 9 — final gap tests)
 1. `test_get_anthropic_client_singleton` — verifies client is cached (only one instantiation)
 2. `test_rename_single_char_boundary` — rename to exactly 1 char succeeds (min_length boundary)
 3. `test_token_guard_only_question_survives` — single 800k history message fully dropped, only question remains
@@ -34,11 +40,11 @@ All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
 - **Anthropic API call**: correct model from settings, system prompt with video transcript grounding, max_tokens=4096
 
 ## Test Coverage Summary
-- **104 tests** in `test_chat.py` covering Phase 2 chat backend (9 rounds)
-- **559 tests total** across the full suite, all passing
+- **112 tests** in `test_chat.py` covering Phase 2 chat backend (9 rounds)
+- **563 tests total** across the full suite, all passing
 
 ## Risks
 - `title=""` is treated differently from `title=None` — empty string blocks auto-title. Acceptable but worth noting for Phase 3 UI.
 - Pydantic `min_length` does not strip whitespace — `"   "` passes validation. Acceptable for now.
 - Token estimation (4 chars/token) is rough but sufficient as a safety guard.
-- No migration file found in versions/ — may need to verify migration 006 exists in actual deployment.
+- Migration 006 exists at `alembic/versions/006_create_chat_tables.py` (not `migrations/versions/`).
