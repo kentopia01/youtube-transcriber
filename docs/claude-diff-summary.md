@@ -1,21 +1,37 @@
-# QAClaw Phase 2 QA Round 2 — Diff Summary
+# QAClaw Phase 2 QA Round 3 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `app/schemas/chat.py` | Fix: Added `Field(min_length=1, max_length=100_000)` to `ChatMessageSend.content`; Added `Field(min_length=1, max_length=255)` to `ChatSessionRename.title` |
-| `app/services/chat.py` | Fix: `asyncio.get_event_loop()` -> `get_running_loop()`; Added try/except around Anthropic API call with graceful error response; Moved sources list construction before LLM call so it's available in error paths |
-| `tests/test_chat_backend.py` | Added 14 new edge case tests: empty message, missing content, whitespace-only, very long message, empty rename, long rename, no-messages session, cascade delete, nonexistent session message, sources saved, API error handling, correct model, prompt structure, token guard |
+| `tests/test_chat.py` | Added 9 new edge case tests in `TestAdditionalEdgeCases` class |
+| `docs/claude-plan.md` | Updated to reflect QA Round 3 |
+| `docs/claude-diff-summary.md` | Updated to reflect QA Round 3 |
+| `docs/claude-test-results.txt` | Full test output |
+
+## Tests Added
+1. `test_create_session_with_telegram_platform` — verifies non-web platform works
+2. `test_auto_title_not_set_on_second_message` — title only set once
+3. `test_get_session_invalid_uuid_returns_422` — invalid UUID path param
+4. `test_delete_session_invalid_uuid_returns_422` — invalid UUID path param
+5. `test_send_message_invalid_session_uuid_returns_422` — invalid UUID path param
+6. `test_sources_none_when_no_chunks` — empty sources list returned correctly
+7. `test_source_structure_matches_schema` — all ChatSourceOut fields present
+8. `test_empty_history_produces_single_message` — no history = 1 message to LLM
+9. `test_retrieval_top_k_passed_to_search` — settings.chat_retrieval_top_k used as limit
 
 ## Bugs Fixed
-1. **No input validation on message content**: Empty strings and 100k+ char messages were accepted. Added `min_length=1, max_length=100_000`.
-2. **No input validation on session rename**: Empty string rename was accepted. Added `min_length=1, max_length=255`.
-3. **Deprecated `asyncio.get_event_loop()`**: Replaced with `asyncio.get_running_loop()`.
-4. **No Anthropic API error handling**: `_call_anthropic` exceptions propagated as 500s. Added try/except with graceful error response.
-5. **Sources unavailable in error path**: Sources list was built after the LLM call, so API errors couldn't include search results. Moved construction before the LLM call.
+None — no bugs found in this round. Prior fixes from Round 2 are solid.
+
+## Code Review Summary
+All Phase 2 components verified against CHAT_FEATURE_PLAN.md:
+- Migration 006: correct table structure, FK cascade, index
+- Models: proper SQLAlchemy mapped columns, JSONB sources, relationship cascade
+- Schemas: Pydantic validation with min/max length, from_attributes
+- Service: RAG pipeline with chat_enabled_only, history trimming, 150k token guard, graceful error handling
+- Router: complete CRUD, auto-title, history passing, updated_at touch
+- Config: all 3 chat settings present with correct defaults
 
 ## Risks
-- Pydantic `min_length` does not strip whitespace, so `"   "` passes validation. Acceptable for now.
-- `max_length=100_000` is arbitrary but reasonable for chat messages.
-- Migration 006 still uses `sa.JSON()` vs model's `JSONB` — cosmetic mismatch, functionally fine on PostgreSQL.
+- Pydantic `min_length` does not strip whitespace — `"   "` passes validation. Acceptable.
+- Token estimation (4 chars/token) is rough but sufficient for a safety guard.

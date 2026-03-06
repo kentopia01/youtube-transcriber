@@ -1,34 +1,24 @@
-QAClaw Phase 2 QA Round 2 — Test Results
+QAClaw Phase 2 QA Round 3 — Test Results
 =========================================
 Command: .venv/bin/pytest -v
 Date: 2026-03-06
 
-Result: 501 passed, 0 failed, 42 warnings in 5.00s
+Result: 510 passed, 0 failed, 42 warnings in 4.89s
 
-New tests added (11 tests in tests/test_chat.py):
+New tests added in Round 3 (9 tests in TestAdditionalEdgeCases):
+  test_create_session_with_telegram_platform — PASSED
+  test_auto_title_not_set_on_second_message — PASSED
+  test_get_session_invalid_uuid_returns_422 — PASSED
+  test_delete_session_invalid_uuid_returns_422 — PASSED
+  test_send_message_invalid_session_uuid_returns_422 — PASSED
+  test_sources_none_when_no_chunks — PASSED
+  test_source_structure_matches_schema — PASSED
+  test_empty_history_produces_single_message — PASSED
+  test_retrieval_top_k_passed_to_search — PASSED
 
-TestValidationEdgeCases (8 tests):
-  test_send_empty_message_returns_422 — PASSED
-  test_send_very_long_message_returns_422 — PASSED
-  test_rename_to_empty_string_returns_422 — PASSED
-  test_rename_to_very_long_string_returns_422 — PASSED
-  test_whitespace_only_message_passes_validation — PASSED
-  test_delete_session_cascades — PASSED
-  test_nonexistent_session_message_no_chat_call — PASSED
-  test_sources_persisted_in_assistant_message — PASSED
-
-TestAnthropicErrorHandling (3 tests):
-  test_api_error_returns_graceful_message — PASSED
-  test_correct_model_passed_to_anthropic — PASSED
-  test_prompt_includes_context_history_question — PASSED
-
-Bugs fixed:
-  1. ChatMessageSend.content: added min_length=1, max_length=100_000
-  2. ChatSessionRename.title: added min_length=1, max_length=255
-  3. asyncio.get_event_loop() -> get_running_loop()
-  4. Added try/except for Anthropic API errors with graceful fallback
-  5. Moved sources construction before LLM call for error path availability
+Total chat tests: 60 (in tests/test_chat.py)
+No bugs found in Round 3 — all prior fixes verified solid.
 
 Notes:
   - 42 warnings are pre-existing starlette DeprecationWarnings
-  - All existing tests continue to pass
+  - All 510 tests pass across the entire suite
