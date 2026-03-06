@@ -62,7 +62,7 @@ def upgrade() -> None:
         sa.Column("video_id", sa.dialects.postgresql.UUID(as_uuid=True), sa.ForeignKey("videos.id"), unique=True, nullable=False),
         sa.Column("full_text", sa.Text, nullable=False),
         sa.Column("language", sa.String(16), nullable=True),
-        sa.Column("model_size", sa.String(32), nullable=True),
+        sa.Column("model_size", sa.String(128), nullable=True),
         sa.Column("word_count", sa.Integer, nullable=True),
         sa.Column("processing_time_seconds", sa.Float, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
