@@ -1,39 +1,42 @@
-Pipeline Reliability Fixes - Test Results
-==========================================
+Phase 1: Chat Toggle System - Test Results
+============================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 421 passed, 1 failed (pre-existing), 42 warnings in 6.19s
+Result: 435 passed, 1 failed (pre-existing), 42 warnings in 4.65s
 
 Pre-existing failure (NOT related to this change):
   tests/test_config.py::TestConfigDefaults::test_cleanup_model_default
   - Test expects old model ID "claude-haiku-4-20250514" but config was
     updated to "claude-haiku-4-5-20251001" in prior commit 43df5c4
 
-New tests added (3):
-  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_resume_from_diarize_skips_download_and_transcribe
-  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_resume_from_embeddings_only
-  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_invalid_step_raises_error
-
-Tests updated (1):
-  tests/test_jobs_retry.py::test_retry_job_creates_new_pipeline_job
-  - Updated to mock run_pipeline_from instead of run_pipeline
-  - Added extra DB results for _detect_resume_point queries
+New tests added (14) in tests/test_chat_toggle.py:
+  TestVideoChatToggle::test_toggle_video_on
+  TestVideoChatToggle::test_toggle_video_off
+  TestVideoChatToggle::test_toggle_nonexistent_video_returns_404
+  TestVideoChatToggle::test_toggle_missing_body_returns_422
+  TestChannelChatToggle::test_toggle_channel_updates_all_videos
+  TestChannelChatToggle::test_toggle_channel_on
+  TestChannelChatToggle::test_toggle_nonexistent_channel_returns_404
+  TestBuildWhereClauseChatEnabled::test_chat_enabled_only_adds_filter
+  TestBuildWhereClauseChatEnabled::test_channel_and_chat_enabled
+  TestBuildWhereClauseChatEnabled::test_neither_filter
+  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_vector
+  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_keyword
+  TestSemanticSearchChatFilter::test_chat_enabled_only_passed_to_hybrid
+  TestSemanticSearchChatFilter::test_default_chat_enabled_only_is_false
 
 Files changed:
-  app/tasks/helpers.py (new)
-  app/tasks/download.py
-  app/tasks/transcribe.py
-  app/tasks/diarize.py
-  app/tasks/cleanup.py
-  app/tasks/summarize.py
-  app/tasks/embed.py
-  app/tasks/pipeline.py
-  app/routers/jobs.py
+  app/models/video.py
+  app/models/channel.py
+  alembic/versions/005_add_chat_enabled.py (new)
+  app/schemas/video.py
   app/routers/videos.py
-  tests/test_jobs_retry.py
-  tests/test_pipeline_chain.py
-  README.md
+  app/routers/channels.py
+  app/services/search.py
+  app/templates/library.html
+  app/static/css/main.css
+  tests/test_chat_toggle.py (new)
   docs/claude-plan.md
   docs/claude-diff-summary.md
   docs/claude-test-results.txt

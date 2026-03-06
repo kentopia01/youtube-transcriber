@@ -11,7 +11,7 @@ from app.models.batch import Batch
 from app.models.channel import Channel
 from app.models.job import Job
 from app.models.video import Video
-from app.schemas.video import ChannelSubmit, ChannelVideoSelection
+from app.schemas.video import ChannelSubmit, ChannelVideoSelection, ChatToggle
 from app.services.youtube import discover_channel_videos, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -147,4 +147,34 @@ async def process_selected_videos(
         "total_videos": len(video_ids),
         "total_batches": total_batches,
         "jobs_created": len(created_jobs),
+    }
+
+
+@router.patch("/{channel_id}/chat-toggle")
+async def toggle_channel_chat(
+    channel_id: uuid.UUID,
+    data: ChatToggle,
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle chat_enabled for a channel and all its videos."""
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    channel.chat_enabled = data.enabled
+
+    # Bulk-update all videos belonging to this channel
+    video_result = await db.execute(
+        select(Video).where(Video.channel_id == channel_id)
+    )
+    videos = video_result.scalars().all()
+    for video in videos:
+        video.chat_enabled = data.enabled
+
+    await db.commit()
+    return {
+        "channel_id": str(channel.id),
+        "chat_enabled": channel.chat_enabled,
+        "videos_updated": len(videos),
     }

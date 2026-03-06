@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db
 from app.models.job import Job
 from app.models.video import Video
-from app.schemas.video import VideoSubmit
+from app.schemas.video import ChatToggle, VideoSubmit
 from app.services.youtube import extract_video_id, get_video_info, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -105,3 +105,20 @@ async def submit_video(
     await db.commit()
 
     return {"job_id": str(job.id), "video_id": str(video.id), "status": "queued"}
+
+
+@router.patch("/{video_id}/chat-toggle")
+async def toggle_video_chat(
+    video_id: uuid.UUID,
+    data: ChatToggle,
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle chat_enabled for a single video."""
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    video.chat_enabled = data.enabled
+    await db.commit()
+    return {"video_id": str(video.id), "chat_enabled": video.chat_enabled}

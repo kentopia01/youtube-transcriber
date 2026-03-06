@@ -44,27 +44,41 @@
 <div id="video-list-content">
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" class="video-card">
-            {% if video.thumbnail_url %}
-            <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
-            {% else %}
-            <div class="video-card-placeholder">
-                <i class="iconoir-video-camera" style="font-size:1.25rem"></i> No thumbnail
-            </div>
-            {% endif %}
-            <div class="video-card-body">
-                <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
-                <div class="flex items-center gap-2 mt-2">
-                    <span class="status-pill status-{{ video.status }}">
-                        <span class="dot"></span>
-                        {{ video.status }}
-                    </span>
-                    {% if video.duration_seconds %}
-                    <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
-                    {% endif %}
+        <div class="video-card-wrapper {% if not video.chat_enabled %}is-chat-disabled{% endif %}" id="video-card-{{ video.id }}">
+            <a href="/videos/{{ video.id }}" class="video-card">
+                {% if video.thumbnail_url %}
+                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
+                {% else %}
+                <div class="video-card-placeholder">
+                    <i class="iconoir-video-camera" style="font-size:1.25rem"></i> No thumbnail
                 </div>
-            </div>
-        </a>
+                {% endif %}
+                <div class="video-card-body">
+                    <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="status-pill status-{{ video.status }}">
+                            <span class="dot"></span>
+                            {{ video.status }}
+                        </span>
+                        {% if video.duration_seconds %}
+                        <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+            <label class="chat-toggle" title="Toggle chat">
+                <input type="checkbox"
+                       {% if video.chat_enabled %}checked{% endif %}
+                       hx-patch="/api/videos/{{ video.id }}/chat-toggle"
+                       hx-vals='js:{"enabled": event.target.checked}'
+                       hx-swap="none"
+                       hx-on::after-request="toggleCardDim(this)">
+                <span class="chat-toggle-track">
+                    <span class="chat-toggle-thumb"></span>
+                </span>
+                <span class="chat-toggle-label">Chat</span>
+            </label>
+        </div>
         {% endfor %}
     </div>
 
@@ -103,17 +117,31 @@
 {% if channels %}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
     {% for channel in channels %}
-    <a href="/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow">
-        <div class="surface-body flex flex-col items-center text-center py-6">
-            {% if channel.thumbnail_url %}
-            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar mb-3">
-            {% else %}
-            <div class="channel-avatar-placeholder mb-3">{{ channel.name[0] }}</div>
-            {% endif %}
-            <h4 class="text-sm font-medium">{{ channel.name }}</h4>
-            <p class="text-xs text-faint mt-1">{{ channel.video_count }} videos</p>
-        </div>
-    </a>
+    <div class="channel-card-wrapper {% if not channel.chat_enabled %}is-chat-disabled{% endif %}" id="channel-card-{{ channel.id }}">
+        <a href="/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow" style="display:block">
+            <div class="surface-body flex flex-col items-center text-center py-6">
+                {% if channel.thumbnail_url %}
+                <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar mb-3">
+                {% else %}
+                <div class="channel-avatar-placeholder mb-3">{{ channel.name[0] }}</div>
+                {% endif %}
+                <h4 class="text-sm font-medium">{{ channel.name }}</h4>
+                <p class="text-xs text-faint mt-1">{{ channel.video_count }} videos</p>
+            </div>
+        </a>
+        <label class="chat-toggle chat-toggle-channel" title="Toggle chat for all videos">
+            <input type="checkbox"
+                   {% if channel.chat_enabled %}checked{% endif %}
+                   hx-patch="/api/channels/{{ channel.id }}/chat-toggle"
+                   hx-vals='js:{"enabled": event.target.checked}'
+                   hx-swap="none"
+                   hx-on::after-request="toggleCardDim(this)">
+            <span class="chat-toggle-track">
+                <span class="chat-toggle-thumb"></span>
+            </span>
+            <span class="chat-toggle-label">Chat</span>
+        </label>
+    </div>
     {% endfor %}
 </div>
 {% else %}
@@ -124,4 +152,15 @@
 </div>
 {% endif %}
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleCardDim(checkbox) {
+    var wrapper = checkbox.closest('.video-card-wrapper, .channel-card-wrapper');
+    if (wrapper) {
+        wrapper.classList.toggle('is-chat-disabled', !checkbox.checked);
+    }
+}
+</script>
 {% endblock %}

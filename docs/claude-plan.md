@@ -1,22 +1,23 @@
-# Plan: Fix 6 Pipeline Reliability Bugs
+# Phase 1: Toggle System — Implementation Plan
 
 ## Goal
-Fix pipeline retry reliability — make retry smart (resume from failure point), all tasks idempotent (no duplicate data on re-run), and job tracking correct (latest job gets updates).
+Add chat_enabled toggle to videos and channels, with API endpoints, search filter support, and library UI toggles. This is Phase 1 of the "Chat with Transcripts" feature plan.
 
 ## Assumptions
-- Pipeline steps: download → transcribe → diarize → cleanup → summarize → embed
-- Each step passes video_id to the next via Celery chain
-- Transcription, Summary have unique constraints on video_id
-- EmbeddingChunk has no unique constraint but duplicates corrupt search results
+- Existing Alembic migration chain ends at 004
+- HTMX is already loaded in base.html
+- Toggle defaults to true (all existing videos/channels are chat-enabled)
+- Existing search page behavior unchanged (chat_enabled_only defaults to False)
 
-## Step-by-step Plan
-1. **Create `app/tasks/helpers.py`** — shared `get_latest_pipeline_job(db, video_id)` that queries `ORDER BY created_at DESC` instead of `.first()`
-2. **Bug 2 — transcribe.py idempotency** — check for existing transcription before INSERT; if exists, UPDATE it and DELETE old segments first
-3. **Bug 4 — summarize.py idempotency** — check for existing summary; if exists, UPDATE instead of INSERT
-4. **Bug 5 — embed.py cleanup** — DELETE existing embedding_chunks for video_id before inserting new ones
-5. **Bug 3 — use latest job in ALL tasks** — replace `.filter(...).first()` with `get_latest_pipeline_job()` in download.py, transcribe.py, diarize.py, cleanup.py, summarize.py, embed.py
-6. **Bug 1 — smart retry** — add `run_pipeline_from(video_id, start_from)` to pipeline.py; update retry_job() to detect resume point via `_detect_resume_point()` (checks what data exists)
-7. **Bug 6 — failed video resubmission** — if existing video status is 'failed', allow re-processing instead of returning 'existing'
-8. **Exponential backoff** — add `max_retries=2` with backoff to summarize and embed tasks
-9. **Update tests** — fix retry test for new smart retry flow, add tests for `run_pipeline_from` partial chains
-10. **Update README** — document retry behavior
+## Steps
+1. Add `chat_enabled BOOLEAN NOT NULL DEFAULT true` to Video and Channel SQLAlchemy models
+2. Create Alembic migration 005 with `server_default=sa.text("true")`
+3. Add `ChatToggle` Pydantic schema (`enabled: bool`)
+4. Add `PATCH /api/videos/{video_id}/chat-toggle` endpoint
+5. Add `PATCH /api/channels/{channel_id}/chat-toggle` endpoint (bulk-updates all channel videos)
+6. Update `_build_where_clause()` to accept `chat_enabled_only` param, adding `v.chat_enabled = true` filter
+7. Thread `chat_enabled_only` through `_vector_search`, `_keyword_search`, `_hybrid_search`, and `semantic_search`
+8. Add toggle switch UI to video cards and channel cards in library.html
+9. Add CSS for toggle pill switch with dimming (opacity 0.6) for disabled items
+10. Write tests: video toggle on/off, channel bulk toggle, 404 cases, search filter pass-through
+11. Run full test suite — verify all pass

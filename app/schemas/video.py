@@ -4,6 +4,10 @@ from datetime import datetime
 from pydantic import BaseModel, HttpUrl
 
 
+class ChatToggle(BaseModel):
+    enabled: bool
+
+
 class VideoSubmit(BaseModel):
     url: str
 
