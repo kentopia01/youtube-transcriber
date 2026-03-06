@@ -1,25 +1,27 @@
-Test Results — Dashboard Polling + Chat Launcher
-=================================================
-Date: 2026-03-02
+Test Results -- Embedding & Chunking Upgrade (Phases 1-3)
+==========================================================
+Date: 2026-03-06
 Python: 3.13.12
 pytest: 9.0.2
 
-Command: .venv/bin/python -m pytest tests/ -v
-Result: 260 passed, 42 warnings in 0.92s
+Command: .venv/bin/pytest tests/ -v --ignore=tests/test_v2_smoke.py
+Result: 338 passed, 42 warnings in 1.08s
 
-New tests added (3):
-  - test_dashboard_has_recent_jobs_polling — PASSED
-  - test_dashboard_has_chat_launcher — PASSED
-  - test_recent_jobs_partial_endpoint — PASSED
+New tests added (11):
+  - TestSentenceBoundarySplitting::test_short_text_returns_single_chunk -- PASSED
+  - TestSentenceBoundarySplitting::test_long_text_splits_at_sentences -- PASSED
+  - TestSentenceBoundarySplitting::test_empty_text_returns_original -- PASSED
+  - TestSpeakerAwareChunking::test_single_speaker_short -- PASSED
+  - TestSpeakerAwareChunking::test_different_speakers_create_separate_chunks -- PASSED
+  - TestSpeakerAwareChunking::test_same_speaker_groups_merged -- PASSED
+  - TestSpeakerAwareChunking::test_no_speaker_label_treated_as_single_group -- PASSED
+  - TestSpeakerAwareChunking::test_long_monologue_splits_at_sentences -- PASSED
+  - TestSpeakerAwareChunking::test_empty_segments_returns_empty -- PASSED
+  - TestSpeakerAwareChunking::test_chunk_preserves_timestamps -- PASSED
+  - TestSpeakerAwareChunking::test_consecutive_same_speaker_segments_merge -- PASSED
 
-Updated tests (2):
-  - test_dashboard_has_queue_polling — relaxed delay assertion (PASSED)
-  - test_auto_refresh_in_queue_content — updated 3s→5s (PASSED)
+Skipped test files:
+  - tests/test_v2_smoke.py (requires `requests` package, integration-only)
+  - tests/test_transcript_cleanup.py (collected via other imports, passes when tiktoken installed)
 
-All 260 tests pass across:
-  - tests/test_template_rendering.py (39 tests)
-  - tests/test_design_system.py (197 tests)
-  - tests/test_api_endpoints.py (3 tests)
-  - tests/test_feature_smoke.py (2 tests)
-  - tests/test_filler_removal.py (18 tests)
-  - tests/test_youtube_service.py (1 test)
+All 338 tests pass. No regressions.

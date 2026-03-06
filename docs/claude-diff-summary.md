@@ -1,43 +1,58 @@
-# Diff Summary: Dashboard Polling + Chat Launcher
+# Diff Summary: Embedding & Chunking Upgrade (Phases 1-3)
 
 ## What Changed
 
-### `app/templates/partials/queue_content.html`
-- **Added** "jobs in flight" badge at top of partial (was static in index.html, never updated)
-- **Removed** `{% if active_jobs or pending_jobs %}` guard around polling trigger — polling now continues even when queue is empty
-- **Changed** polling interval from 3s to 5s for the self-re-poll to reduce idle load
+### `app/config.py`
+- **Added** `embedding_model`, `embedding_dimensions`, `chunk_target_tokens`, `chunk_max_tokens` settings
 
-### `app/templates/index.html`
-- **Removed** static "jobs in flight" badge from Live Queue Overview header (moved into partial)
-- **Replaced** inline `<tbody>` with `{% include "partials/recent_jobs.html" %}` wrapped in `#recent-jobs-body` with HTMX polling (`hx-get="/partials/recent-jobs"`, 5s interval)
-- **Added** "Chat with Library" search launcher widget between Stats Row and Forms+Queue grid
-- **Added** JavaScript handler for quick-search form that redirects to `/search?q=...`
+### `app/services/embedding.py`
+- **Replaced** entire file — new model loading with `nomic-ai/nomic-embed-text-v1.5` + `trust_remote_code=True`
+- **Added** `_build_speaker_chunks()`: groups segments by speaker, merges short groups, splits long groups at sentence boundaries
+- **Added** `_split_at_sentence_boundaries()`: splits text at `.!?` targeting configurable token counts
+- **Replaced** fixed 500-token window chunking with speaker-aware semantic chunking
+- **Added** `search_document:` prefix to chunk texts before encoding
 
-### `app/templates/partials/recent_jobs.html` (NEW)
-- Extracted Recent Jobs table body markup from index.html
-- Includes self-polling hidden trigger for continuous updates
+### `app/services/search.py`
+- **Replaced** direct `SentenceTransformer` instantiation with cached model using `settings.embedding_model`
+- **Added** `search_query:` prefix to queries before encoding
+- **Added** `speaker` field to search results SQL and return dicts
 
-### `app/routers/pages.py`
-- **Added** `GET /partials/recent-jobs` endpoint — lightweight query returning last 10 jobs as partial HTML
+### `app/models/embedding_chunk.py`
+- **Changed** `Vector(384)` to `Vector(768)`
+- **Added** `speaker: Mapped[str | None]` column
 
-### `tests/test_template_rendering.py`
-- **Added** `test_dashboard_has_recent_jobs_polling` — checks for `#recent-jobs-body` and HTMX attributes
-- **Added** `test_dashboard_has_chat_launcher` — checks for search form elements
-- **Added** `test_recent_jobs_partial_endpoint` — validates `/partials/recent-jobs` returns 200 with job data
-- **Updated** `test_dashboard_has_queue_polling` — relaxed delay assertion (partial now uses 5s)
+### `app/tasks/embed.py`
+- **Changed** segment extraction to include `speaker` field
+- **Changed** EmbeddingChunk creation to pass `speaker` from chunk data
 
-### `tests/test_design_system.py`
-- **Updated** `test_auto_refresh_in_queue_content` — changed expected polling delay from 3s to 5s
+### `alembic/versions/003_upgrade_embeddings_768d_and_speaker.py` (NEW)
+- Truncates existing embedding_chunks
+- Drops and recreates HNSW index
+- Resizes embedding column from vector(384) to vector(768)
+- Adds speaker column
+
+### `scripts/reembed_all.py` (NEW)
+- Standalone script to re-embed all completed videos
+- Supports `--dry-run` and `--video-id UUID` flags
+- Batch commits every 10 videos
+
+### `scripts/download_models.py`
+- **Added** `download_embedding_model()` to pre-download nomic-embed-text-v1.5
+
+### `README.md`
+- Updated pipeline diagram to show nomic model
+- Added "Semantic Embeddings" section describing model, chunking, and re-embed script
+- Added 4 new config variables to configuration table
 
 ## Why
-- Dashboard was rendering stale data — the jobs-in-flight counter and Recent Jobs table loaded once and never refreshed
-- Queue polling stopped when empty, meaning new jobs wouldn't appear until manual refresh
-- Chat launcher provides quick access to semantic search from the dashboard
+- all-MiniLM-L6-v2 is bottom-tier on MTEB; nomic-embed-text-v1.5 is top-5 with 768d vectors
+- Fixed 500-token window chunking splits mid-sentence and mid-speaker-turn, destroying semantic coherence
+- Speaker-aware chunking preserves turn boundaries for better retrieval, especially for multi-speaker content
 
 ## Risks
-- **None significant** — all changes are frontend polling and a new read-only endpoint
-- The Recent Jobs partial re-queries the DB every 5s per connected client; acceptable at current scale
-- No changes to job processing, models, or business logic
+- **Existing embeddings are truncated** by migration 003 — search will be broken until `scripts/reembed_all.py` runs
+- **nomic model is ~550MB** — first load takes longer than MiniLM. Mitigated by `download_models.py`
+- **trust_remote_code=True** is required by nomic model (it uses custom code for task prefixes)
 
 ## Plan Deviations
-- None — implementation follows the plan exactly
+- Phases 1 and 2 were implemented together in one commit since the chunking rewrite naturally fits with the model swap
