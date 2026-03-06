@@ -1,38 +1,55 @@
-BuildClaw Phase 2: Chat Backend — Test Results
-===============================================
-Date: 2026-03-06
+QAClaw Phase 2 QA — Test Results
+=================================
 Command: .venv/bin/pytest -v
+Date: 2026-03-06
 
-Result: 507 passed, 0 failed, 42 warnings in 4.88s
+Result: 490 passed, 0 failed, 42 warnings in 5.44s
 
-Chat backend tests (28) in tests/test_chat_backend.py:
-  TestCreateSession::test_create_session_returns_201_fields — PASSED
-  TestCreateSession::test_create_session_default_platform — PASSED
+Chat tests (40 total) in tests/test_chat.py:
+  TestCreateSession::test_create_session_default — PASSED
+  TestCreateSession::test_create_session_with_title — PASSED
   TestCreateSession::test_create_session_no_body — PASSED
   TestListSessions::test_list_sessions_empty — PASSED
-  TestListSessions::test_list_sessions_returns_sessions — PASSED
+  TestListSessions::test_list_sessions_returns_items — PASSED
+  TestGetSession::test_get_session_found — PASSED
   TestGetSession::test_get_session_with_messages — PASSED
-  TestGetSession::test_get_nonexistent_session_returns_404 — PASSED
+  TestGetSession::test_get_session_not_found — PASSED
   TestDeleteSession::test_delete_session — PASSED
-  TestDeleteSession::test_delete_nonexistent_session_returns_404 — PASSED
+  TestDeleteSession::test_delete_session_not_found — PASSED
   TestRenameSession::test_rename_session — PASSED
-  TestRenameSession::test_rename_nonexistent_session_returns_404 — PASSED
-  TestRenameSession::test_rename_missing_title_returns_422 — PASSED
+  TestRenameSession::test_rename_session_not_found — PASSED
+  TestRenameSession::test_rename_session_missing_title_returns_422 — PASSED
   TestSendMessage::test_send_message_returns_assistant_response — PASSED
-  TestSendMessage::test_send_message_includes_sources — PASSED
-  TestSendMessage::test_auto_title_on_first_message — PASSED
-  TestSendMessage::test_auto_title_short_message_no_ellipsis — PASSED
+  TestSendMessage::test_send_message_returns_sources — PASSED
+  TestSendMessage::test_auto_title_from_first_message — PASSED
+  TestSendMessage::test_auto_title_truncated_at_50_chars — PASSED
   TestSendMessage::test_existing_title_not_overwritten — PASSED
-  TestSendMessage::test_send_message_nonexistent_session_returns_404 — PASSED
-  TestSendMessage::test_chat_enabled_only_filter_used — PASSED
-  TestChatServiceHelpers::test_fmt_ts_minutes_seconds — PASSED
-  TestChatServiceHelpers::test_fmt_ts_hours — PASSED
-  TestChatServiceHelpers::test_format_chunks_for_context — PASSED
-  TestChatServiceHelpers::test_build_messages_with_history — PASSED
-  TestChatServiceHelpers::test_build_messages_empty_history — PASSED
-  TestChatWithContext::test_chat_with_context_calls_search_with_chat_enabled — PASSED
-  TestChatWithContext::test_chat_returns_empty_sources_when_no_chunks — PASSED
-  TestChatWithContext::test_chat_graceful_when_search_fails — PASSED
-  TestChatWithContext::test_chat_returns_error_when_api_key_missing — PASSED
+  TestSendMessage::test_conversation_history_passed_to_chat — PASSED
+  TestSendMessage::test_send_message_session_not_found — PASSED
+  TestSendMessage::test_send_message_missing_content_returns_422 — PASSED
+  TestSendMessage::test_send_message_special_characters — PASSED
+  TestSendMessage::test_send_very_long_message — PASSED
+  TestEdgeCases::test_delete_session_with_zero_messages — PASSED
+  TestEdgeCases::test_list_sessions_pagination_params — PASSED
+  TestEdgeCases::test_list_sessions_limit_above_max_returns_422 — PASSED
+  TestEdgeCases::test_list_sessions_negative_offset_returns_422 — PASSED
+  TestEdgeCases::test_get_session_with_sources_in_message — PASSED
+  TestEdgeCases::test_send_message_to_session_with_existing_messages — PASSED
+  TestChatService::test_chat_with_context_calls_search_with_chat_enabled — PASSED
+  TestChatService::test_chat_with_context_returns_correct_structure — PASSED
+  TestChatService::test_history_trimmed_to_max — PASSED
+  TestChatService::test_chat_graceful_when_search_fails — PASSED
+  TestChatService::test_chat_returns_error_when_api_key_missing — PASSED
+  TestChatService::test_150k_token_guard_trims_messages — PASSED
+  TestFormatChunks::test_format_chunks_basic — PASSED
+  TestFormatChunks::test_format_chunks_no_timestamps — PASSED
+  TestFormatChunks::test_format_timestamp_with_hours — PASSED
+  TestBuildMessages::test_build_messages_no_history — PASSED
+  TestBuildMessages::test_build_messages_with_history — PASSED
 
-Full suite: 507 passed
+Toggle tests (21 total) in tests/test_chat_toggle.py: all PASSED (unchanged)
+
+Notes:
+- Removed duplicate tests/test_chat_backend.py (28 tests, ~70% overlap with test_chat.py)
+- Net change: -28 duplicate + 10 new edge case = 490 total (was 507 with dupes)
+- 42 warnings are pre-existing starlette DeprecationWarnings, unrelated to Phase 2

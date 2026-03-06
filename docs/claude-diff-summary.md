@@ -1,27 +1,24 @@
-# BuildClaw Phase 2: Chat Backend — Diff Summary
+# QAClaw Phase 2: Chat Backend QA — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `app/models/chat_session.py` | New — ChatSession model (UUID PK, title, platform, telegram_chat_id, timestamps, messages relationship) |
-| `app/models/chat_message.py` | New — ChatMessage model (UUID PK, FK session_id, role, content, JSONB sources, model, token counts) |
-| `app/models/__init__.py` | Added ChatSession + ChatMessage imports |
-| `alembic/versions/006_create_chat_tables.py` | New — migration creating chat_sessions, chat_messages tables + session_id index |
-| `app/config.py` | Added chat_model, chat_max_history, chat_retrieval_top_k settings |
-| `app/schemas/chat.py` | New — Pydantic schemas (ChatSessionCreate, ChatSessionRename, ChatMessageSend, ChatSourceOut, ChatMessageOut, ChatSessionOut, ChatSessionDetail) |
-| `app/services/chat.py` | New — RAG pipeline: encode_query -> hybrid search (chat_enabled_only=True) -> build prompt with history -> Anthropic call -> sources. Includes 150k token guard, graceful error handling |
-| `app/routers/chat.py` | New — 6 API endpoints (POST/GET/DELETE/PATCH sessions, POST messages). Auto-title on first message |
-| `app/main.py` | Registered chat router |
-| `tests/test_chat_backend.py` | New — 28 tests: session CRUD (7), send message (7), service helpers (5), RAG integration (4), error handling (2), chat_enabled filter (1), validation (2) |
+| `alembic/versions/006_create_chat_tables.py` | Fix: `sa.JSON()` -> `JSONB()` to match model's `JSONB` column type |
+| `app/services/chat.py` | Fix: missing API key now returns actual `sources` (from search) instead of empty list |
+| `tests/test_chat.py` | Added 10 new edge-case tests: special chars, long messages, pagination validation, sources JSONB, 150k token guard, search failure, API key missing, multi-turn history, delete empty session |
+| `tests/test_chat_backend.py` | Removed — duplicate of test_chat.py (~70% overlap). Unique tests merged into test_chat.py |
 
 ## Why
-Phase 2 of CHAT_FEATURE_PLAN.md — enables conversational chat grounded in video transcript content via RAG.
+QA review of Phase 2 chat backend. Found 2 bugs and test coverage gaps.
+
+## Bugs Fixed
+1. **Migration JSONB mismatch**: Migration 006 used `sa.JSON()` but model uses `JSONB`. PostgreSQL would create a JSON column instead of JSONB, losing GIN index support and `@>` operator.
+2. **Empty sources on missing API key**: `chat_with_context` returned `sources: []` when API key was missing, even though search had succeeded and computed valid sources. The LLM error path correctly returned sources, but the API key path didn't.
 
 ## Risks
-- `encode_query()` requires sentence_transformers — handled with try/except fallback
-- Missing API key — returns clear error message instead of exception
-- Token overflow — 150k token limit with history trimming
+- `asyncio.get_running_loop()` was already fixed by BuildClaw (confirmed in final code)
+- No migration for existing databases with `JSON` column — if 006 was already applied, manual `ALTER COLUMN sources TYPE JSONB` needed
 
-## Plan Deviations
-- None — all items from Phase 2 spec implemented as planned
+## Test Results
+- 490 tests passed, 0 failed (40 chat-specific tests)

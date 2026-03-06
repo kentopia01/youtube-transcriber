@@ -382,6 +382,126 @@ class TestSendMessage:
         )
         assert resp.status_code == 422
 
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_message_special_characters(self, mock_chat):
+        """Unicode, emoji, and HTML in messages should work without error."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Special")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        special_content = 'What about <script>alert("xss")</script> and emojis 🎉🔥 and unicode: café résumé naïve?'
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": special_content},
+        )
+        assert resp.status_code == 200
+        call_kwargs = mock_chat.call_args[1]
+        assert call_kwargs["question"] == special_content
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_very_long_message(self, mock_chat):
+        """Very long message content (10k chars) should not error."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title=None)
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        long_msg = "A" * 10_000
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": long_msg},
+        )
+        assert resp.status_code == 200
+        # Title should be truncated to 50 chars + "..."
+        assert s.title == "A" * 50 + "..."
+
+
+# ---------------------------------------------------------------------------
+# Edge case: delete session with 0 messages, pagination
+# ---------------------------------------------------------------------------
+
+class TestEdgeCases:
+    def test_delete_session_with_zero_messages(self):
+        """Deleting session with no messages should succeed."""
+        s = _make_session("Empty Session")
+        s.messages = []
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.delete(f"/api/chat/sessions/{s.id}")
+        assert resp.status_code == 200
+        assert db._deleted == [s]
+
+    def test_list_sessions_pagination_params(self):
+        """Offset and limit params should be accepted."""
+        s1 = _make_session("Chat A")
+        db = StubDB(execute_results=[[s1]])
+        client = _build_client(db)
+        resp = client.get("/api/chat/sessions?offset=0&limit=1")
+        assert resp.status_code == 200
+
+    def test_list_sessions_limit_above_max_returns_422(self):
+        """Limit > 100 should return 422."""
+        client = _build_client()
+        resp = client.get("/api/chat/sessions?limit=200")
+        assert resp.status_code == 422
+
+    def test_list_sessions_negative_offset_returns_422(self):
+        """Negative offset should return 422."""
+        client = _build_client()
+        resp = client.get("/api/chat/sessions?offset=-1")
+        assert resp.status_code == 422
+
+    def test_get_session_with_sources_in_message(self):
+        """Sources JSONB structure is returned correctly."""
+        s = _make_session("With Sources")
+        sources = [
+            {
+                "video_id": str(uuid.uuid4()),
+                "video_title": "My Video",
+                "chunk_text": "some text",
+                "start_time": 10.0,
+                "end_time": 20.0,
+                "similarity": 0.95,
+            }
+        ]
+        msg = _make_message(s.id, "assistant", "Answer with sources", sources=sources)
+        s.messages = [msg]
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.get(f"/api/chat/sessions/{s.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        src = body["messages"][0]["sources"][0]
+        assert "video_id" in src
+        assert "video_title" in src
+        assert "chunk_text" in src
+        assert "start_time" in src
+        assert "end_time" in src
+        assert "similarity" in src
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_message_to_session_with_existing_messages(self, mock_chat):
+        """Session with prior messages builds correct history."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Multi-turn")
+        msgs = [
+            _make_message(s.id, "user", "Q1"),
+            _make_message(s.id, "assistant", "A1"),
+            _make_message(s.id, "user", "Q2"),
+            _make_message(s.id, "assistant", "A2"),
+        ]
+        s.messages = msgs
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "Q3"},
+        )
+        assert resp.status_code == 200
+        history = mock_chat.call_args[1]["history"]
+        assert len(history) == 4
+        assert history[0]["content"] == "Q1"
+        assert history[3]["content"] == "A2"
+
 
 # ---------------------------------------------------------------------------
 # Chat service unit tests
@@ -490,6 +610,83 @@ class TestChatService:
         # Last message is the current question, preceding are history
         # History should be trimmed to last 20 (chat_max_history * 2)
         assert len(messages) == 21  # 20 history + 1 current question
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.encode_query", side_effect=ImportError("No sentence_transformers"))
+    async def test_chat_graceful_when_search_fails(self, mock_encode, mock_llm):
+        """If search fails (e.g. missing deps), chat continues with empty context."""
+        from app.services.chat import chat_with_context
+
+        mock_llm.return_value = {
+            "content": "No relevant context found.",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 10,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+        assert result["sources"] == []
+        assert result["content"] == "No relevant context found."
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat.settings")
+    @patch("app.services.chat.encode_query")
+    async def test_chat_returns_error_when_api_key_missing(self, mock_encode, mock_settings):
+        """When API key is not set, return a graceful error message."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_settings.anthropic_api_key = ""
+        mock_settings.chat_retrieval_top_k = 10
+        mock_settings.chat_max_history = 10
+        mock_settings.chat_model = "claude-sonnet-4-20250514"
+
+        db = AsyncMock()
+        with patch("app.services.chat.semantic_search", new_callable=AsyncMock, return_value=[]):
+            result = await chat_with_context("question", [], db)
+
+        assert "unavailable" in result["content"].lower() or "api key" in result["content"].lower()
+        assert result["prompt_tokens"] == 0
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_150k_token_guard_trims_messages(
+        self, mock_encode, mock_search, mock_llm,
+    ):
+        """When total estimated tokens > 150k, oldest history messages are dropped."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+        }
+
+        # Each message ~150k chars = ~37.5k tokens. 5 messages = ~187.5k tokens.
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": "X" * 150_000}
+            for i in range(4)
+        ]
+
+        db = AsyncMock()
+        await chat_with_context("short question", history, db)
+
+        call_args = mock_llm.call_args
+        messages = call_args[0][1]
+        # Messages should have been trimmed so total < 150k tokens
+        total_chars = sum(len(m["content"]) for m in messages)
+        estimated_tokens = total_chars // 4
+        assert estimated_tokens <= 150_000
+        # At least the current question should remain
+        assert len(messages) >= 1
+        assert "short question" in messages[-1]["content"]
 
 
 # ---------------------------------------------------------------------------

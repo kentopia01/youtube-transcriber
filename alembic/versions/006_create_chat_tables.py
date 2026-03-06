@@ -8,6 +8,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "006"
 down_revision: Union[str, None] = "005"
@@ -47,7 +48,7 @@ def upgrade() -> None:
         ),
         sa.Column("role", sa.String(10), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("sources", sa.JSON(), nullable=True),
+        sa.Column("sources", JSONB(), nullable=True),
         sa.Column("model", sa.String(64), nullable=True),
         sa.Column("prompt_tokens", sa.Integer(), nullable=True),
         sa.Column("completion_tokens", sa.Integer(), nullable=True),

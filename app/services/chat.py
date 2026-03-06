@@ -126,22 +126,6 @@ async def chat_with_context(
             removed = messages.pop(0)
             estimated_tokens -= len(removed["content"]) // 4
 
-    if not settings.anthropic_api_key:
-        logger.warning("chat_missing_api_key")
-        return {
-            "content": "Chat is unavailable: Anthropic API key is not configured.",
-            "sources": [],
-            "model": settings.chat_model,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-        }
-
-    loop = asyncio.get_event_loop()
-    llm_result = await loop.run_in_executor(
-        None,
-        partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.chat_model),
-    )
-
     sources = [
         {
             "video_id": str(chunk["video_id"]),
@@ -153,6 +137,32 @@ async def chat_with_context(
         }
         for chunk in chunks
     ]
+
+    if not settings.anthropic_api_key:
+        logger.warning("chat_missing_api_key")
+        return {
+            "content": "Chat is unavailable: Anthropic API key is not configured.",
+            "sources": sources,
+            "model": settings.chat_model,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
+
+    loop = asyncio.get_running_loop()
+    try:
+        llm_result = await loop.run_in_executor(
+            None,
+            partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.chat_model),
+        )
+    except Exception as exc:
+        logger.error("anthropic_api_error", error=str(exc))
+        return {
+            "content": "Sorry, an error occurred while generating the response. Please try again.",
+            "sources": sources,
+            "model": settings.chat_model,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
 
     return {
         "content": llm_result["content"],
