@@ -36,17 +36,30 @@ def transcribe_audio_task(self, video_id: str) -> str:
         try:
             result = transcribe_audio(
                 video.audio_file_path,
+                engine_type=settings.transcription_engine,
+                # MLX options
+                whisper_model=settings.whisper_model,
+                whisper_detect_model=settings.whisper_detect_model,
+                whisper_language=settings.whisper_language,
+                # Faster-whisper options
                 model_size=settings.whisper_model_size,
                 device=settings.whisper_device,
                 compute_type=settings.whisper_compute_type,
                 model_cache_dir=settings.model_cache_dir,
             )
 
+            # Determine model name for recording
+            model_name = (
+                settings.whisper_model
+                if settings.transcription_engine == "mlx"
+                else settings.whisper_model_size
+            )
+
             transcription = Transcription(
                 video_id=vid,
                 full_text=result["text"],
                 language=result.get("language"),
-                model_size=settings.whisper_model_size,
+                model_size=model_name,
                 word_count=len(result["text"].split()),
                 processing_time_seconds=result.get("processing_time"),
             )

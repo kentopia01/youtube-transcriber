@@ -7,9 +7,11 @@ build/
 *.egg
 
 .env
+.env.native
 !.env.example
 
 .venv/
+.venv-native/
 venv/
 
 .pytest_cache/
@@ -21,3 +23,5 @@ venv/
 *.webm
 
 /data/
+.DS_Store
+.claude/
