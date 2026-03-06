@@ -110,7 +110,7 @@ Proposed: [Speaker A turn(s), ~200-400 tokens] [Speaker B turn(s), ~200-400 toke
 
 ---
 
-### Phase 4: Hybrid Search (BM25 + Vector) — Optional / Future
+### Phase 4: Hybrid Search (BM25 + Vector) — DONE
 **Scope:** Add keyword search alongside vector similarity for better recall
 
 **Why:** Pure vector search misses exact matches on proper nouns, technical terms, acronyms. Hybrid search combines the best of both.
