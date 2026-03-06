@@ -1481,3 +1481,101 @@ class TestQAClawRound5:
         assert assistant_msg.model == "claude-sonnet-4-20250514"
         assert assistant_msg.prompt_tokens == 500
         assert assistant_msg.completion_tokens == 100
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 6 — Final gap tests
+# ---------------------------------------------------------------------------
+
+class TestQAClawRound6:
+    """Last edge cases: duplicate delete, auth error, timeout."""
+
+    def test_duplicate_delete_returns_404(self):
+        """Deleting an already-deleted session should return 404."""
+        s = _make_session("To Delete")
+        # First delete succeeds, second returns None (not found)
+        db = StubDB(execute_results=[s, None])
+        client = _build_client(db)
+        resp1 = client.delete(f"/api/chat/sessions/{s.id}")
+        assert resp1.status_code == 200
+        resp2 = client.delete(f"/api/chat/sessions/{s.id}")
+        assert resp2.status_code == 404
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_anthropic_auth_error_returns_graceful_message(self, mock_encode, mock_search):
+        """AuthenticationError from Anthropic should be handled gracefully."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+
+        with patch(
+            "app.services.chat._call_anthropic",
+            side_effect=anthropic.AuthenticationError(
+                message="invalid api key",
+                response=MagicMock(status_code=401),
+                body=None,
+            ),
+        ):
+            db = AsyncMock()
+            result = await chat_with_context("question", [], db)
+
+        assert "error" in result["content"].lower()
+        assert result["prompt_tokens"] == 0
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_anthropic_timeout_returns_graceful_message(self, mock_encode, mock_search):
+        """Timeout from Anthropic API should be handled gracefully."""
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+
+        with patch(
+            "app.services.chat._call_anthropic",
+            side_effect=anthropic.APITimeoutError(request=MagicMock()),
+        ):
+            db = AsyncMock()
+            result = await chat_with_context("question", [], db)
+
+        assert "error" in result["content"].lower()
+        assert result["prompt_tokens"] == 0
+
+    def test_get_session_zero_messages_returns_empty_list(self):
+        """Getting a session with 0 messages should return messages=[]."""
+        s = _make_session("Empty")
+        s.messages = []
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.get(f"/api/chat/sessions/{s.id}")
+        assert resp.status_code == 200
+        assert resp.json()["messages"] == []
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_send_message_boundary_100k_accepted(self, mock_chat):
+        """Message at exactly 100k chars should be accepted."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Boundary")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "x" * 100_000},
+        )
+        assert resp.status_code == 200
+
+    def test_rename_boundary_255_chars_accepted(self):
+        """Title at exactly 255 chars should be accepted."""
+        s = _make_session("Old")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.patch(
+            f"/api/chat/sessions/{s.id}",
+            json={"title": "x" * 255},
+        )
+        assert resp.status_code == 200
+        assert s.title == "x" * 255
