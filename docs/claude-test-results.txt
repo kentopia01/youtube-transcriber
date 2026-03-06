@@ -1,25 +1,39 @@
-QAClaw Round 2 - Phase 4 Hybrid Search Review
-==============================================
+Pipeline Reliability Fixes - Test Results
+==========================================
 Date: 2026-03-06
 Command: .venv/bin/pytest -v
 
-Result: 419 passed, 42 warnings in 4.38s
+Result: 421 passed, 1 failed (pre-existing), 42 warnings in 6.19s
 
-Search-specific tests (53 total):
-- tests/test_search_service.py: 30 passed (9 new)
-- tests/test_hybrid_search.py: 23 passed (2 new)
+Pre-existing failure (NOT related to this change):
+  tests/test_config.py::TestConfigDefaults::test_cleanup_model_default
+  - Test expects old model ID "claude-haiku-4-20250514" but config was
+    updated to "claude-haiku-4-5-20251001" in prior commit 43df5c4
 
-New tests added:
-  test_search_service.py::TestEdgeCases::test_hybrid_search_single_word_query
-  test_search_service.py::TestEdgeCases::test_hybrid_search_very_long_query
-  test_search_service.py::TestEdgeCases::test_keyword_search_sql_injection_patterns
-  test_search_service.py::TestEdgeCases::test_hybrid_search_sql_injection_patterns
-  test_search_service.py::TestHybridSearchSQL::test_uses_full_outer_join
-  test_search_service.py::TestHybridSearchSQL::test_keyword_ranked_has_display_columns
-  test_search_service.py::TestHybridSearchSQL::test_both_rrf_components_use_coalesce
-  test_hybrid_search.py::TestHybridSearchSQLStructure::test_full_outer_join_not_left_join
-  test_hybrid_search.py::TestHybridSearchSQLStructure::test_coalesce_on_display_columns
+New tests added (3):
+  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_resume_from_diarize_skips_download_and_transcribe
+  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_resume_from_embeddings_only
+  tests/test_pipeline_chain.py::TestPipelineFromPartialChain::test_invalid_step_raises_error
 
-Bug fixed:
-  app/services/search.py: _hybrid_search() LEFT JOIN -> FULL OUTER JOIN
-  (keyword-only BM25 matches were silently dropped from RRF results)
+Tests updated (1):
+  tests/test_jobs_retry.py::test_retry_job_creates_new_pipeline_job
+  - Updated to mock run_pipeline_from instead of run_pipeline
+  - Added extra DB results for _detect_resume_point queries
+
+Files changed:
+  app/tasks/helpers.py (new)
+  app/tasks/download.py
+  app/tasks/transcribe.py
+  app/tasks/diarize.py
+  app/tasks/cleanup.py
+  app/tasks/summarize.py
+  app/tasks/embed.py
+  app/tasks/pipeline.py
+  app/routers/jobs.py
+  app/routers/videos.py
+  tests/test_jobs_retry.py
+  tests/test_pipeline_chain.py
+  README.md
+  docs/claude-plan.md
+  docs/claude-diff-summary.md
+  docs/claude-test-results.txt

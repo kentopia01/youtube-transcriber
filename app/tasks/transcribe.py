@@ -12,6 +12,7 @@ from app.models.video import Video
 from app.services.transcription import transcribe_audio
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
+from app.tasks.helpers import get_latest_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -27,7 +28,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
             raise ValueError(f"Video {video_id} not found")
 
         video.status = "transcribing"
-        job = db.query(Job).filter(Job.video_id == vid, Job.job_type == "pipeline").first()
+        job = get_latest_pipeline_job(db, vid)
         if job:
             job.progress_pct = 30.0
             job.progress_message = "Transcribing audio..."
@@ -55,16 +56,33 @@ def transcribe_audio_task(self, video_id: str) -> str:
                 else settings.whisper_model_size
             )
 
-            transcription = Transcription(
-                video_id=vid,
-                full_text=result["text"],
-                language=result.get("language"),
-                model_size=model_name,
-                word_count=len(result["text"].split()),
-                processing_time_seconds=float(result["processing_time"]) if result.get("processing_time") is not None else None,
-            )
-            db.add(transcription)
-            db.flush()
+            # Upsert: update existing transcription or create new one
+            existing_transcription = db.query(Transcription).filter(
+                Transcription.video_id == vid
+            ).first()
+            if existing_transcription:
+                transcription = existing_transcription
+                transcription.full_text = result["text"]
+                transcription.language = result.get("language")
+                transcription.model_size = model_name
+                transcription.word_count = len(result["text"].split())
+                transcription.processing_time_seconds = float(result["processing_time"]) if result.get("processing_time") is not None else None
+                # Delete old segments before inserting new ones
+                db.query(TranscriptionSegment).filter(
+                    TranscriptionSegment.transcription_id == transcription.id
+                ).delete()
+                db.flush()
+            else:
+                transcription = Transcription(
+                    video_id=vid,
+                    full_text=result["text"],
+                    language=result.get("language"),
+                    model_size=model_name,
+                    word_count=len(result["text"].split()),
+                    processing_time_seconds=float(result["processing_time"]) if result.get("processing_time") is not None else None,
+                )
+                db.add(transcription)
+                db.flush()
 
             for i, seg in enumerate(result.get("segments", [])):
                 segment = TranscriptionSegment(

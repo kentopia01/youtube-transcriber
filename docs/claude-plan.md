@@ -1,38 +1,22 @@
-# QAClaw Round 2: Phase 4 Hybrid Search Review
+# Plan: Fix 6 Pipeline Reliability Bugs
 
 ## Goal
-Code review, test, and fix Phase 4 (Hybrid Search) implementation per QACLAW_TASK.md Round 2.
+Fix pipeline retry reliability — make retry smart (resume from failure point), all tasks idempotent (no duplicate data on re-run), and job tracking correct (latest job gets updates).
 
 ## Assumptions
-- Phase 4 code is committed and passing tests
-- Mock-based unit tests (no live PostgreSQL needed)
+- Pipeline steps: download → transcribe → diarize → cleanup → summarize → embed
+- Each step passes video_id to the next via Celery chain
+- Transcription, Summary have unique constraints on video_id
+- EmbeddingChunk has no unique constraint but duplicates corrupt search results
 
 ## Step-by-step Plan
-1. Code review all Phase 4 changes (migration, search service, config, model, tests)
-2. Verify hybrid search RRF combination of BM25 + vector scores
-3. Verify search_mode config toggle for all 3 modes (vector / hybrid / keyword)
-4. Verify tsvector column + GIN index + trigger in migration
-5. Check edge cases: special chars, empty results, single-word, long queries, SQL injection
-6. Verify vector-only mode matches pre-Phase-4 behavior
-7. Add missing tests, fix bugs
-8. Run full test suite
-9. Create handoff docs, commit, push
-
-## Execution
-
-### Bug Found & Fixed
-- **FULL OUTER JOIN bug**: `_hybrid_search()` used `LEFT JOIN keyword_ranked` from `vector_ranked`, meaning keyword-only matches (items found by BM25 but outside top 3x vector candidates) were silently dropped. This defeats the core purpose of hybrid search. Fixed to `FULL OUTER JOIN` with COALESCE on all display columns and both rank components.
-
-### Tests Added (9 new)
-- `test_hybrid_search_single_word_query` - single-word queries work
-- `test_hybrid_search_very_long_query` - ~400-word queries don't crash
-- `test_keyword_search_sql_injection_patterns` - 5 injection patterns safely parameterized
-- `test_hybrid_search_sql_injection_patterns` - injection patterns in hybrid mode
-- `test_uses_full_outer_join` - SQL contains FULL OUTER JOIN (x2, both test files)
-- `test_keyword_ranked_has_display_columns` - COALESCE on display columns
-- `test_both_rrf_components_use_coalesce` - both rank components COALESCE to 0
-- `test_coalesce_on_display_columns` - in test_hybrid_search.py
-
-### Results
-- All 419 tests pass (9 new + 410 existing), 0 failures
-- No plan deviations
+1. **Create `app/tasks/helpers.py`** — shared `get_latest_pipeline_job(db, video_id)` that queries `ORDER BY created_at DESC` instead of `.first()`
+2. **Bug 2 — transcribe.py idempotency** — check for existing transcription before INSERT; if exists, UPDATE it and DELETE old segments first
+3. **Bug 4 — summarize.py idempotency** — check for existing summary; if exists, UPDATE instead of INSERT
+4. **Bug 5 — embed.py cleanup** — DELETE existing embedding_chunks for video_id before inserting new ones
+5. **Bug 3 — use latest job in ALL tasks** — replace `.filter(...).first()` with `get_latest_pipeline_job()` in download.py, transcribe.py, diarize.py, cleanup.py, summarize.py, embed.py
+6. **Bug 1 — smart retry** — add `run_pipeline_from(video_id, start_from)` to pipeline.py; update retry_job() to detect resume point via `_detect_resume_point()` (checks what data exists)
+7. **Bug 6 — failed video resubmission** — if existing video status is 'failed', allow re-processing instead of returning 'existing'
+8. **Exponential backoff** — add `max_retries=2` with backoff to summarize and embed tasks
+9. **Update tests** — fix retry test for new smart retry flow, add tests for `run_pipeline_from` partial chains
+10. **Update README** — document retry behavior

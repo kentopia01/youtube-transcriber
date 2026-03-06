@@ -277,6 +277,23 @@ python scripts/reembed_all.py --dry-run    # preview without writing
 python scripts/reembed_all.py --video-id UUID  # re-embed a single video
 ```
 
+## Pipeline Retry Behavior
+
+Failed jobs can be retried via the API (`POST /api/jobs/{job_id}/retry`) or the web UI. Retry is **smart** — it detects where the pipeline failed based on existing data and resumes from the correct step:
+
+| Existing Data | Resumes From |
+|---|---|
+| Nothing | `download_audio` (full pipeline) |
+| Transcription exists | `diarize_and_align` (skips download + transcribe) |
+| Summary exists | `generate_embeddings` (skips everything before embed) |
+| Embeddings exist | `generate_embeddings` (re-runs to mark complete) |
+
+All pipeline tasks are **idempotent** — they upsert transcriptions/summaries and delete old embedding chunks before inserting, so retries never produce duplicate data or UniqueViolation errors.
+
+The `summarize_transcription` and `generate_embeddings` tasks have built-in retry with exponential backoff (max 2 retries, 10s/20s delays) to handle transient API and model-loading failures.
+
+Resubmitting a previously failed video URL creates a new pipeline job instead of returning the old failed job.
+
 ## Worker Management
 
 ```bash

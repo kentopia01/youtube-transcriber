@@ -43,16 +43,21 @@ async def submit_video(
     )
     existing = result.scalar_one_or_none()
     if existing:
-        # Return existing video's job
-        job_result = await db.execute(
-            select(Job).where(Job.video_id == existing.id).order_by(Job.created_at.desc())
-        )
-        job = job_result.scalars().first()
-        if job:
-            return {"job_id": str(job.id), "video_id": str(existing.id), "status": "existing"}
-        # Re-process if no job exists
-        existing.status = "pending"
-        existing.error_message = None
+        # If the video previously failed, allow re-processing
+        if existing.status == "failed":
+            existing.status = "pending"
+            existing.error_message = None
+        else:
+            # Return existing video's job for non-failed videos
+            job_result = await db.execute(
+                select(Job).where(Job.video_id == existing.id).order_by(Job.created_at.desc())
+            )
+            job = job_result.scalars().first()
+            if job:
+                return {"job_id": str(job.id), "video_id": str(existing.id), "status": "existing"}
+            # Re-process if no job exists
+            existing.status = "pending"
+            existing.error_message = None
 
     # Get video info
     try:

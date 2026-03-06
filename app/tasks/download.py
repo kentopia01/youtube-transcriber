@@ -10,6 +10,7 @@ from app.models.video import Video
 from app.services.youtube import download_audio
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
+from app.tasks.helpers import get_latest_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -26,7 +27,7 @@ def download_audio_task(self, video_id: str) -> str:
 
         # Update status
         video.status = "downloading"
-        job = db.query(Job).filter(Job.video_id == vid, Job.job_type == "pipeline").first()
+        job = get_latest_pipeline_job(db, vid)
         if job:
             job.status = "running"
             job.progress_pct = 5.0

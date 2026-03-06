@@ -56,9 +56,14 @@ async def test_retry_job_creates_new_pipeline_job(monkeypatch):
         status="failed",
         error_message="failed",
     )
-    db = _FakeDB([job, video])
+    # Results: job, video, then 3x None for _detect_resume_point queries
+    # (embedding check, summary check, transcription check)
+    db = _FakeDB([job, video, None, None, None])
 
-    monkeypatch.setattr(jobs_router, "run_pipeline", lambda video_id: "celery-123")
+    monkeypatch.setattr(
+        jobs_router, "run_pipeline_from",
+        lambda video_id, start_from: "celery-123",
+    )
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
 
@@ -71,7 +76,7 @@ async def test_retry_job_creates_new_pipeline_job(monkeypatch):
     assert len(db.added) == 1
     retried_job = db.added[0]
     assert retried_job.status == "queued"
-    assert retried_job.progress_message == "Queued for retry"
+    assert "retry" in retried_job.progress_message.lower()
     assert retried_job.celery_task_id == "celery-123"
 
 

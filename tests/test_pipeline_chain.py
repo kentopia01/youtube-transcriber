@@ -105,6 +105,64 @@ class TestPipelineChain:
         assert pipeline.run_pipeline("v") == "result-42"
 
 
+class TestPipelineFromPartialChain:
+    """Test that run_pipeline_from() builds partial chains for smart retry."""
+
+    def test_resume_from_diarize_skips_download_and_transcribe(self, monkeypatch):
+        captured_parts = []
+
+        def fake_signature(name, args=None, app=None):
+            captured_parts.append({"name": name, "args": args})
+            return name
+
+        class FakeChain:
+            def apply_async(self):
+                return SimpleNamespace(id="partial-chain")
+
+        monkeypatch.setattr(pipeline, "signature", fake_signature)
+        monkeypatch.setattr(pipeline, "chain", lambda *p: FakeChain())
+
+        result_id = pipeline.run_pipeline_from("vid-456", start_from="tasks.diarize_and_align")
+
+        assert result_id == "partial-chain"
+        names = [c["name"] for c in captured_parts]
+        assert names == [
+            "tasks.diarize_and_align",
+            "tasks.cleanup_transcript",
+            "tasks.summarize_transcription",
+            "tasks.generate_embeddings",
+        ]
+        # First step gets video_id as arg
+        assert captured_parts[0]["args"] == ["vid-456"]
+        # Other steps get args=None (from chain)
+        for c in captured_parts[1:]:
+            assert c["args"] is None
+
+    def test_resume_from_embeddings_only(self, monkeypatch):
+        captured_parts = []
+
+        def fake_signature(name, args=None, app=None):
+            captured_parts.append(name)
+            return name
+
+        class FakeChain:
+            def apply_async(self):
+                return SimpleNamespace(id="embed-only")
+
+        monkeypatch.setattr(pipeline, "signature", fake_signature)
+        monkeypatch.setattr(pipeline, "chain", lambda *p: FakeChain())
+
+        result_id = pipeline.run_pipeline_from("vid-789", start_from="tasks.generate_embeddings")
+
+        assert result_id == "embed-only"
+        assert captured_parts == ["tasks.generate_embeddings"]
+
+    def test_invalid_step_raises_error(self):
+        import pytest
+        with pytest.raises(ValueError, match="Unknown pipeline step"):
+            pipeline.run_pipeline_from("vid", start_from="tasks.nonexistent")
+
+
 class TestPipelineStepSkipping:
     """Test that diarize/cleanup tasks properly skip when disabled.
 

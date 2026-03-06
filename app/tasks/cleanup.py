@@ -17,6 +17,7 @@ from app.models.video import Video
 from app.services.transcript_cleanup import clean_transcript
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
+from app.tasks.helpers import get_latest_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -54,9 +55,7 @@ def cleanup_transcript_task(self, video_id: str) -> str:
         if not transcription:
             raise ValueError(f"No transcription found for video {video_id}")
 
-        job = db.query(Job).filter(
-            Job.video_id == vid, Job.job_type == "pipeline"
-        ).first()
+        job = get_latest_pipeline_job(db, vid)
         if job:
             job.progress_pct = 67.0
             job.progress_message = "Cleaning transcript with LLM..."
