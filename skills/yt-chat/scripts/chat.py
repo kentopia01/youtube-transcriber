@@ -70,15 +70,44 @@ def list_videos_from_db(limit: int = 10) -> str:
 
 
 def build_context(transcript: dict, video_title: str = "") -> str:
-    """Build context string from transcript data."""
+    """Build context string from transcript data.
+
+    If speaker diarization is available, formats the transcript with speaker
+    labels and timestamps for rich context.
+    """
     parts = []
     if video_title:
         parts.append(f"Video title: {video_title}")
-    parts.append(f"Language: {transcript.get('language', 'unknown')}")
+    parts.append(f"Language: {transcript.get('language_detected', transcript.get('language', 'unknown'))}")
     parts.append(f"Word count: {transcript.get('word_count', 'unknown')}")
+
+    speakers = transcript.get("speakers", [])
+    if speakers:
+        parts.append(f"Speakers: {', '.join(speakers)} ({len(speakers)} total)")
+
     parts.append("")
     parts.append("--- TRANSCRIPT ---")
-    parts.append(transcript.get("full_text", ""))
+
+    # Use speaker-labeled segments if available
+    segments = transcript.get("segments", [])
+    has_speakers = any(s.get("speaker") for s in segments)
+
+    if has_speakers and segments:
+        for seg in segments:
+            speaker = seg.get("speaker", "")
+            start = seg.get("start", 0)
+            end = seg.get("end", 0)
+            text = seg.get("text", "")
+            # Format: [SPEAKER_00] 0:00 - 0:15: Welcome to the show...
+            start_fmt = f"{int(start // 60)}:{int(start % 60):02d}"
+            end_fmt = f"{int(end // 60)}:{int(end % 60):02d}"
+            if speaker:
+                parts.append(f"[{speaker}] {start_fmt} - {end_fmt}: {text}")
+            else:
+                parts.append(f"{start_fmt} - {end_fmt}: {text}")
+    else:
+        parts.append(transcript.get("full_text", ""))
+
     return "\n".join(parts)
 
 
