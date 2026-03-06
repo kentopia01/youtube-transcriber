@@ -1,25 +1,24 @@
-# BuildClaw Phase 2: Chat Backend (Sessions + RAG + API)
+# QAClaw Phase 2 QA Round 2 — Chat Backend Review
 
 ## Goal
-Implement the full chat backend for the youtube-transcriber: session management, RAG pipeline, and API endpoints as specified in CHAT_FEATURE_PLAN.md Phase 2.
+Thorough code review and QA testing of Phase 2 (Chat Backend): migration 006, models, chat service (RAG pipeline), chat router, schemas, config.
 
 ## Assumptions
-- Phase 1 (toggle system) is complete — `chat_enabled` columns exist on videos/channels
-- `semantic_search()` already supports `chat_enabled_only` parameter
-- Anthropic SDK is installed; `encode_query` uses sentence_transformers for embeddings
-- Model ID `claude-sonnet-4-20250514` matches existing format in config (confirmed against `cleanup_model` and `summary_model`)
+- Phase 1 (toggle system) is complete and tested
+- Phase 2 code was implemented by BuildClaw
+- First QA pass already completed; this is a deeper review
 
 ## Steps
-1. Create `app/models/chat_session.py` — UUID PK, title, platform, telegram_chat_id, timestamps
-2. Create `app/models/chat_message.py` — UUID PK, FK to session, role, content, JSONB sources, token counts
-3. Register both models in `app/models/__init__.py`
-4. Create Alembic migration 006 — chat_sessions + chat_messages tables with index
-5. Add config: `chat_model`, `chat_max_history`, `chat_retrieval_top_k` to `app/config.py`
-6. Create `app/schemas/chat.py` — Pydantic models for all request/response types
-7. Create `app/services/chat.py` — RAG pipeline: encode query -> hybrid search (chat_enabled_only) -> build prompt with history -> call Anthropic -> return answer + sources
-8. Create `app/routers/chat.py` — 6 endpoints (create/list/get/delete/rename sessions + send message)
-9. Register router in `app/main.py`
-10. Auto-title: first 50 chars of first message with ellipsis
-11. Error handling: graceful fallback for missing deps/API key
-12. Create `tests/test_chat_backend.py` — 28 tests covering CRUD, messaging, RAG, error paths
-13. Run full suite: 507 passed
+1. Read CHAT_FEATURE_PLAN.md Phase 2 section
+2. Review all Phase 2 files against spec
+3. Run existing tests to establish baseline (57 chat tests passed)
+4. Identify bugs and gaps:
+   - No input validation on `ChatMessageSend.content` (empty/very long allowed)
+   - No input validation on `ChatSessionRename.title` (empty string allowed)
+   - `asyncio.get_event_loop()` deprecated, should use `get_running_loop()`
+   - No error handling around Anthropic API calls in `chat_with_context`
+   - Sources list built after LLM call, unavailable in error path
+5. Fix bugs: validation in schemas, error handling in service, deprecation fix
+6. Add 14 new edge case tests to test_chat_backend.py
+7. Run full suite: 532 passed, 0 failed
+8. Create handoff docs, commit, push

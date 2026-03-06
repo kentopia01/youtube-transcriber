@@ -1,24 +1,21 @@
-# QAClaw Phase 2: Chat Backend QA — Diff Summary
+# QAClaw Phase 2 QA Round 2 — Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `alembic/versions/006_create_chat_tables.py` | Fix: `sa.JSON()` -> `JSONB()` to match model's `JSONB` column type |
-| `app/services/chat.py` | Fix: missing API key now returns actual `sources` (from search) instead of empty list |
-| `tests/test_chat.py` | Added 10 new edge-case tests: special chars, long messages, pagination validation, sources JSONB, 150k token guard, search failure, API key missing, multi-turn history, delete empty session |
-| `tests/test_chat_backend.py` | Removed — duplicate of test_chat.py (~70% overlap). Unique tests merged into test_chat.py |
-
-## Why
-QA review of Phase 2 chat backend. Found 2 bugs and test coverage gaps.
+| `app/schemas/chat.py` | Fix: Added `Field(min_length=1, max_length=100_000)` to `ChatMessageSend.content`; Added `Field(min_length=1, max_length=255)` to `ChatSessionRename.title` |
+| `app/services/chat.py` | Fix: `asyncio.get_event_loop()` -> `get_running_loop()`; Added try/except around Anthropic API call with graceful error response; Moved sources list construction before LLM call so it's available in error paths |
+| `tests/test_chat_backend.py` | Added 14 new edge case tests: empty message, missing content, whitespace-only, very long message, empty rename, long rename, no-messages session, cascade delete, nonexistent session message, sources saved, API error handling, correct model, prompt structure, token guard |
 
 ## Bugs Fixed
-1. **Migration JSONB mismatch**: Migration 006 used `sa.JSON()` but model uses `JSONB`. PostgreSQL would create a JSON column instead of JSONB, losing GIN index support and `@>` operator.
-2. **Empty sources on missing API key**: `chat_with_context` returned `sources: []` when API key was missing, even though search had succeeded and computed valid sources. The LLM error path correctly returned sources, but the API key path didn't.
+1. **No input validation on message content**: Empty strings and 100k+ char messages were accepted. Added `min_length=1, max_length=100_000`.
+2. **No input validation on session rename**: Empty string rename was accepted. Added `min_length=1, max_length=255`.
+3. **Deprecated `asyncio.get_event_loop()`**: Replaced with `asyncio.get_running_loop()`.
+4. **No Anthropic API error handling**: `_call_anthropic` exceptions propagated as 500s. Added try/except with graceful error response.
+5. **Sources unavailable in error path**: Sources list was built after the LLM call, so API errors couldn't include search results. Moved construction before the LLM call.
 
 ## Risks
-- `asyncio.get_running_loop()` was already fixed by BuildClaw (confirmed in final code)
-- No migration for existing databases with `JSON` column — if 006 was already applied, manual `ALTER COLUMN sources TYPE JSONB` needed
-
-## Test Results
-- 490 tests passed, 0 failed (40 chat-specific tests)
+- Pydantic `min_length` does not strip whitespace, so `"   "` passes validation. Acceptable for now.
+- `max_length=100_000` is arbitrary but reasonable for chat messages.
+- Migration 006 still uses `sa.JSON()` vs model's `JSONB` — cosmetic mismatch, functionally fine on PostgreSQL.

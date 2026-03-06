@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
 import pytest
 
 from app.dependencies import get_db
@@ -754,3 +755,207 @@ class TestBuildMessages:
         assert messages[0]["content"] == "Hi"
         assert messages[2]["role"] == "user"
         assert "Follow up" in messages[2]["content"]
+
+
+# ---------------------------------------------------------------------------
+# QAClaw Round 2 — Validation & Error Handling Edge Cases
+# ---------------------------------------------------------------------------
+
+class TestValidationEdgeCases:
+    """Input validation edge cases added by QAClaw."""
+
+    def test_send_empty_message_returns_422(self):
+        """Empty message content should be rejected by validation."""
+        client = _build_client()
+        resp = client.post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            json={"content": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_send_very_long_message_returns_422(self):
+        """Message exceeding 100k chars should be rejected."""
+        client = _build_client()
+        resp = client.post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            json={"content": "x" * 100_001},
+        )
+        assert resp.status_code == 422
+
+    def test_rename_to_empty_string_returns_422(self):
+        """Renaming session to empty string should be rejected."""
+        client = _build_client()
+        resp = client.patch(
+            f"/api/chat/sessions/{uuid.uuid4()}",
+            json={"title": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_rename_to_very_long_string_returns_422(self):
+        """Renaming session to string > 255 chars should be rejected."""
+        client = _build_client()
+        resp = client.patch(
+            f"/api/chat/sessions/{uuid.uuid4()}",
+            json={"title": "x" * 256},
+        )
+        assert resp.status_code == 422
+
+    def test_whitespace_only_message_passes_validation(self):
+        """Whitespace-only content passes min_length, hits session lookup."""
+        db = StubDB(execute_results=[None])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            json={"content": "   "},
+        )
+        assert resp.status_code == 404
+
+    def test_delete_session_cascades(self):
+        """Deleting a session calls db.delete on the session object."""
+        s = _make_session("To Delete")
+        msg = _make_message(s.id, "user", "hello")
+        s.messages = [msg]
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.delete(f"/api/chat/sessions/{s.id}")
+        assert resp.status_code == 200
+        assert db._deleted == [s]
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_nonexistent_session_message_no_chat_call(self, mock_chat):
+        """Sending to nonexistent session returns 404 without calling chat service."""
+        db = StubDB(execute_results=[None])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            json={"content": "hello"},
+        )
+        assert resp.status_code == 404
+        mock_chat.assert_not_called()
+
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_sources_persisted_in_assistant_message(self, mock_chat):
+        """Sources from RAG are stored in the assistant ChatMessage object."""
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        s = _make_session(title="Test")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "question"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["sources"] is not None
+        assert len(body["sources"]) == 1
+        assert body["sources"][0]["similarity"] == 0.95
+        # Both user + assistant messages added
+        assert len(db.added) == 2
+        assert db.added[0].role == "user"
+        assert db.added[1].role == "assistant"
+        assert db.added[1].sources == MOCK_CHAT_RESULT["sources"]
+
+
+class TestAnthropicErrorHandling:
+    """Tests for Anthropic API error handling in chat service."""
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_api_error_returns_graceful_message(self, mock_encode, mock_search):
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": uuid.uuid4(),
+                "video_title": "Vid",
+                "chunk_text": "text",
+                "start_time": 0.0,
+                "end_time": 5.0,
+                "speaker": None,
+                "similarity": 0.8,
+            }
+        ]
+
+        with patch(
+            "app.services.chat._call_anthropic",
+            side_effect=anthropic.APIError(
+                message="rate limit exceeded",
+                request=MagicMock(),
+                body=None,
+            ),
+        ):
+            db = AsyncMock()
+            result = await chat_with_context("question", [], db)
+
+        assert "error" in result["content"].lower()
+        assert result["prompt_tokens"] == 0
+        assert result["completion_tokens"] == 0
+        assert len(result["sources"]) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_correct_model_passed_to_anthropic(self, mock_encode, mock_search, mock_llm):
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 50,
+            "completion_tokens": 20,
+        }
+
+        db = AsyncMock()
+        await chat_with_context("question", [], db)
+
+        call_args = mock_llm.call_args[0]
+        assert call_args[2] == "claude-sonnet-4-20250514"
+        assert "video transcript" in call_args[0].lower()
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_prompt_includes_context_history_question(self, mock_encode, mock_search, mock_llm):
+        from app.services.chat import chat_with_context
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": uuid.uuid4(),
+                "video_title": "Test Video",
+                "chunk_text": "Important content",
+                "start_time": 10.0,
+                "end_time": 20.0,
+                "speaker": None,
+                "similarity": 0.9,
+            }
+        ]
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+
+        history = [
+            {"role": "user", "content": "prior question"},
+            {"role": "assistant", "content": "prior answer"},
+        ]
+        db = AsyncMock()
+        await chat_with_context("new question", history, db)
+
+        call_args = mock_llm.call_args[0]
+        messages = call_args[1]
+        assert len(messages) == 3
+        assert messages[0]["content"] == "prior question"
+        assert messages[1]["content"] == "prior answer"
+        assert "Important content" in messages[2]["content"]
+        assert "new question" in messages[2]["content"]
