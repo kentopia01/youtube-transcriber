@@ -335,3 +335,62 @@ class TestProcessLatest:
             )
         assert resp.status_code == 200
         assert resp.json()["total_videos"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Validation edge-case tests
+# ---------------------------------------------------------------------------
+
+
+class TestChannelSubmitValidation:
+    def test_limit_zero_rejected(self):
+        client = _build_client()
+        resp = client.post(
+            "/api/channels",
+            json={"url": "https://www.youtube.com/@testchannel", "limit": 0},
+        )
+        assert resp.status_code == 422
+
+    def test_limit_negative_rejected(self):
+        client = _build_client()
+        resp = client.post(
+            "/api/channels",
+            json={"url": "https://www.youtube.com/@testchannel", "limit": -5},
+        )
+        assert resp.status_code == 422
+
+    def test_invalid_date_format_rejected(self):
+        client = _build_client()
+        resp = client.post(
+            "/api/channels",
+            json={"url": "https://www.youtube.com/@testchannel", "after_date": "not-a-date"},
+        )
+        assert resp.status_code == 422
+
+    def test_negative_duration_rejected(self):
+        client = _build_client()
+        resp = client.post(
+            "/api/channels",
+            json={"url": "https://www.youtube.com/@testchannel", "min_duration": -100},
+        )
+        assert resp.status_code == 422
+
+
+class TestProcessLatestValidation:
+    def test_latest_zero_rejected(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        client = _build_client()
+        resp = client.post(
+            f"/api/channels/{fake_channel.id}/process",
+            json={"latest": 0},
+        )
+        assert resp.status_code == 422
+
+    def test_latest_negative_rejected(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        client = _build_client()
+        resp = client.post(
+            f"/api/channels/{fake_channel.id}/process",
+            json={"latest": -1},
+        )
+        assert resp.status_code == 422

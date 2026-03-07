@@ -1,29 +1,20 @@
-Channel Video Filtering -- Test Results
-=======================================
+QAClaw: Channel Filtering QA -- Test Results
+=============================================
 
 Command: .venv314/bin/python -m pytest tests/ -q --ignore=tests/test_telegram_bot.py
-Result: 630 passed, 67 warnings in 9.76s
+Result: 636 passed, 67 warnings in 5.87s
 
-New tests (tests/test_channel_filters.py, 14 tests):
+New validation tests added (6):
 
-  TestDiscoverChannelVideosFilters (7):
-    test_no_filters PASSED
-    test_limit_sets_playlistend PASSED
-    test_date_filters_set_daterange PASSED
-    test_duration_filters_set_match_filter PASSED
-    test_after_date_only PASSED
-    test_min_duration_only PASSED
-    test_submit_no_filters_still_works PASSED (API-level)
+  TestChannelSubmitValidation (4):
+    test_limit_zero_rejected PASSED
+    test_limit_negative_rejected PASSED
+    test_invalid_date_format_rejected PASSED
+    test_negative_duration_rejected PASSED
 
-  TestChannelSubmitFilters (5):
-    test_submit_with_limit PASSED
-    test_submit_with_date_filters PASSED
-    test_submit_with_duration_filters PASSED
-    test_submit_with_all_filters PASSED
-    test_submit_no_filters_still_works PASSED
+  TestProcessLatestValidation (2):
+    test_latest_zero_rejected PASSED
+    test_latest_negative_rejected PASSED
 
-  TestProcessLatest (2):
-    test_process_no_videos_no_latest_returns_400 PASSED
-    test_process_with_explicit_video_ids PASSED
-
+Pre-existing tests (630) all pass.
 Pre-existing: test_telegram_bot.py skipped (telegram module not installed in .venv314)

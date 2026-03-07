@@ -1,7 +1,8 @@
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, field_validator
 
 
 class ChatToggle(BaseModel):
@@ -35,10 +36,38 @@ class ChannelSubmit(BaseModel):
     min_duration: int | None = None
     max_duration: int | None = None
 
+    @field_validator("limit")
+    @classmethod
+    def limit_must_be_positive(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("limit must be >= 1")
+        return v
+
+    @field_validator("after_date", "before_date")
+    @classmethod
+    def date_must_be_valid(cls, v: str | None) -> str | None:
+        if v is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("date must be in YYYY-MM-DD format")
+        return v
+
+    @field_validator("min_duration", "max_duration")
+    @classmethod
+    def duration_must_be_non_negative(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("duration must be >= 0")
+        return v
+
 
 class ChannelVideoSelection(BaseModel):
     video_ids: list[str] = []
     latest: int | None = None
+
+    @field_validator("latest")
+    @classmethod
+    def latest_must_be_positive(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("latest must be >= 1")
+        return v
 
 
 class JobResponse(BaseModel):

@@ -1,21 +1,19 @@
-# Channel Video Filtering -- Diff Summary
+# QAClaw: Channel Filtering QA Fixes -- Diff Summary
 
 ## What Changed
 
 | File | Change |
 |---|---|
-| `app/services/youtube.py` | `discover_channel_videos()` accepts 5 new keyword args: limit, after_date, before_date, min_duration, max_duration. Uses yt-dlp playlistend, DateRange (YYYYMMDD), match_filter_func. |
-| `app/schemas/video.py` | `ChannelSubmit` extended with 5 optional filter fields. `ChannelVideoSelection.video_ids` default changed to `[]`, added `latest: int | None`. |
-| `app/routers/channels.py` | `submit_channel` passes all filter params. `process_selected_videos` queries DB for latest N when `latest` is set and `video_ids` empty. |
-| `tests/test_channel_filters.py` | New file: 14 tests covering yt-dlp option passing, API filter forwarding, latest-N processing. |
-| `docs/claude-plan.md` | Updated for this feature. |
-| `docs/claude-test-results.txt` | Updated with test output. |
+| `app/schemas/video.py` | Added Pydantic `field_validator` for: `limit` (>= 1), `after_date`/`before_date` (YYYY-MM-DD regex), `min_duration`/`max_duration` (>= 0), `latest` (>= 1). |
+| `tests/test_channel_filters.py` | Added 6 edge-case validation tests: limit=0, limit=-5, invalid date format, negative duration, latest=0, latest=-1. |
 
 ## Why
-Users needed server-side filtering to avoid fetching all channel videos.
+The original implementation had no input validation on filter parameters. Invalid values (limit=0, negative durations, malformed dates) would either silently produce unexpected results or crash inside yt-dlp at runtime.
 
 ## Risks
-- `video_ids` default changed from required to `[]` -- callers sending neither `video_ids` nor `latest` get 400.
-- DateRange with only start or only end relies on yt-dlp defaults (verified).
+- `limit=0` is now rejected (422) instead of silently returning no results. Unlikely to break existing callers.
+- Date validation is regex-only (YYYY-MM-DD format) -- does not check if the date is actually valid (e.g., 2024-02-30 passes). yt-dlp's DateRange handles this gracefully.
 
-## No deviations from plan.
+## Known Limitations (not bugs)
+- `daterange` filter with `extract_flat: True` may not apply when yt-dlp doesn't have `upload_date` in flat playlist entries. The date filter works best when yt-dlp can resolve per-video upload dates.
+- `test_telegram_bot.py` is skipped because `telegram` module is not installed in `.venv314`.
