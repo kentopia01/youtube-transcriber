@@ -29,10 +29,16 @@ class VideoResponse(BaseModel):
 
 class ChannelSubmit(BaseModel):
     url: str
+    limit: int | None = None
+    after_date: str | None = None
+    before_date: str | None = None
+    min_duration: int | None = None
+    max_duration: int | None = None
 
 
 class ChannelVideoSelection(BaseModel):
-    video_ids: list[str]
+    video_ids: list[str] = []
+    latest: int | None = None
 
 
 class JobResponse(BaseModel):

@@ -97,8 +97,16 @@ def get_video_info(url: str) -> dict:
     }
 
 
-def discover_channel_videos(channel_url: str) -> dict:
-    """Discover all videos from a YouTube channel.
+def discover_channel_videos(
+    channel_url: str,
+    *,
+    limit: int | None = None,
+    after_date: str | None = None,
+    before_date: str | None = None,
+    min_duration: int | None = None,
+    max_duration: int | None = None,
+) -> dict:
+    """Discover videos from a YouTube channel with optional filtering.
 
     Returns dict with channel info and list of video metadata.
     """
@@ -108,6 +116,27 @@ def discover_channel_videos(channel_url: str) -> dict:
         "extract_flat": True,
         "skip_download": True,
     }
+
+    if limit is not None:
+        ydl_opts["playlistend"] = limit
+
+    if after_date or before_date:
+        dr_kwargs = {}
+        if after_date:
+            dr_kwargs["start"] = after_date.replace("-", "")
+        if before_date:
+            dr_kwargs["end"] = before_date.replace("-", "")
+        ydl_opts["daterange"] = yt_dlp.utils.DateRange(**dr_kwargs)
+
+    duration_filters = []
+    if min_duration is not None:
+        duration_filters.append(f"duration >= {min_duration}")
+    if max_duration is not None:
+        duration_filters.append(f"duration <= {max_duration}")
+    if duration_filters:
+        ydl_opts["match_filter"] = yt_dlp.utils.match_filter_func(
+            " & ".join(duration_filters)
+        )
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(channel_url, download=False)

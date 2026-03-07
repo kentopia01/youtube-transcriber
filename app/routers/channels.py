@@ -34,7 +34,14 @@ async def submit_channel(
 
     # Discover channel videos
     try:
-        result = discover_channel_videos(url)
+        result = discover_channel_videos(
+            url,
+            limit=data.limit,
+            after_date=data.after_date,
+            before_date=data.before_date,
+            min_duration=data.min_duration,
+            max_duration=data.max_duration,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not fetch channel info: {e}")
 
@@ -85,6 +92,15 @@ async def process_selected_videos(
         raise HTTPException(status_code=404, detail="Channel not found")
 
     video_ids = data.video_ids
+    if not video_ids and data.latest:
+        # Auto-select the N most recent videos for this channel
+        latest_result = await db.execute(
+            select(Video.youtube_video_id)
+            .where(Video.channel_id == channel_id)
+            .order_by(Video.created_at.desc())
+            .limit(data.latest)
+        )
+        video_ids = [row[0] for row in latest_result.all()]
     if not video_ids:
         raise HTTPException(status_code=400, detail="No videos selected")
 
