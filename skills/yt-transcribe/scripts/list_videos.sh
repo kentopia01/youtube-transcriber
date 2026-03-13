@@ -15,13 +15,29 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Query Postgres directly (running in Docker)
-FILTER=""
-if [[ -n "$STATUS" ]]; then
-  FILTER="WHERE v.status = '$STATUS'"
+# Validate LIMIT is a positive integer
+if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [[ "$LIMIT" -lt 1 ]] || [[ "$LIMIT" -gt 1000 ]]; then
+  echo "Error: --limit must be a positive integer (1-1000)" >&2
+  exit 1
 fi
 
-docker exec youtube-transcriber-postgres-1 psql -U transcriber -d transcriber -t -A -F '|' -c "
+# Validate STATUS is a safe alphanumeric value (no SQL injection)
+if [[ -n "$STATUS" ]] && ! [[ "$STATUS" =~ ^[a-zA-Z_]+$ ]]; then
+  echo "Error: --status must be alphabetic (e.g. completed, failed, pending)" >&2
+  exit 1
+fi
+
+# Build parameterized query — use psql variables for safe interpolation
+FILTER=""
+if [[ -n "$STATUS" ]]; then
+  FILTER="WHERE v.status = :'status_val'"
+fi
+
+# Use psql variable binding for safe parameter passing
+docker exec youtube-transcriber-postgres-1 psql -U transcriber -d transcriber -t -A -F '|' \
+  --variable="status_val=$STATUS" \
+  --variable="limit_val=$LIMIT" \
+  -c "
 SELECT v.id, v.youtube_video_id, v.title, v.status, v.duration_seconds,
        CASE WHEN t.id IS NOT NULL THEN 'yes' ELSE 'no' END as has_transcript,
        CASE WHEN s.id IS NOT NULL THEN 'yes' ELSE 'no' END as has_summary
@@ -30,7 +46,7 @@ LEFT JOIN transcriptions t ON t.video_id = v.id
 LEFT JOIN summaries s ON s.video_id = v.id
 $FILTER
 ORDER BY v.created_at DESC
-LIMIT $LIMIT;
+LIMIT :'limit_val';
 " | python3 -c "
 import sys
 rows = [line.strip().split('|') for line in sys.stdin if line.strip()]
