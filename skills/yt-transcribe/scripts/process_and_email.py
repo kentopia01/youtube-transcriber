@@ -162,6 +162,34 @@ def http_json(
 # URL classification
 # ---------------------------------------------------------------------------
 
+def is_playlist_url(url: str) -> bool:
+    """Return True for pure playlist URLs (no video ID present)."""
+    parsed = parse.urlparse(url)
+    host = (parsed.netloc or "").lower()
+    if "youtube.com" not in host:
+        return False
+    path = parsed.path or ""
+    qs = parse.parse_qs(parsed.query)
+    # Pure playlist page: /playlist?list=...
+    if path.rstrip("/") == "/playlist" and "list" in qs:
+        return True
+    return False
+
+
+def strip_playlist_params(url: str) -> str:
+    """Remove &list= and &index= query params from a video URL.
+
+    When a user copies a URL like watch?v=abc&list=PLxxx&index=3,
+    we want to treat it as a single video, not a playlist.
+    """
+    parsed = parse.urlparse(url)
+    qs = parse.parse_qs(parsed.query, keep_blank_values=True)
+    qs.pop("list", None)
+    qs.pop("index", None)
+    new_query = parse.urlencode(qs, doseq=True)
+    return parse.urlunparse(parsed._replace(query=new_query))
+
+
 def is_channel_url(url: str) -> bool:
     parsed = parse.urlparse(url)
     host = (parsed.netloc or "").lower()
@@ -608,9 +636,19 @@ def send_email(recipient: str, subject: str, text_body: str, html_body: str) -> 
 # CLI
 # ---------------------------------------------------------------------------
 
+def init_recipient_config() -> str:
+    """Create ~/.yt-transcriber-recipients.json with defaults if it doesn't exist.
+    Returns the path to the config file."""
+    config_path = Path.home() / ".yt-transcriber-recipients.json"
+    if config_path.is_file():
+        return f"Config already exists: {config_path}"
+    config_path.write_text(json.dumps(_DEFAULT_RECIPIENT_MAP, indent=2) + "\n")
+    return f"Created recipient config: {config_path}"
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Route a YouTube URL through the transcriber and optionally email the result.")
-    p.add_argument("url", help="YouTube video or channel/profile URL")
+    p.add_argument("url", nargs="?", help="YouTube video or channel/profile URL")
     p.add_argument("--to", help="Recipient email. Use 'me' to send to Ken (configurable).")
     p.add_argument("--send", action="store_true", help="Actually send the email via gog as Nora")
     p.add_argument("--include-transcript", action="store_true", help="Include full transcript in email (default: summary only)")
@@ -619,25 +657,50 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     p.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
     p.add_argument("--pretty", action="store_true")
+    p.add_argument("--init-recipients", action="store_true", help="Create ~/.yt-transcriber-recipients.json with defaults and exit")
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+
+    # --init-recipients: bootstrap config file and exit
+    if args.init_recipients:
+        msg = init_recipient_config()
+        print(msg)
+        return 0
+
+    if not args.url:
+        print("Error: url is required (unless using --init-recipients)", file=sys.stderr)
+        return 1
+
     recipient = resolve_recipient(args.to)
 
-    if is_channel_url(args.url):
-        channel_name, results = collect_channel(args.base_url, args.url, args.channel_limit, args.timeout, args.poll_seconds)
+    # Reject pure playlist URLs explicitly
+    if is_playlist_url(args.url):
+        print(
+            f"Error: Playlist URLs are not supported. Please provide a single video URL or a channel/profile URL.\n"
+            f"  Given: {args.url}\n"
+            f"  Tip: To transcribe a specific video from a playlist, use its direct watch URL (e.g. https://www.youtube.com/watch?v=VIDEO_ID)",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Strip playlist params from video URLs (watch?v=abc&list=PLxxx → watch?v=abc)
+    url = strip_playlist_params(args.url)
+
+    if is_channel_url(url):
+        channel_name, results = collect_channel(args.base_url, url, args.channel_limit, args.timeout, args.poll_seconds)
         mode = "channel"
         if not results:
-            print(f"No videos found for channel URL: {args.url}", file=sys.stderr)
+            print(f"No videos found for channel URL: {url}", file=sys.stderr)
             payload = {
                 "mode": mode,
-                "source_url": args.url,
+                "source_url": url,
                 "recipient": recipient,
                 "sent": False,
                 "subject": "Youtube Transcript: No videos found",
-                "body": f"No videos were discovered for the channel URL: {args.url}\n",
+                "body": f"No videos were discovered for the channel URL: {url}\n",
                 "videos": [],
             }
             json.dump(payload, sys.stdout, indent=2 if args.pretty else None)
@@ -645,13 +708,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     else:
         channel_name = None
-        results = [collect_video(args.base_url, args.url, args.timeout, args.poll_seconds)]
+        results = [collect_video(args.base_url, url, args.timeout, args.poll_seconds)]
         mode = "video"
 
     include_transcript = args.include_transcript
-    subject = build_subject(args.url, channel_name, results)
-    body = build_text_body(args.url, channel_name, results, include_transcript=include_transcript)
-    html_body = build_html_body(subject, args.url, channel_name, results, include_transcript=include_transcript)
+    subject = build_subject(url, channel_name, results)
+    body = build_text_body(url, channel_name, results, include_transcript=include_transcript)
+    html_body = build_html_body(subject, url, channel_name, results, include_transcript=include_transcript)
 
     if args.send:
         if not recipient:
@@ -660,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = {
         "mode": mode,
-        "source_url": args.url,
+        "source_url": url,
         "recipient": recipient,
         "sent": bool(args.send and recipient),
         "subject": subject,

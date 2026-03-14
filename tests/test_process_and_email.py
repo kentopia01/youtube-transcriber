@@ -23,6 +23,8 @@ spec.loader.exec_module(mod)
 
 VideoResult = mod.VideoResult
 is_channel_url = mod.is_channel_url
+is_playlist_url = mod.is_playlist_url
+strip_playlist_params = mod.strip_playlist_params
 resolve_recipient = mod.resolve_recipient
 build_subject = mod.build_subject
 build_text_body = mod.build_text_body
@@ -30,6 +32,7 @@ build_html_body = mod.build_html_body
 markdownish_to_html = mod.markdownish_to_html
 inline_markdown_to_html = mod.inline_markdown_to_html
 _load_recipient_map = mod._load_recipient_map
+init_recipient_config = mod.init_recipient_config
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +63,55 @@ class TestIsChannelUrl:
 
     def test_empty_string(self):
         assert not is_channel_url("")
+
+
+# ---------------------------------------------------------------------------
+# is_playlist_url
+# ---------------------------------------------------------------------------
+
+class TestIsPlaylistUrl:
+    def test_pure_playlist(self):
+        assert is_playlist_url("https://www.youtube.com/playlist?list=PLxxxxx")
+
+    def test_video_with_list_param(self):
+        # Video URL that happens to have list param is NOT a pure playlist
+        assert not is_playlist_url("https://www.youtube.com/watch?v=abc&list=PLxxxxx")
+
+    def test_regular_video(self):
+        assert not is_playlist_url("https://www.youtube.com/watch?v=abc123")
+
+    def test_channel_url(self):
+        assert not is_playlist_url("https://www.youtube.com/@creator")
+
+    def test_non_youtube(self):
+        assert not is_playlist_url("https://vimeo.com/playlist?list=abc")
+
+    def test_empty(self):
+        assert not is_playlist_url("")
+
+
+# ---------------------------------------------------------------------------
+# strip_playlist_params
+# ---------------------------------------------------------------------------
+
+class TestStripPlaylistParams:
+    def test_strips_list_and_index(self):
+        url = "https://www.youtube.com/watch?v=abc&list=PLxxx&index=3"
+        result = strip_playlist_params(url)
+        assert "list=" not in result
+        assert "index=" not in result
+        assert "v=abc" in result
+
+    def test_no_list_param_unchanged(self):
+        url = "https://www.youtube.com/watch?v=abc123"
+        assert strip_playlist_params(url) == url
+
+    def test_preserves_other_params(self):
+        url = "https://www.youtube.com/watch?v=abc&t=120&list=PLxxx"
+        result = strip_playlist_params(url)
+        assert "v=abc" in result
+        assert "t=120" in result
+        assert "list=" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -306,3 +358,30 @@ class TestLoadRecipientMap:
                 with patch.object(Path, "home", return_value=Path(tmpdir)):
                     rmap = _load_recipient_map()
                     assert rmap["me"] == "file@test.com"
+
+
+# ---------------------------------------------------------------------------
+# init_recipient_config
+# ---------------------------------------------------------------------------
+
+class TestInitRecipientConfig:
+    def test_creates_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, "home", return_value=Path(tmpdir)):
+                msg = init_recipient_config()
+                assert "Created" in msg
+                config_path = Path(tmpdir) / ".yt-transcriber-recipients.json"
+                assert config_path.is_file()
+                data = json.loads(config_path.read_text())
+                assert data["me"] == "kenneth@01-digital.com"
+
+    def test_skips_existing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / ".yt-transcriber-recipients.json"
+            config_path.write_text('{"me":"existing@test.com"}')
+            with patch.object(Path, "home", return_value=Path(tmpdir)):
+                msg = init_recipient_config()
+                assert "already exists" in msg
+                # Should not overwrite
+                data = json.loads(config_path.read_text())
+                assert data["me"] == "existing@test.com"

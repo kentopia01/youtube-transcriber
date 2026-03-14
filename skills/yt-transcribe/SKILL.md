@@ -65,6 +65,12 @@ Behavior:
 - **Retry/backoff** → all HTTP requests use exponential backoff (3 retries, starting at 1s) for transient failures (5xx, timeouts, network errors). 4xx errors (except 429) fail immediately.
 - **Template** → the email always uses the same fixed text + HTML template, styled after the youtube-transcriber frontend (navy header, orange accents, Playfair/Inter-inspired hierarchy, soft bordered cards)
 
+URL handling:
+- **Video URL** (`watch?v=...`) — processed as a single video
+- **Video+playlist URL** (`watch?v=...&list=...&index=...`) — `list` and `index` params are stripped; treated as a single video
+- **Channel/profile URL** (`/@creator`, `/channel/...`, `/c/...`, `/user/...`) — discovers and processes multiple videos
+- **Playlist URL** (`/playlist?list=...`) — **rejected** with a clear error message and usage hint
+
 Useful options:
 - `--send` — actually send the email via `gog`
 - `--to <email|me>` — recipient email; use `me` for Ken
@@ -72,6 +78,7 @@ Useful options:
 - `--channel-limit 5` — number of discovered videos to process for channel/profile URLs
 - `--timeout 3600` — max seconds to wait per video
 - `--pretty` — pretty-print the JSON payload
+- `--init-recipients` — create `~/.yt-transcriber-recipients.json` with defaults and exit
 
 Examples:
 
@@ -112,7 +119,13 @@ Recipient aliases like `--to me` are resolved via a configurable mapping. Priori
 2. **`~/.yt-transcriber-recipients.json` file** — same JSON format, saved to disk
 3. **Built-in defaults** — `me`/`ken`/`self` → `kenneth@01-digital.com`
 
-To add new aliases, create or edit `~/.yt-transcriber-recipients.json`:
+To bootstrap the config file with defaults:
+
+```bash
+python3 scripts/process_and_email.py --init-recipients
+```
+
+To add new aliases, edit `~/.yt-transcriber-recipients.json`:
 
 ```json
 {
