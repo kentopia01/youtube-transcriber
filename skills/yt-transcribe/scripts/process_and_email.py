@@ -572,7 +572,6 @@ def build_html_body(
             HTML_ITEM_TEMPLATE.format(
                 title=html.escape(item.title),
                 video_url_attr=html.escape(item.source_url, quote=True),
-                status_badge=render_status_badge(item.status),
                 meta_block=meta_block,
                 summary=markdownish_to_html((item.summary or "No summary available.").strip()),
                 transcript_block=transcript_block,
@@ -590,9 +589,6 @@ def build_html_body(
 
     return HTML_EMAIL_TEMPLATE.format(
         subject=html.escape(subject),
-        source_url_attr=html.escape(source_url, quote=True),
-        source_url_html=html.escape(source_url),
-        item_count=len(results),
         channel_block=channel_block,
         items_html="".join(items_html),
     )

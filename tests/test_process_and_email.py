@@ -136,17 +136,14 @@ class TestResolveRecipient:
         assert resolve_recipient("alice@example.com") == "alice@example.com"
 
     def test_config_file_override(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump({"me": "override@test.com"}, f)
-            f.flush()
-            config_path = f.name
-        try:
-            with patch.object(Path, "home", return_value=Path(config_path).parent):
-                # We need to patch the actual file path the function looks for
-                with patch.object(Path, "is_file", return_value=True):
-                    pass  # complex patching; test env var instead
-        finally:
-            os.unlink(config_path)
+        """Config file override is tested in TestLoadRecipientMap.test_config_file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / ".yt-transcriber-recipients.json"
+            config_file.write_text('{"me":"override@test.com"}')
+            with patch.dict(os.environ, {}, clear=True):
+                os.environ.pop("YT_RECIPIENT_MAP", None)
+                with patch.object(Path, "home", return_value=Path(tmpdir)):
+                    assert resolve_recipient("me") == "override@test.com"
 
     def test_env_var_override(self):
         with patch.dict(os.environ, {"YT_RECIPIENT_MAP": '{"me":"env@test.com"}'}):
