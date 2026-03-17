@@ -99,6 +99,37 @@ class TestVideoSubmission:
         resp = client.post("/api/videos", json={"url": ""})
         assert resp.status_code == 400
 
+    @patch("app.routers.videos.get_video_info")
+    @patch("app.routers.videos.run_pipeline", return_value="celery-task-id")
+    def test_submit_creates_channel_and_links_video(self, mock_run_pipeline, mock_get_video_info):
+        mock_get_video_info.return_value = {
+            "video_id": "dQw4w9WgXcQ",
+            "title": "Test Video",
+            "description": "Desc",
+            "duration": 42,
+            "thumbnail": "https://example.com/thumb.jpg",
+            "channel_id": "UC12345",
+            "channel_name": "Test Channel",
+            "channel_url": "https://www.youtube.com/@testchannel",
+            "published_at": "20260317",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }
+
+        db = StubDB(execute_results=[None, None])
+        client = _build_client(db)
+
+        resp = client.post(
+            "/api/videos",
+            json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+        )
+
+        assert resp.status_code == 200
+        channel = next(obj for obj in db.added if hasattr(obj, "youtube_channel_id"))
+        video = next(obj for obj in db.added if hasattr(obj, "youtube_video_id"))
+        assert channel.youtube_channel_id == "UC12345"
+        assert video.channel_id == channel.id
+        assert video.title == "Test Video"
+
 
 # ---------------------------------------------------------------------------
 # Channel submission tests

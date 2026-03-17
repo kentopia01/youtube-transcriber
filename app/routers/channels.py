@@ -1,6 +1,6 @@
 import math
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -12,6 +12,11 @@ from app.models.channel import Channel
 from app.models.job import Job
 from app.models.video import Video
 from app.schemas.video import ChannelSubmit, ChannelVideoSelection, ChatToggle
+from app.services.channel_sync import (
+    get_or_create_channel,
+    refresh_channel_video_count,
+    sync_discovered_videos,
+)
 from app.services.youtube import discover_channel_videos, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -49,26 +54,20 @@ async def submit_channel(
     if not channel_yt_id:
         raise HTTPException(status_code=400, detail="Could not determine channel ID.")
 
-    # Get or create channel
-    existing = await db.execute(
-        select(Channel).where(Channel.youtube_channel_id == channel_yt_id)
+    channel = await get_or_create_channel(
+        db,
+        youtube_channel_id=channel_yt_id,
+        name=result.get("channel_name", "Unknown"),
+        url=url,
+        description=result.get("description"),
+        thumbnail_url=result.get("thumbnail"),
+        last_synced_at=datetime.now(UTC),
     )
-    channel = existing.scalar_one_or_none()
-
     if not channel:
-        channel = Channel(
-            youtube_channel_id=channel_yt_id,
-            name=result.get("channel_name", "Unknown"),
-            url=url,
-            description=result.get("description"),
-            thumbnail_url=result.get("thumbnail"),
-            video_count=len(result.get("videos", [])),
-        )
-        db.add(channel)
-        await db.flush()
-    else:
-        channel.name = result.get("channel_name", channel.name)
-        channel.video_count = len(result.get("videos", []))
+        raise HTTPException(status_code=400, detail="Could not create channel record.")
+
+    await sync_discovered_videos(db, channel, result.get("videos", []))
+    await refresh_channel_video_count(db, channel)
 
     await db.commit()
 
@@ -137,6 +136,12 @@ async def process_selected_videos(
                 )
                 db.add(video)
                 await db.flush()
+            else:
+                video.channel_id = channel.id
+
+            if video.status in {"discovered", "failed", "cancelled"}:
+                video.status = "pending"
+                video.error_message = None
 
             job = Job(
                 video_id=video.id,

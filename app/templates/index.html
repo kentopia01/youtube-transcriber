@@ -259,6 +259,10 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
         if (resp.ok) {
             channelId = data.channel_id;
             discoveredVideos = data.videos || [];
+            if (!discoveredVideos.length) {
+                result.innerHTML = '<p class="text-sm text-warning mt-1">No videos found for that channel.</p>';
+                return;
+            }
             showChannelConfirmDialog(data.channel_name, discoveredVideos);
             result.innerHTML = '<p class="text-sm text-success mt-1">Found ' + discoveredVideos.length + ' videos</p>';
         } else {
@@ -269,19 +273,47 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
     }
 });
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function formatDuration(seconds) {
+    if (typeof seconds !== 'number') return '--:--';
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
 function showChannelConfirmDialog(channelName, videos) {
     document.getElementById('channel-dialog-title').textContent = 'Select Videos from ' + channelName;
     document.getElementById('video-count').textContent = videos.length;
     const list = document.getElementById('channel-video-list');
     list.innerHTML = videos.map((v, i) => `
-        <div class="flex items-center gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
+        <div class="flex items-start gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
             <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox-field channel-video-cb">
-            <label for="vid-${i}" class="flex-1 cursor-pointer">
-                <span class="font-medium text-sm">${v.title}</span>
-                <span class="font-mono text-xs text-faint ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
+            <label for="vid-${i}" class="flex gap-3 flex-1 cursor-pointer">
+                <span class="rounded-md overflow-hidden shrink-0" style="width: 7rem; height: 3.9rem; background: var(--bg-elevated); border: 1px solid var(--border-default);">
+                    ${v.thumbnail
+                        ? `<img src="${escapeHtml(v.thumbnail)}" alt="${escapeHtml(v.title || 'Video thumbnail')}" style="width: 100%; height: 100%; object-fit: cover;">`
+                        : `<span class="h-full w-full flex items-center justify-center text-xs text-faint">No thumb</span>`}
+                </span>
+                <span class="flex-1 min-w-0">
+                    <span class="font-medium text-sm block leading-snug">${escapeHtml(v.title || 'Untitled')}</span>
+                    <span class="font-mono text-xs text-faint block mt-1">${formatDuration(v.duration)}</span>
+                </span>
             </label>
+            ${v.url ? `<a href="${escapeHtml(v.url)}" target="_blank" rel="noopener" class="link text-xs shrink-0" onclick="event.stopPropagation()">Open</a>` : ''}
         </div>
     `).join('');
+    document.getElementById('select-all').checked = true;
     document.getElementById('channel-confirm-dialog').showModal();
 }
 

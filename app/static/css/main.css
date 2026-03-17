@@ -393,6 +393,9 @@ a { color: inherit; text-decoration: none; }
 .status-pending         { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default); }
 .status-pending .dot    { background: var(--text-tertiary); }
 
+.status-discovered      { background: var(--info-subtle); color: var(--info); }
+.status-discovered .dot { background: var(--info); }
+
 .status-transcribed,
 .status-downloaded      { background: var(--success-subtle); color: var(--success); }
 .status-transcribed .dot,

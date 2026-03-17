@@ -51,6 +51,7 @@ class TestDiscoverChannelVideosFilters:
         assert "playlistend" not in opts
         assert "daterange" not in opts
         assert "match_filter" not in opts
+        mock_ydl.extract_info.assert_called_once_with("https://youtube.com/@test/videos", download=False)
 
     @patch("app.services.youtube.yt_dlp.YoutubeDL")
     def test_limit_sets_playlistend(self, mock_ydl_cls):
@@ -284,6 +285,28 @@ class TestChannelSubmitFilters:
         assert call_kwargs.kwargs["limit"] is None
         assert call_kwargs.kwargs["after_date"] is None
 
+    @patch("app.routers.channels.discover_channel_videos", return_value=MOCK_DISCOVER_RESULT)
+    def test_submit_persists_discovered_videos(self, mock_discover):
+        db = StubDB(execute_results=[None, None, None])
+        client = _build_client(db)
+
+        resp = client.post(
+            "/api/channels",
+            json={"url": "https://www.youtube.com/@testchannel"},
+        )
+
+        assert resp.status_code == 200
+
+        channel = next(obj for obj in db.added if hasattr(obj, "youtube_channel_id"))
+        videos = [obj for obj in db.added if hasattr(obj, "youtube_video_id")]
+
+        assert channel.youtube_channel_id == "UC12345"
+        assert len(videos) == 2
+        assert {video.youtube_video_id for video in videos} == {"vid1", "vid2"}
+        assert all(video.channel_id == channel.id for video in videos)
+        assert all(video.status == "discovered" for video in videos)
+        assert videos[0].title == "Video 1"
+
 
 # ---------------------------------------------------------------------------
 # API tests for POST /api/channels/{id}/process with latest param
@@ -335,6 +358,31 @@ class TestProcessLatest:
             )
         assert resp.status_code == 200
         assert resp.json()["total_videos"] == 2
+
+    def test_process_moves_discovered_video_to_pending(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        existing_video = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid1",
+            channel_id=fake_channel.id,
+            status="discovered",
+            error_message="old error",
+        )
+        db = StubDB(execute_results=[
+            fake_channel,
+            existing_video,
+        ])
+        client = _build_client(db)
+
+        with patch("app.routers.channels.run_pipeline", return_value="celery-task-id"):
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1"]},
+            )
+
+        assert resp.status_code == 200
+        assert existing_video.status == "pending"
+        assert existing_video.error_message is None
 
 
 # ---------------------------------------------------------------------------

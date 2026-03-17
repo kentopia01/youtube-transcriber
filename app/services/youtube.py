@@ -1,5 +1,6 @@
 import os
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 import yt_dlp
@@ -32,6 +33,28 @@ def is_channel_url(url: str) -> bool:
         r"youtube\.com/@[\w-]+",
     ]
     return any(re.search(p, url) for p in channel_patterns)
+
+
+def _channel_videos_url(channel_url: str) -> str:
+    """Normalize a YouTube channel URL to its uploads/videos tab."""
+    parts = urlsplit(channel_url.strip())
+    path = parts.path.rstrip("/")
+    if path and not path.endswith("/videos"):
+        path = f"{path}/videos"
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _normalize_discovered_video_url(entry: dict) -> str:
+    """Return a usable watch URL for a discovered channel entry."""
+    url = entry.get("webpage_url") or entry.get("url")
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        return url
+
+    video_id = entry.get("id")
+    if video_id:
+        return f"https://www.youtube.com/watch?v={video_id}"
+
+    return ""
 
 
 def download_audio(video_id: str, audio_dir: str) -> dict:
@@ -92,6 +115,7 @@ def get_video_info(url: str) -> dict:
         "thumbnail": info.get("thumbnail"),
         "channel_id": info.get("channel_id"),
         "channel_name": info.get("channel"),
+        "channel_url": info.get("channel_url"),
         "published_at": info.get("upload_date"),
         "url": info.get("webpage_url", url),
     }
@@ -138,18 +162,21 @@ def discover_channel_videos(
             " & ".join(duration_filters)
         )
 
+    discovery_url = _channel_videos_url(channel_url)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(channel_url, download=False)
+        info = ydl.extract_info(discovery_url, download=False)
 
     videos = []
     for entry in info.get("entries", []):
-        if entry:
+        if entry and entry.get("id"):
             videos.append({
                 "video_id": entry.get("id"),
                 "title": entry.get("title", "Unknown"),
                 "duration": entry.get("duration"),
-                "url": entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}",
+                "url": _normalize_discovered_video_url(entry),
                 "thumbnail": entry.get("thumbnails", [{}])[0].get("url") if entry.get("thumbnails") else None,
+                "published_at": entry.get("upload_date"),
             })
 
     return {

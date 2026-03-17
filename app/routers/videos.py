@@ -1,6 +1,5 @@
 import re
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -9,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db
 from app.models.job import Job
 from app.models.video import Video
-from app.schemas.video import ChatToggle, VideoSubmit
+from app.schemas.video import ChatToggle, VideoResponse, VideoSubmit
+from app.services.channel_sync import get_or_create_channel, parse_upload_date
 from app.services.youtube import extract_video_id, get_video_info, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -42,7 +42,30 @@ async def submit_video(
         select(Video).where(Video.youtube_video_id == video_id)
     )
     existing = result.scalar_one_or_none()
+    # Get video info
+    try:
+        info = get_video_info(f"https://www.youtube.com/watch?v={video_id}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch video info: {e}")
+
+    channel = await get_or_create_channel(
+        db,
+        youtube_channel_id=info.get("channel_id"),
+        name=info.get("channel_name"),
+        url=info.get("channel_url"),
+    )
+
+    published_at = parse_upload_date(info.get("published_at"))
+
     if existing:
+        existing.channel_id = channel.id if channel else existing.channel_id
+        existing.title = info.get("title", existing.title)
+        existing.description = info.get("description", existing.description)
+        existing.url = info.get("url", existing.url)
+        existing.duration_seconds = info.get("duration", existing.duration_seconds)
+        existing.published_at = published_at or existing.published_at
+        existing.thumbnail_url = info.get("thumbnail", existing.thumbnail_url)
+
         # If the video previously failed, allow re-processing
         if existing.status == "failed":
             existing.status = "pending"
@@ -54,28 +77,16 @@ async def submit_video(
             )
             job = job_result.scalars().first()
             if job:
+                await db.commit()
                 return {"job_id": str(job.id), "video_id": str(existing.id), "status": "existing"}
             # Re-process if no job exists
             existing.status = "pending"
             existing.error_message = None
 
-    # Get video info
-    try:
-        info = get_video_info(f"https://www.youtube.com/watch?v={video_id}")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not fetch video info: {e}")
-
     if not existing:
-        # Parse published date
-        published_at = None
-        if info.get("published_at"):
-            try:
-                published_at = datetime.strptime(info["published_at"], "%Y%m%d")
-            except (ValueError, TypeError):
-                pass
-
         video = Video(
             youtube_video_id=video_id,
+            channel_id=channel.id if channel else None,
             title=info.get("title", "Unknown"),
             description=info.get("description"),
             url=info.get("url", url),
@@ -105,6 +116,16 @@ async def submit_video(
     await db.commit()
 
     return {"job_id": str(job.id), "video_id": str(video.id), "status": "queued"}
+
+
+@router.get("/{video_id}", response_model=VideoResponse)
+async def get_video(video_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Get video metadata by internal UUID. Used by Siftly integration to poll status."""
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return video
 
 
 @router.patch("/{video_id}/chat-toggle")
