@@ -12,7 +12,9 @@ if [[ ! -f "$LOG_FILE" ]]; then
   exit 0
 fi
 
-# Rotate: move current log to dated backup
+# Rotate using copytruncate pattern.
+# launchd holds the file descriptor — mv would orphan it.
+# Instead: copy contents to backup, then truncate the original in-place.
 DATE=$(date +%Y-%m-%d)
 BACKUP="$LOG_DIR/yt-worker.${DATE}.log"
 
@@ -20,11 +22,11 @@ if [[ -f "$BACKUP" ]]; then
   # Already rotated today, append
   cat "$LOG_FILE" >> "$BACKUP"
 else
-  mv "$LOG_FILE" "$BACKUP"
+  cp "$LOG_FILE" "$BACKUP"
 fi
 
-# Create fresh log file
-touch "$LOG_FILE"
+# Truncate in-place so launchd's fd keeps writing to the same file
+: > "$LOG_FILE"
 
 # Clean old logs
 find "$LOG_DIR" -name "yt-worker.*.log" -mtime "+${KEEP_DAYS}" -delete 2>/dev/null

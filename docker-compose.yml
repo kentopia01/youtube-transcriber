@@ -36,6 +36,7 @@ services:
     volumes:
       - audio_data:/data/audio
       - model_cache:/data/models
+      - ./app:/app/app:ro
     depends_on:
       postgres:
         condition: service_healthy

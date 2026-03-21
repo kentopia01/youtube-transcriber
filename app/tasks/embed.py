@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.embedding_chunk import EmbeddingChunk
 from app.models.job import Job
+from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
-from app.services.embedding import chunk_and_embed
+from app.services.embedding import chunk_and_embed, chunk_and_embed_summary
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
 from app.tasks.helpers import get_latest_pipeline_job
@@ -53,16 +54,25 @@ def generate_embeddings_task(self, video_id: str) -> str:
                 for s in transcription.segments
             ]
 
-            chunks = chunk_and_embed(
+            transcript_chunks = chunk_and_embed(
                 segments,
                 model_cache_dir=settings.model_cache_dir,
             )
+            summary = db.query(Summary).filter(Summary.video_id == vid).first()
+            summary_chunks = []
+            if summary and summary.content.strip():
+                summary_chunks = chunk_and_embed_summary(
+                    summary.content,
+                    model_cache_dir=settings.model_cache_dir,
+                )
 
-            for chunk in chunks:
+            chunks = transcript_chunks + summary_chunks
+
+            for index, chunk in enumerate(chunks):
                 ec = EmbeddingChunk(
                     transcription_id=transcription.id,
                     video_id=vid,
-                    chunk_index=chunk["chunk_index"],
+                    chunk_index=index,
                     chunk_text=chunk["chunk_text"],
                     start_time=chunk.get("start_time"),
                     end_time=chunk.get("end_time"),

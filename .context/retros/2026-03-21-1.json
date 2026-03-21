@@ -1,0 +1,45 @@
+{
+  "date": "2026-03-21",
+  "window": "30d",
+  "metrics": {
+    "commits": 73,
+    "commits_on_origin": 67,
+    "local_unpushed": 6,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 29290,
+    "deletions": 7467,
+    "net_loc": 21823,
+    "test_loc": 11895,
+    "test_ratio": 0.406,
+    "active_days": 5,
+    "sessions": 14,
+    "deep_sessions": 4,
+    "avg_session_minutes": 38,
+    "loc_per_session_hour": 3300,
+    "feat_pct": 0.15,
+    "fix_pct": 0.26,
+    "test_pct": 0.19,
+    "docs_pct": 0.15,
+    "peak_hour": 20,
+    "ai_assisted_commits": 67
+  },
+  "authors": {
+    "Kenneth (SentryClaw)": {
+      "commits": 73,
+      "insertions": 29290,
+      "deletions": 7467,
+      "test_ratio": 0.406,
+      "top_area": "app/services/ + tests/"
+    }
+  },
+  "version_range": ["n/a", "n/a"],
+  "streak_days": 1,
+  "tweetable": "Mar 2–17: 73 commits (1 contributor, ~100% AI-assisted), 29k LOC, 41% tests, 5 active days, peak: 8pm | Streak: 1d",
+  "test_health": {
+    "total_test_files": 22,
+    "tests_added_this_period": 22,
+    "regression_test_commits": 14,
+    "test_files_changed": 12
+  }
+}

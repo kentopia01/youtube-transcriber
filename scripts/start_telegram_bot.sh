@@ -9,6 +9,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 
+mkdir -p /tmp/yt-chatbot
+
 # Activate native venv (has sentence-transformers for RAG search)
 source .venv-native/bin/activate
 

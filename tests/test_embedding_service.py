@@ -90,6 +90,36 @@ class TestSpeakerAwareChunking:
         for chunk in chunks:
             assert chunk["speaker"] == "SPEAKER_00"
 
+    def test_long_same_speaker_sequence_preserves_narrower_time_ranges(self):
+        segments = [
+            {
+                "start": float(i * 10),
+                "end": float((i + 1) * 10),
+                "text": f"Sentence {i}. " * 8,
+                "speaker": "SPEAKER_00",
+            }
+            for i in range(12)
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=40, max_tokens=80)
+        assert len(chunks) > 1
+        assert chunks[0]["start_time"] == 0.0
+        assert chunks[-1]["end_time"] == 120.0
+        assert chunks[0]["end_time"] < 120.0
+        assert chunks[1]["start_time"] >= chunks[0]["end_time"]
+
+    def test_oversized_single_segment_gets_split_times(self):
+        long_text = " ".join(f"Sentence {i} with enough extra words to force splitting." for i in range(40))
+        segments = [
+            {"start": 0.0, "end": 200.0, "text": long_text, "speaker": "SPEAKER_00"},
+        ]
+        chunks = _build_speaker_chunks(segments, target_tokens=40, max_tokens=70)
+        assert len(chunks) > 1
+        assert chunks[0]["start_time"] == 0.0
+        assert chunks[-1]["end_time"] == 200.0
+        assert any(chunk["end_time"] < 200.0 for chunk in chunks[:-1])
+        for first, second in zip(chunks, chunks[1:]):
+            assert second["start_time"] >= first["end_time"]
+
     def test_empty_segments_returns_empty(self):
         chunks = _build_speaker_chunks([], target_tokens=300, max_tokens=400)
         assert chunks == []

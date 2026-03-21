@@ -7,6 +7,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.services.embedding import SUMMARY_SPEAKER_LABEL
 from app.services.search import encode_query, semantic_search
 
 logger = structlog.get_logger()
@@ -23,12 +24,22 @@ def _get_anthropic_client() -> anthropic.Anthropic:
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions based on video transcript content. \
 Ground your answers in the provided context. When referencing specific information, cite the source video and timestamp. \
+Use the narrowest relevant citation span available, not broad whole-video ranges unless the evidence truly spans the whole video. \
+If a source is marked [Summary], cite it as a summary rather than inventing timestamps. \
 If the context doesn't contain enough information to answer, say so."""
+
+
+def _is_summary_chunk(chunk: dict) -> bool:
+    return chunk.get("speaker") == SUMMARY_SPEAKER_LABEL
 
 
 def _format_chunks_for_context(chunks: list[dict]) -> str:
     parts = []
     for i, chunk in enumerate(chunks, 1):
+        if _is_summary_chunk(chunk):
+            parts.append(f"[{i}] {chunk['video_title']} [Summary]\n{chunk['chunk_text']}")
+            continue
+
         start = chunk.get("start_time")
         end = chunk.get("end_time")
         ts = ""
@@ -58,7 +69,7 @@ def _build_messages(
     messages = []
     for msg in history:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    user_content = f"Context from video transcripts:\n\n{context_text}\n\nQuestion: {question}"
+    user_content = f"Context from video transcripts and summaries:\n\n{context_text}\n\nQuestion: {question}"
     messages.append({"role": "user", "content": user_content})
     return messages
 
@@ -134,6 +145,7 @@ async def chat_with_context(
             "start_time": chunk.get("start_time"),
             "end_time": chunk.get("end_time"),
             "similarity": chunk.get("similarity"),
+            "source_type": "summary" if _is_summary_chunk(chunk) else "transcript",
         }
         for chunk in chunks
     ]

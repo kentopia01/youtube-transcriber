@@ -8,9 +8,11 @@ import pytest
 
 from app.models.chat_session import ChatSession
 from app.telegram_bot import (
+    _release_bot_lock,
     DENIED_TEXT,
     _format_source_citation,
     _is_user_allowed,
+    acquire_bot_lock,
     create_bot_application,
     format_response_with_sources,
     handle_message,
@@ -399,6 +401,10 @@ class TestFormatSourceCitation:
         result = _format_source_citation({"start_time": 10})
         assert result == "[\U0001f4f9 Unknown @ 0:10]"
 
+    def test_summary_source(self):
+        result = _format_source_citation({"video_title": "Test", "source_type": "summary"})
+        assert result == "[\U0001f4f9 Test Summary]"
+
 
 # ---------------------------------------------------------------------------
 # Videos command — listing videos
@@ -546,6 +552,26 @@ class TestCreateBotApplication:
             app = create_bot_application()
             # Should have 6 handlers (5 commands + 1 message handler)
             assert len(app.handlers[0]) == 6
+
+
+class TestBotLock:
+    def teardown_method(self):
+        _release_bot_lock()
+
+    def test_acquire_bot_lock_allows_first_holder(self, tmp_path):
+        lock_path = tmp_path / "telegram.lock"
+        assert acquire_bot_lock(lock_path) is True
+
+    def test_acquire_bot_lock_rejects_second_holder(self, tmp_path):
+        lock_path = tmp_path / "telegram.lock"
+        first_handle = lock_path.open("a+")
+        import fcntl
+
+        fcntl.flock(first_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            assert acquire_bot_lock(lock_path) is False
+        finally:
+            first_handle.close()
 
 
 # ---------------------------------------------------------------------------

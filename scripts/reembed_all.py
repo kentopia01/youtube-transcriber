@@ -18,9 +18,10 @@ sys.path.insert(0, ".")
 
 from app.config import settings
 from app.models.embedding_chunk import EmbeddingChunk
+from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
-from app.services.embedding import chunk_and_embed
+from app.services.embedding import chunk_and_embed, chunk_and_embed_summary
 
 
 BATCH_SIZE = 10
@@ -49,16 +50,25 @@ def reembed_video(db: Session, video: Video, transcription: Transcription, dry_r
     db.query(EmbeddingChunk).filter(EmbeddingChunk.video_id == video.id).delete()
 
     # Generate new embeddings with new model + chunking
-    chunks = chunk_and_embed(
+    transcript_chunks = chunk_and_embed(
         segments,
         model_cache_dir=settings.model_cache_dir,
     )
+    summary = db.query(Summary).filter(Summary.video_id == video.id).first()
+    summary_chunks = []
+    if summary and summary.content.strip():
+        summary_chunks = chunk_and_embed_summary(
+            summary.content,
+            model_cache_dir=settings.model_cache_dir,
+        )
 
-    for chunk in chunks:
+    chunks = transcript_chunks + summary_chunks
+
+    for index, chunk in enumerate(chunks):
         ec = EmbeddingChunk(
             transcription_id=transcription.id,
             video_id=video.id,
-            chunk_index=chunk["chunk_index"],
+            chunk_index=index,
             chunk_text=chunk["chunk_text"],
             start_time=chunk.get("start_time"),
             end_time=chunk.get("end_time"),

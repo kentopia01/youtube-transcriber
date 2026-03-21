@@ -1,5 +1,10 @@
 """Telegram bot for chatting with video transcripts."""
 
+import atexit
+import fcntl
+import os
+from pathlib import Path
+
 import structlog
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -26,6 +31,8 @@ _engine = create_async_engine(settings.database_url_native, echo=False)
 _async_session = async_sessionmaker(_engine, expire_on_commit=False)
 
 TELEGRAM_MESSAGE_LIMIT = 4096
+BOT_LOCK_PATH = Path("/tmp/yt-chatbot/app.lock")
+_lock_handle = None
 
 
 def _is_user_allowed(user_id: int) -> bool:
@@ -157,6 +164,9 @@ async def videos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def _format_source_citation(source: dict) -> str:
     title = source.get("video_title", "Unknown")
+    if source.get("source_type") == "summary":
+        return f"[\U0001f4f9 {title} Summary]"
+
     start = source.get("start_time")
     if start is not None:
         total = int(start)
@@ -201,6 +211,47 @@ def split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
         chunks.append(text[:split_at])
         text = text[split_at:].lstrip("\n")
     return chunks
+
+
+def _release_bot_lock() -> None:
+    global _lock_handle
+    if _lock_handle is None:
+        return
+    try:
+        _lock_handle.close()
+    finally:
+        _lock_handle = None
+
+
+def acquire_bot_lock(lock_path: Path = BOT_LOCK_PATH) -> bool:
+    """Ensure only one local polling bot instance runs at a time."""
+    global _lock_handle
+    if _lock_handle is not None:
+        return True
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        return False
+
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"{os.getpid()}\n")
+    handle.flush()
+    _lock_handle = handle
+    atexit.register(_release_bot_lock)
+    return True
+
+
+async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.exception(
+        "telegram_update_error",
+        error=str(context.error),
+        update_type=type(update).__name__ if update is not None else None,
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -295,7 +346,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(chunk)
 
     except Exception:
-        logger.exception("telegram_message_error")
+        logger.exception(
+            "telegram_message_error",
+            chat_id=chat_id,
+            user_id=update.effective_user.id if update.effective_user else None,
+            text_preview=user_text[:120],
+        )
         await update.message.reply_text(
             "Sorry, an error occurred while processing your message. Please try again."
         )
@@ -319,11 +375,15 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("videos", videos_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_error_handler(telegram_error_handler)
 
     return app
 
 
 def run_bot() -> None:
+    if not acquire_bot_lock():
+        logger.warning("telegram_bot_already_running", lock_path=str(BOT_LOCK_PATH))
+        return
     app = create_bot_application()
     logger.info("telegram_bot_starting")
     app.run_polling()

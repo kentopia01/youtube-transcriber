@@ -582,6 +582,42 @@ class TestChatService:
     @patch("app.services.chat._call_anthropic")
     @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
     @patch("app.services.chat.encode_query")
+    async def test_chat_with_context_marks_summary_sources(
+        self, mock_encode, mock_search, mock_llm,
+    ):
+        from app.services.chat import chat_with_context
+        from app.services.embedding import SUMMARY_SPEAKER_LABEL
+
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = [
+            {
+                "id": uuid.uuid4(),
+                "video_id": uuid.uuid4(),
+                "video_title": "Summary Video",
+                "chunk_text": "Executive summary text",
+                "start_time": None,
+                "end_time": None,
+                "speaker": SUMMARY_SPEAKER_LABEL,
+                "similarity": 0.88,
+            }
+        ]
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+
+        db = AsyncMock()
+        result = await chat_with_context("question", [], db)
+
+        assert result["sources"][0]["source_type"] == "summary"
+        assert result["sources"][0]["start_time"] is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
     async def test_history_trimmed_to_max(
         self, mock_encode, mock_search, mock_llm,
     ):
@@ -723,6 +759,23 @@ class TestFormatChunks:
         ]
         result = _format_chunks_for_context(chunks)
         assert "[1] Video B\n" in result
+
+    def test_format_summary_chunks(self):
+        from app.services.chat import _format_chunks_for_context
+        from app.services.embedding import SUMMARY_SPEAKER_LABEL
+
+        chunks = [
+            {
+                "video_title": "Video Summary",
+                "chunk_text": "Summary text",
+                "start_time": None,
+                "end_time": None,
+                "speaker": SUMMARY_SPEAKER_LABEL,
+            }
+        ]
+        result = _format_chunks_for_context(chunks)
+        assert "[1] Video Summary [Summary]" in result
+        assert "Summary text" in result
 
     def test_format_timestamp_with_hours(self):
         from app.services.chat import _fmt_ts
@@ -1679,7 +1732,7 @@ class TestQAClawRound7:
     @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
     @patch("app.services.chat.encode_query")
     async def test_sources_include_all_required_fields(self, mock_encode, mock_search, mock_llm):
-        """Each source dict must have video_id, video_title, chunk_text, start_time, end_time, similarity."""
+        """Each source dict must have the core citation fields plus source_type."""
         from app.services.chat import chat_with_context
 
         mock_encode.return_value = [0.1] * 768
@@ -1707,7 +1760,15 @@ class TestQAClawRound7:
 
         assert len(result["sources"]) == 1
         source = result["sources"][0]
-        required_keys = {"video_id", "video_title", "chunk_text", "start_time", "end_time", "similarity"}
+        required_keys = {
+            "video_id",
+            "video_title",
+            "chunk_text",
+            "start_time",
+            "end_time",
+            "similarity",
+            "source_type",
+        }
         assert set(source.keys()) == required_keys
         assert source["similarity"] == 0.88
         assert source["start_time"] == 5.0
@@ -1976,11 +2037,11 @@ class TestQAClawRound9:
         assert call_args[2] == "custom-model-123"
 
     def test_build_messages_context_prefix_present(self):
-        """The user message should include 'Context from video transcripts:' prefix."""
+        """The user message should include the context prefix."""
         from app.services.chat import _build_messages
 
         messages = _build_messages([], "my question", "chunk text here")
-        assert "Context from video transcripts:" in messages[0]["content"]
+        assert "Context from video transcripts and summaries:" in messages[0]["content"]
         assert "chunk text here" in messages[0]["content"]
         assert "Question: my question" in messages[0]["content"]
 
@@ -2493,7 +2554,7 @@ class TestQAClawRound12:
         call_args = mock_llm.call_args[0]
         messages = call_args[1]
         user_msg = messages[-1]["content"]
-        assert "Context from video transcripts:" in user_msg
+        assert "Context from video transcripts and summaries:" in user_msg
         assert "Question: what is this?" in user_msg
 
     @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)

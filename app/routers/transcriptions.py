@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.dependencies import get_db
+from app.models.summary import Summary
 from app.models.transcription import Transcription
 
 router = APIRouter(prefix="/api/transcriptions", tags=["transcriptions"])
@@ -28,10 +29,18 @@ async def get_transcription(video_id: uuid.UUID, db: AsyncSession = Depends(get_
         if s.speaker is not None
     ))
 
+    # Fetch summary if it exists
+    summary_result = await db.execute(
+        select(Summary).where(Summary.video_id == video_id)
+    )
+    summary = summary_result.scalar_one_or_none()
+
     return {
         "id": str(transcription.id),
         "video_id": str(transcription.video_id),
         "full_text": transcription.full_text,
+        "summary": summary.content if summary else None,
+        "summary_model": summary.model if summary else None,
         "language": transcription.language,
         "language_detected": transcription.language,
         "model_size": transcription.model_size,
