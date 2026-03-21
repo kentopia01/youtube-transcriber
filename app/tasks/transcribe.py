@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -5,11 +6,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
+import structlog
 from app.models.job import Job
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
 from app.services.transcription import transcribe_audio
+
+_logger = structlog.get_logger()
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
 from app.tasks.helpers import get_latest_pipeline_job
@@ -101,6 +105,15 @@ def transcribe_audio_task(self, video_id: str) -> str:
                 job.progress_message = "Transcription complete"
 
             db.commit()
+
+            # Delete audio file after successful transcription
+            if video.audio_file_path and os.path.exists(video.audio_file_path):
+                try:
+                    os.unlink(video.audio_file_path)
+                    _logger.info("audio_file_deleted", path=video.audio_file_path)
+                except OSError as e:
+                    _logger.warning("audio_file_delete_failed", path=video.audio_file_path, error=str(e))
+
             return video_id
 
         except Exception as exc:

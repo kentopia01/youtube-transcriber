@@ -5,6 +5,7 @@ from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.dependencies import get_db
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -109,9 +110,7 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(ChatSession)
-        .where(ChatSession.id == session_id)
-        .options(selectinload(ChatSession.messages))
+        select(ChatSession).where(ChatSession.id == session_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -131,11 +130,18 @@ async def send_message(
     db.add(user_msg)
     await db.flush()
 
-    # Build conversation history from existing messages
-    history = [
-        {"role": m.role, "content": m.content}
-        for m in session.messages
-    ]
+    # Load only the last N messages (bounded query — avoids loading entire history)
+    history_limit = settings.chat_max_history * 2
+    recent = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(history_limit)
+    )
+    messages = list(reversed(recent.scalars().all()))
+
+    # Build conversation history from recent messages
+    history = [{"role": m.role, "content": m.content} for m in messages]
 
     # Call RAG chat service
     chat_result = await chat_with_context(

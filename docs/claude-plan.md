@@ -1,20 +1,52 @@
-# QAClaw: Channel Filtering QA Verification
+# Fix Sprint Plan — 2026-03-21
 
 ## Goal
-Verify the channel video filtering feature (limit, date range, duration filters) and fix any bugs found.
+Apply 6 critical/high-priority fixes: API auth, chat memory bound, Haiku models, cost controls, 429 retry, audio cleanup, video time limit.
 
 ## Assumptions
-- Feature was implemented in commit 3c660f1
-- Test environment uses `.venv314` with Python 3.14
-- `telegram` module not installed in test venv (telegram bot tests skipped)
+- Python/FastAPI + Celery project (no npm/Node)
+- Native venv at `.venv-native/`, Docker services running
+- Pydantic-settings reads env vars from field names (uppercase), `Field(env=...)` is deprecated in v2
+- Cost tracker uses sync SQLAlchemy (same pattern as Celery tasks)
+- `tenacity` added to pyproject.toml and installed in both environments
 
 ## Steps
-1. Read all changed files: youtube.py, channels.py, video.py schemas, telegram_bot.py, test_channel_filters.py
-2. Verify yt-dlp options mapping (playlistend, daterange, match_filter) -- confirmed correct
-3. Identify edge cases: missing input validation for limit, latest, durations, date formats
-4. Check Telegram bot for broken imports -- no issues found
-5. Run full test suite -- 630 passed
-6. Add Pydantic field_validators for limit>=1, latest>=1, duration>=0, date YYYY-MM-DD format
-7. Add 6 edge-case tests for validation rejection (422 responses)
-8. Re-run tests -- 636 passed
-9. Commit fixes
+
+### FIX 1: API Auth Middleware
+1. Add `api_key: str = ""` to `app/config.py`
+2. Add HTTP middleware to `app/main.py`: reads X-API-Key header or api_key query param, skips /, /health, /static/*, logs warning if key empty
+3. Add `API_KEY=` to `.env.example`
+
+### FIX 2: Chat Session Memory Leak
+- `app/routers/chat.py` send_message: remove selectinload, add bounded select(ChatMessage).limit(N)
+- `app/telegram_bot.py` handle_message: same pattern, remove reload query
+
+### FIX 3: Anthropic 429 Retry
+- Add `tenacity>=8.2.0` to `pyproject.toml`
+- Add `_call_anthropic_with_retry()` to chat.py, summarization.py, transcript_cleanup.py
+
+### FIX 4a: Haiku/Sonnet Model Settings
+- Add `anthropic_cleanup_model`, `anthropic_chat_model`, `anthropic_summary_model` to config
+- Update services: cleanup→haiku, chat→haiku, summary→sonnet
+
+### FIX 4b: Per-Video Duration Limit
+- Add `max_video_duration_minutes: int = 120` to config
+- In `app/tasks/download.py`: check duration after metadata fetch, fail with descriptive message
+
+### FIX 4c: Daily LLM Budget Cap
+- Add `daily_llm_budget_usd: float = 5.0` to config
+- Create `app/services/cost_tracker.py` with record_usage, check_budget, get_today_cost, get_period_cost
+- Create `app/models/llm_usage.py` ORM model
+- Create `alembic/versions/007_add_llm_usage_table.py`
+- Create `app/routers/llm_usage.py`: GET /api/llm/usage
+- Wire check_budget before LLM calls (chat+cleanup, not summarization); record_usage after every call
+
+### FIX 5: Celery Worker Plist
+- Verified ~/Library/LaunchAgents/com.sentryclaw.yt-worker.plist — already has KeepAlive (SuccessfulExit=false), StandardOutPath, StandardErrorPath. No changes needed.
+
+### FIX 6: Audio File Cleanup
+- In `app/tasks/transcribe.py`: after successful transcription, delete audio file via os.unlink()
+
+## Deviations
+- Used simple Python defaults instead of Field(env=...) to avoid pydantic v2 deprecation warnings
+- Docker container needed pip install tenacity after source volume reload

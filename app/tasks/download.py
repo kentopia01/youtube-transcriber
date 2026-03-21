@@ -38,10 +38,20 @@ def download_audio_task(self, video_id: str) -> str:
         try:
             result = download_audio(video.youtube_video_id, settings.audio_dir)
 
+            duration = result.get("duration")
+            max_duration = settings.max_video_duration_minutes * 60
+            if duration and duration > max_duration:
+                limit_min = settings.max_video_duration_minutes
+                actual_min = int(duration // 60)
+                raise ValueError(
+                    f"Video duration {actual_min}min exceeds limit of {limit_min}min. "
+                    f"Set MAX_VIDEO_DURATION_MINUTES in .env to allow longer videos."
+                )
+
             video.audio_file_path = result["audio_path"]
             video.title = result.get("title", video.title)
             video.description = result.get("description", video.description)
-            video.duration_seconds = result.get("duration")
+            video.duration_seconds = duration
             video.thumbnail_url = result.get("thumbnail")
             video.status = "downloaded"
 

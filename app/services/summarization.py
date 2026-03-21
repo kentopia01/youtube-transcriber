@@ -1,8 +1,19 @@
 import anthropic
 import structlog
 import tiktoken
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = structlog.get_logger()
+
+
+@retry(
+    retry=retry_if_exception_type(anthropic.RateLimitError),
+    wait=wait_exponential(multiplier=1, min=4, max=60),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
+    return client.messages.create(**kwargs)
 
 SUMMARY_SYSTEM_PROMPT = """You are an expert content summarizer. Create a comprehensive yet concise summary of the following video transcript. Include:
 
@@ -45,7 +56,7 @@ def summarize_text(text: str, video_title: str = "", api_key: str = "", model: s
     client = anthropic.Anthropic(api_key=api_key)
     if not model:
         from app.config import settings
-        model = settings.summary_model
+        model = settings.anthropic_summary_model
 
     token_count = _count_tokens(text)
     logger.info("summarizing", token_count=token_count, title=video_title, model=model)
@@ -58,14 +69,19 @@ def summarize_text(text: str, video_title: str = "", api_key: str = "", model: s
 
 def _summarize_single(client: anthropic.Anthropic, model: str, text: str, title: str) -> dict:
     """Summarize text in a single API call."""
+    from app.services.cost_tracker import record_usage
+
     user_content = f"Video title: {title}\n\nTranscript:\n{text}" if title else text
 
-    response = client.messages.create(
+    response = _call_anthropic_with_retry(
+        client,
         model=model,
         max_tokens=4096,
         system=SUMMARY_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )
+
+    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     return {
         "summary": response.content[0].text,
@@ -94,8 +110,11 @@ def _summarize_chunked(
     total_completion = 0
     partial_summaries = []
 
+    from app.services.cost_tracker import record_usage
+
     for i, chunk in enumerate(chunks):
-        response = client.messages.create(
+        response = _call_anthropic_with_retry(
+            client,
             model=model,
             max_tokens=2048,
             system=CHUNK_SUMMARY_PROMPT,
@@ -104,13 +123,15 @@ def _summarize_chunked(
         partial_summaries.append(response.content[0].text)
         total_prompt += response.usage.input_tokens
         total_completion += response.usage.output_tokens
+        record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     # Consolidate
     combined = "\n\n---\n\n".join(
         f"**Part {i + 1} Summary:**\n{s}" for i, s in enumerate(partial_summaries)
     )
 
-    response = client.messages.create(
+    response = _call_anthropic_with_retry(
+        client,
         model=model,
         max_tokens=4096,
         system=CONSOLIDATION_PROMPT.format(title=title),
@@ -118,6 +139,7 @@ def _summarize_chunked(
     )
     total_prompt += response.usage.input_tokens
     total_completion += response.usage.output_tokens
+    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     return {
         "summary": response.content[0].text,

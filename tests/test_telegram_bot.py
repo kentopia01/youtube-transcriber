@@ -250,8 +250,8 @@ class TestHandleMessage:
     async def test_auto_creates_session_and_responds(self):
         update = _make_update(text="What is this about?")
         session = _make_session(title=None)
-        # First execute: find session -> none. Second: reload with messages
-        db = FakeDB(results=[FakeResult([]), FakeResult(session)])
+        # First execute: find session -> none. Second: bounded messages query (empty, new session)
+        db = FakeDB(results=[FakeResult([]), FakeResult([])])
         # Override add to capture the new session
         original_add = db.add
 
@@ -282,7 +282,8 @@ class TestHandleMessage:
     async def test_uses_existing_session(self):
         update = _make_update(text="Follow up question")
         session = _make_session(title="Existing Chat")
-        db = FakeDB(results=[FakeResult([session]), FakeResult(session)])
+        # First execute: find session -> found. Second: bounded messages query (empty)
+        db = FakeDB(results=[FakeResult([session]), FakeResult([])])
 
         chat_result = {
             "content": "Follow up answer.",

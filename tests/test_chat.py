@@ -350,8 +350,8 @@ class TestSendMessage:
         s = _make_session(title="Chat")
         msg1 = _make_message(s.id, "user", "First question")
         msg2 = _make_message(s.id, "assistant", "First answer")
-        s.messages = [msg1, msg2]
-        db = StubDB(execute_results=[s])
+        # First execute: session lookup; second execute: bounded messages query (desc order)
+        db = StubDB(execute_results=[s, [msg2, msg1]])
         client = _build_client(db)
         client.post(
             f"/api/chat/sessions/{s.id}/messages",
@@ -484,14 +484,13 @@ class TestEdgeCases:
         """Session with prior messages builds correct history."""
         mock_chat.return_value = MOCK_CHAT_RESULT
         s = _make_session(title="Multi-turn")
-        msgs = [
-            _make_message(s.id, "user", "Q1"),
-            _make_message(s.id, "assistant", "A1"),
-            _make_message(s.id, "user", "Q2"),
-            _make_message(s.id, "assistant", "A2"),
-        ]
-        s.messages = msgs
-        db = StubDB(execute_results=[s])
+        msg_q1 = _make_message(s.id, "user", "Q1")
+        msg_a1 = _make_message(s.id, "assistant", "A1")
+        msg_q2 = _make_message(s.id, "user", "Q2")
+        msg_a2 = _make_message(s.id, "assistant", "A2")
+        msgs = [msg_q1, msg_a1, msg_q2, msg_a2]
+        # First execute: session; second execute: bounded messages query (desc, then reversed)
+        db = StubDB(execute_results=[s, list(reversed(msgs))])
         client = _build_client(db)
         resp = client.post(
             f"/api/chat/sessions/{s.id}/messages",
@@ -968,7 +967,7 @@ class TestAnthropicErrorHandling:
         await chat_with_context("question", [], db)
 
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-sonnet-4-20250514"
+        assert call_args[2] == "claude-haiku-4-5"  # anthropic_chat_model default
         assert "video transcript" in call_args[0].lower()
 
     @pytest.mark.asyncio
@@ -1405,7 +1404,8 @@ class TestQAClawRound5:
         msg1 = _make_message(s.id, "user", "First question")
         msg2 = _make_message(s.id, "assistant", MOCK_CHAT_RESULT["content"])
         s.messages = [msg1, msg2]
-        db2 = StubDB(execute_results=[s])
+        # First execute: session; second execute: bounded messages query (desc, then reversed)
+        db2 = StubDB(execute_results=[s, [msg2, msg1]])
         client2 = _build_client(db2)
         resp2 = client2.post(
             f"/api/chat/sessions/{s.id}/messages",
@@ -1928,7 +1928,7 @@ class TestQAClawRound8:
         # _call_anthropic(system, messages, model) — verify it was called
         mock_llm.assert_called_once()
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-sonnet-4-20250514"  # model arg
+        assert call_args[2] == "claude-haiku-4-5"  # anthropic_chat_model default
 
 
 # ---------------------------------------------------------------------------
@@ -2029,7 +2029,7 @@ class TestQAClawRound9:
         with patch("app.services.chat.settings") as mock_settings:
             mock_settings.chat_retrieval_top_k = 10
             mock_settings.chat_max_history = 10
-            mock_settings.chat_model = "custom-model-123"
+            mock_settings.anthropic_chat_model = "custom-model-123"
             mock_settings.anthropic_api_key = "test-key"
             await chat_with_context("question", [], db)
 
@@ -2517,7 +2517,8 @@ class TestQAClawRound12:
         s = _make_session(title="History Test")
         s.messages = [existing_msg, existing_reply]
 
-        db = StubDB(execute_results=[s])
+        # First execute: session; second execute: bounded messages query (desc order, reversed)
+        db = StubDB(execute_results=[s, [existing_reply, existing_msg]])
         client = _build_client(db)
         resp = client.post(
             f"/api/chat/sessions/{s.id}/messages",

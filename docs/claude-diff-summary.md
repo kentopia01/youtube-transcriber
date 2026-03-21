@@ -1,19 +1,47 @@
-# QAClaw: Channel Filtering QA Fixes -- Diff Summary
+# Fix Sprint Diff Summary — 2026-03-21
 
 ## What Changed
 
 | File | Change |
-|---|---|
-| `app/schemas/video.py` | Added Pydantic `field_validator` for: `limit` (>= 1), `after_date`/`before_date` (YYYY-MM-DD regex), `min_duration`/`max_duration` (>= 0), `latest` (>= 1). |
-| `tests/test_channel_filters.py` | Added 6 edge-case validation tests: limit=0, limit=-5, invalid date format, negative duration, latest=0, latest=-1. |
+|------|--------|
+| `app/config.py` | Added: api_key, anthropic_cleanup_model, anthropic_chat_model, anthropic_summary_model, max_video_duration_minutes, daily_llm_budget_usd |
+| `app/main.py` | Added API key middleware + llm_usage router |
+| `app/routers/chat.py` | Replaced selectinload with bounded ChatMessage query (FIX 2) |
+| `app/telegram_bot.py` | Replaced selectinload+reload with bounded ChatMessage query (FIX 2) |
+| `app/services/chat.py` | Added tenacity retry, check_budget, record_usage, switched to anthropic_chat_model (haiku) |
+| `app/services/summarization.py` | Added tenacity retry, record_usage, switched to anthropic_summary_model (sonnet) |
+| `app/services/transcript_cleanup.py` | Added tenacity retry, check_budget, record_usage, switched to anthropic_cleanup_model (haiku) |
+| `app/tasks/cleanup.py` | Uses settings.anthropic_cleanup_model |
+| `app/tasks/download.py` | Added duration limit check after metadata fetch |
+| `app/tasks/transcribe.py` | Added audio file deletion after successful transcription |
+| `app/services/cost_tracker.py` | **NEW** — sync LLM usage tracker with record_usage, check_budget, get_today_cost, get_period_cost |
+| `app/models/llm_usage.py` | **NEW** — SQLAlchemy ORM for llm_usage table |
+| `alembic/versions/007_add_llm_usage_table.py` | **NEW** — migration adding llm_usage table + index |
+| `app/routers/llm_usage.py` | **NEW** — GET /api/llm/usage endpoint |
+| `pyproject.toml` | Added tenacity>=8.2.0 dependency |
+| `.env.example` | Added API_KEY, MAX_VIDEO_DURATION_MINUTES, DAILY_LLM_BUDGET_USD |
+| `tests/test_cost_tracker.py` | **NEW** — unit tests for cost tracker (estimate_cost, record_usage, check_budget) |
+| `tests/test_chat.py` | Updated 4 tests to match new bounded history query pattern (provides 2nd execute result) |
+| `tests/test_telegram_bot.py` | Updated 2 tests to match new bounded history query pattern |
 
 ## Why
-The original implementation had no input validation on filter parameters. Invalid values (limit=0, negative durations, malformed dates) would either silently produce unexpected results or crash inside yt-dlp at runtime.
+
+- **API auth**: Network-accessible deployments need protection; dev mode (empty key) retains zero-config UX
+- **Memory leak**: selectinload fetched ALL messages; sessions with long history would OOM workers
+- **429 retry**: Anthropic rate-limits can cause transient failures; exponential backoff (4s→60s, 3 attempts) handles spikes
+- **Haiku for chat/cleanup**: Significant cost reduction; Haiku is adequate for Q&A and filler word removal; Sonnet retained only for summaries
+- **Duration limit**: Prevents accidental queueing of 4-hour conference talks that would consume 30+ min of GPU time
+- **Cost cap**: Hard daily budget prevents runaway charges in production; per-call tracking enables observability
+- **Audio cleanup**: Audio files are large (100MB+); cleaning them up after transcription frees significant disk space
 
 ## Risks
-- `limit=0` is now rejected (422) instead of silently returning no results. Unlikely to break existing callers.
-- Date validation is regex-only (YYYY-MM-DD format) -- does not check if the date is actually valid (e.g., 2024-02-30 passes). yt-dlp's DateRange handles this gracefully.
 
-## Known Limitations (not bugs)
-- `daterange` filter with `extract_flat: True` may not apply when yt-dlp doesn't have `upload_date` in flat playlist entries. The date filter works best when yt-dlp can resolve per-video upload dates.
-- `test_telegram_bot.py` is skipped because `telegram` module is not installed in `.venv314`.
+- **Cost tracker DB**: Uses sync SQLAlchemy with lazy engine init. If DB is unavailable, record_usage logs a warning but does not raise (best-effort). check_budget returns 0 cost on DB error (permissive failure).
+- **Alembic migration**: `007_add_llm_usage_table.py` must be run before the cost tracker is called. Until then, record_usage will silently fail (logs warning).
+- **tenacity in Docker**: Docker image must be rebuilt (or `pip install tenacity` run manually) to pick up new dependency.
+- **Model strings**: New `anthropic_*_model` settings use short names (`claude-haiku-4-5`); Anthropic API accepts these.
+
+## Unresolved
+
+- llm_usage table migration needs to run: `alembic upgrade head`
+- No test for duration limit in download task (would require mocking yt-dlp)

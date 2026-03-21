@@ -4,6 +4,7 @@ from functools import partial
 
 import anthropic
 import structlog
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -20,6 +21,16 @@ def _get_anthropic_client() -> anthropic.Anthropic:
     if _anthropic_client is None:
         _anthropic_client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     return _anthropic_client
+
+
+@retry(
+    retry=retry_if_exception_type(anthropic.RateLimitError),
+    wait=wait_exponential(multiplier=1, min=4, max=60),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
+    return client.messages.create(**kwargs)
 
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions based on video transcript content. \
@@ -79,13 +90,21 @@ def _call_anthropic(
     messages: list[dict],
     model: str,
 ) -> dict:
+    from app.services.cost_tracker import BudgetExceededError, check_budget, record_usage
+
+    check_budget()
+
     client = _get_anthropic_client()
-    response = client.messages.create(
+    response = _call_anthropic_with_retry(
+        client,
         model=model,
         max_tokens=4096,
         system=system,
         messages=messages,
     )
+
+    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
+
     return {
         "content": response.content[0].text,
         "model": response.model,
@@ -160,18 +179,30 @@ async def chat_with_context(
             "completion_tokens": 0,
         }
 
+    from app.services.cost_tracker import BudgetExceededError
+
     loop = asyncio.get_running_loop()
+    model = settings.anthropic_chat_model
     try:
         llm_result = await loop.run_in_executor(
             None,
-            partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.chat_model),
+            partial(_call_anthropic, SYSTEM_PROMPT, messages, model),
         )
+    except BudgetExceededError as exc:
+        logger.warning("chat_budget_exceeded", error=str(exc))
+        return {
+            "content": "Chat is temporarily unavailable: daily LLM budget exceeded. Try again tomorrow.",
+            "sources": sources,
+            "model": model,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+        }
     except Exception as exc:
         logger.error("anthropic_api_error", error=str(exc))
         return {
             "content": "Sorry, an error occurred while generating the response. Please try again.",
             "sources": sources,
-            "model": settings.chat_model,
+            "model": model,
             "prompt_tokens": 0,
             "completion_tokens": 0,
         }
@@ -183,3 +214,4 @@ async def chat_with_context(
         "prompt_tokens": llm_result["prompt_tokens"],
         "completion_tokens": llm_result["completion_tokens"],
     }
+

@@ -7,10 +7,22 @@ Chunked processing for long transcripts.
 
 from __future__ import annotations
 
+import anthropic
 import structlog
 import tiktoken
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = structlog.get_logger()
+
+
+@retry(
+    retry=retry_if_exception_type(anthropic.RateLimitError),
+    wait=wait_exponential(multiplier=1, min=4, max=60),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
+    return client.messages.create(**kwargs)
 
 # Chunking parameters
 MAX_TOKENS_SINGLE = 4000  # Below this, send as single request
@@ -29,7 +41,7 @@ CLEANUP_PROMPT = """Clean this transcript for readability. Rules:
 def clean_transcript(
     segments: list[dict],
     api_key: str,
-    model: str = "claude-haiku-4-20250514",
+    model: str = "claude-haiku-4-5",
 ) -> list[dict]:
     """Clean transcript segments using an LLM.
 
@@ -87,16 +99,21 @@ def clean_transcript(
 
 def _call_llm(text: str, api_key: str, model: str) -> str:
     """Send text to Anthropic API for cleanup."""
-    import anthropic
+    from app.services.cost_tracker import BudgetExceededError, check_budget, record_usage
+
+    check_budget()
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    response = client.messages.create(
+    response = _call_anthropic_with_retry(
+        client,
         model=model,
         max_tokens=8192,
         system=CLEANUP_PROMPT,
         messages=[{"role": "user", "content": text}],
     )
+
+    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     return response.content[0].text
 

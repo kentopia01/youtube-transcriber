@@ -8,7 +8,6 @@ from pathlib import Path
 import structlog
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import selectinload
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -293,14 +292,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             preview = user_text[:50]
             session.title = preview + ("..." if len(user_text) > 50 else "")
 
-        # Load messages for history
-        result = await db.execute(
-            select(ChatSession)
-            .where(ChatSession.id == session.id)
-            .options(selectinload(ChatSession.messages))
-        )
-        session = result.scalar_one()
-
         # Save user message
         user_msg = ChatMessage(
             session_id=session.id,
@@ -310,11 +301,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         db.add(user_msg)
         await db.flush()
 
+        # Load only the last N messages (bounded query — avoids loading entire history)
+        history_limit = settings.chat_max_history * 2
+        recent = await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session.id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(history_limit)
+        )
+        messages = list(reversed(recent.scalars().all()))
+
         # Build history
-        history = [
-            {"role": m.role, "content": m.content}
-            for m in session.messages
-        ]
+        history = [{"role": m.role, "content": m.content} for m in messages]
 
         # Call RAG chat
         chat_result = await chat_with_context(

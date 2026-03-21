@@ -78,7 +78,7 @@ def cleanup_transcript_task(self, video_id: str) -> str:
             cleaned_segments = clean_transcript(
                 segments,
                 api_key=settings.anthropic_api_key,
-                model=settings.cleanup_model,
+                model=settings.anthropic_cleanup_model,
             )
 
             # Update segment text in DB

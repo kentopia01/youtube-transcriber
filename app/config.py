@@ -62,6 +62,20 @@ class Settings(BaseSettings):
     # Native database URL (for processes running outside Docker)
     database_url_native: str = "postgresql+asyncpg://transcriber:transcriber@localhost:5432/transcriber"
 
+    # API authentication (empty = dev mode, no auth required)
+    api_key: str = ""
+
+    # LLM models (explicit per-use-case settings)
+    anthropic_cleanup_model: str = "claude-haiku-4-5"
+    anthropic_chat_model: str = "claude-haiku-4-5"
+    anthropic_summary_model: str = "claude-sonnet-4-5"
+
+    # Per-video duration limit
+    max_video_duration_minutes: int = 120
+
+    # Daily LLM budget cap (USD)
+    daily_llm_budget_usd: float = 5.0
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"

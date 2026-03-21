@@ -1,11 +1,14 @@
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.config import settings
 from app.routers import channels, chat, jobs, pages, search, transcriptions, videos
+from app.routers import llm_usage
 
 structlog.configure(
     processors=[
@@ -14,9 +17,39 @@ structlog.configure(
     ],
 )
 
+logger = structlog.get_logger()
+
+# Paths that skip API key auth
+_AUTH_SKIP_PREFIXES = ("/health", "/static/", "/")
+
+
+def _auth_required(path: str) -> bool:
+    """Return True if this path requires API key authentication."""
+    if path == "/":
+        return False
+    for prefix in _AUTH_SKIP_PREFIXES:
+        if path == prefix or (prefix.endswith("/") and path.startswith(prefix)):
+            return False
+    return True
+
 
 def create_app() -> FastAPI:
     application = FastAPI(title="YouTube Transcriber", version="0.1.0")
+
+    # API key middleware
+    @application.middleware("http")
+    async def api_key_middleware(request: Request, call_next):
+        if settings.api_key and _auth_required(request.url.path):
+            key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+            if key != settings.api_key:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or missing API key. Provide X-API-Key header or api_key query param."},
+                )
+        return await call_next(request)
+
+    if not settings.api_key:
+        logger.warning("api_auth_disabled", reason="API_KEY not set — running in open dev mode")
 
     # Static files
     static_dir = Path(__file__).parent / "static"
@@ -38,6 +71,7 @@ def create_app() -> FastAPI:
     application.include_router(jobs.router)
     application.include_router(transcriptions.router)
     application.include_router(chat.router)
+    application.include_router(llm_usage.router)
 
     return application
 
