@@ -10,6 +10,7 @@ from app.models.job import Job
 from app.models.video import Video
 from app.schemas.video import ChatToggle, VideoResponse, VideoSubmit
 from app.services.channel_sync import get_or_create_channel, parse_upload_date
+from app.services.job_visibility import hide_superseded_failed_jobs
 from app.services.youtube import extract_video_id, get_video_info, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -56,6 +57,8 @@ async def submit_video(
     )
 
     published_at = parse_upload_date(info.get("published_at"))
+
+    existing_was_failed = bool(existing and existing.status == "failed")
 
     if existing:
         existing.channel_id = channel.id if channel else existing.channel_id
@@ -108,6 +111,15 @@ async def submit_video(
         progress_message="Queued for processing",
     )
     db.add(job)
+    await db.flush()
+
+    if existing_was_failed:
+        await hide_superseded_failed_jobs(
+            db,
+            video_id=video.id,
+            superseded_by_job_id=job.id,
+        )
+
     await db.commit()
 
     # Launch pipeline

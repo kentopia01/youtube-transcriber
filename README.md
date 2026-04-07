@@ -335,6 +335,35 @@ The `summarize_transcription` and `generate_embeddings` tasks have built-in retr
 
 Resubmitting a previously failed video URL creates a new pipeline job instead of returning the old failed job.
 
+## Native Maintenance and Cleanup
+
+For host-native maintenance on macOS, use the wrapper scripts so local Postgres settings from `.env.native` are applied automatically.
+
+```bash
+# Apply migrations with native/local DB settings
+./scripts/alembic_native.sh upgrade head
+
+# Preview hidden superseded failed jobs older than 14 days
+./scripts/reap_hidden_superseded_failed_jobs_wrapper.sh --dry-run --retention-days 14
+
+# Run the real cleanup
+./scripts/reap_hidden_superseded_failed_jobs_wrapper.sh --retention-days 14
+
+# Repair the local venv after dependency changes
+.venv/bin/pip install -e .
+```
+
+Scheduled cleanup is now configured as an OpenClaw cron job:
+
+```bash
+openclaw cron list | grep yt-hidden-failed-cleanup
+```
+
+- Job name: `yt-hidden-failed-cleanup`
+- Schedule: daily at `4:15 AM`
+- Behavior: runs the native cleanup wrapper with `--retention-days 14`
+- Delivery: `none` (quiet unless checked through cron status/logs)
+
 ## Worker Management
 
 ```bash

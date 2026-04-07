@@ -53,7 +53,11 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     completed_jobs = completed_result.scalars().all()
 
     failed_result = await db.execute(
-        select(Job).options(selectinload(Job.video)).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(10)
+        select(Job)
+        .options(selectinload(Job.video))
+        .where(Job.status == "failed", Job.hidden_from_queue.is_(False))
+        .order_by(Job.completed_at.desc())
+        .limit(10)
     )
     failed_jobs = failed_result.scalars().all()
 
@@ -417,7 +421,11 @@ async def queue_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     # Failed
     failed_result = await db.execute(
-        select(Job).options(selectinload(Job.video)).where(Job.status == "failed").order_by(Job.completed_at.desc()).limit(20)
+        select(Job)
+        .options(selectinload(Job.video))
+        .where(Job.status == "failed", Job.hidden_from_queue.is_(False))
+        .order_by(Job.completed_at.desc())
+        .limit(20)
     )
     failed_jobs = failed_result.scalars().all()
 

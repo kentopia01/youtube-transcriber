@@ -12,6 +12,7 @@ from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
 from app.schemas.video import JobResponse
+from app.services.job_visibility import hide_superseded_failed_jobs
 from app.tasks.pipeline import run_pipeline, run_pipeline_from
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -35,6 +36,12 @@ async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
     if job.status in ("pending", "queued"):
         job.status = "cancelled"
+        if job.video_id:
+            video_result = await db.execute(select(Video).where(Video.id == job.video_id))
+            video = video_result.scalar_one_or_none()
+            if video:
+                video.status = "pending"
+                video.error_message = None
         await db.commit()
         return {"status": "cancelled"}
 
@@ -62,6 +69,17 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     video.status = "pending"
     video.error_message = None
 
+    # Check for existing queued/running job to prevent duplicates
+    existing_result = await db.execute(
+        select(Job).where(
+            Job.video_id == video.id,
+            Job.status.in_(["queued", "running"]),
+        )
+    )
+    existing_job = existing_result.scalar_one_or_none()
+    if existing_job:
+        return {"status": existing_job.status, "job_id": str(existing_job.id), "video_id": str(video.id)}
+
     # Smart retry: detect where to resume based on existing data
     start_from = await _detect_resume_point(db, video.id)
 
@@ -76,6 +94,12 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     )
     db.add(retry)
     await db.flush()
+
+    await hide_superseded_failed_jobs(
+        db,
+        video_id=video.id,
+        superseded_by_job_id=retry.id,
+    )
 
     retry.celery_task_id = run_pipeline_from(str(video.id), start_from=start_from)
     await db.commit()
