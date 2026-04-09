@@ -63,4 +63,4 @@ def update_batch_progress_and_maybe_advance(db: Session, batch_id):
             started_at=None,
             completed_at=None,
         )
-        job.celery_task_id = run_pipeline(str(job.video_id))
+        job.celery_task_id = run_pipeline(str(job.video_id), job_id=str(job.id))

@@ -168,7 +168,7 @@ async def process_selected_videos(
 
             # Only launch first batch immediately
             if batch_num == 0:
-                celery_id = run_pipeline(str(video.id))
+                celery_id = run_pipeline(str(video.id), job_id=str(job.id))
                 job.celery_task_id = celery_id
 
             created_jobs.append(str(job.id))

@@ -13,7 +13,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T007 | Pipeline stabilization Phase 3: recovery guardrails, stale-job behavior, and retry containment | done | BuildClaw / QAClaw | Recovery guardrails, stale classification, and manual-review containment implemented |
 | T008 | Pipeline observability and attempt reasoning | done | BuildClaw / QAClaw | Structured attempt reasoning, artifact checks, stage timing, and worker health observability implemented |
 | T009 | Throughput queues after stability | planned | BuildClaw / QAClaw | Queue split + durable dispatch + fairness as the next throughput umbrella |
-| T010 | Queue routing contract and stage gates | planned | BuildClaw / QAClaw | Explicit queue mapping and attempt-safe stage execution |
+| T010 | Queue routing contract and stage gates | done | BuildClaw / QAClaw | Explicit queue routing, payload identity, and attempt-safe stage execution implemented |
 | T011 | Channel backlog dispatcher and fairness | planned | BuildClaw / QAClaw | Durable long-running channel backlog with protected manual-job progress |
 | T012 | Worker topology rollout and throughput validation | planned | BuildClaw / QAClaw | Conservative worker split and measurement on current Mac mini |
 

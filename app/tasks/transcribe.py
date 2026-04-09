@@ -13,7 +13,7 @@ from app.services.pipeline_state import PIPELINE_STAGE_TRANSCRIBE
 from app.services.transcription import transcribe_audio
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 _logger = structlog.get_logger()
 
@@ -21,17 +21,17 @@ sync_engine = create_engine(settings.database_url_sync)
 
 
 @celery.task(bind=True, name="tasks.transcribe_audio")
-def transcribe_audio_task(self, video_id: str) -> str:
-    """Transcribe audio for a video. Returns video_id for chaining."""
-    vid = uuid.UUID(video_id)
-
+def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] | str:
+    """Transcribe audio for a video. Returns payload for chaining."""
     with Session(sync_engine) as db:
-        video = db.get(Video, vid)
-        if not video:
-            raise ValueError(f"Video {video_id} not found")
+        payload, video, job = get_pipeline_job_context(
+            db,
+            payload,
+            expected_stage=PIPELINE_STAGE_TRANSCRIBE,
+        )
+        vid = video.id
 
         video.status = "transcribing"
-        job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
             task=self,
@@ -120,7 +120,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
             # Cleanup is intentionally deferred so resume planning can trust artifacts.
             _logger.info("audio_file_retained_for_retry", path=video.audio_file_path)
 
-            return video_id
+            return payload
 
         except Exception as exc:
             record_pipeline_failure(

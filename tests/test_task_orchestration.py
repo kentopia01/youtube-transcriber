@@ -7,29 +7,41 @@ from app.tasks import batch_progress, pipeline
 def test_run_pipeline_builds_expected_chain(monkeypatch):
     calls = []
 
-    def fake_signature(name, args=None, app=None):
-        calls.append((name, args, app))
-        return name
+    class FakeSig:
+        def __init__(self, name, immutable=False):
+            self.name = name
+            self.immutable = immutable
+            self.queue = None
+
+        def set(self, **kwargs):
+            self.queue = kwargs.get("queue")
+            return self
+
+    def fake_signature(name, args=None, app=None, immutable=False):
+        sig = FakeSig(name, immutable=immutable)
+        calls.append((name, args, app, immutable, sig))
+        return sig
 
     class FakeChain:
         def apply_async(self):
             return SimpleNamespace(id="chain-123")
 
     def fake_chain(*parts):
-        assert parts == (
+        assert [part.name for part in parts] == [
             "tasks.download_audio",
             "tasks.transcribe_audio",
             "tasks.diarize_and_align",
             "tasks.cleanup_transcript",
             "tasks.summarize_transcription",
             "tasks.generate_embeddings",
-        )
+        ]
+        assert [part.queue for part in parts] == ["audio", "audio", "diarize", "post", "post", "post"]
         return FakeChain()
 
     monkeypatch.setattr(pipeline, "signature", fake_signature)
     monkeypatch.setattr(pipeline, "chain", fake_chain)
 
-    result_id = pipeline.run_pipeline("video-1")
+    result_id = pipeline.run_pipeline("video-1", job_id="job-1")
 
     assert result_id == "chain-123"
     assert [c[0] for c in calls] == [
@@ -40,12 +52,9 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
         "tasks.summarize_transcription",
         "tasks.generate_embeddings",
     ]
-    assert calls[0][1] == ["video-1"]
-    assert calls[1][1] is None
-    assert calls[2][1] is None
-    assert calls[3][1] is None
-    assert calls[4][1] is None
-    assert calls[5][1] is None
+    for index, call in enumerate(calls):
+        assert call[1] == [{"video_id": "video-1", "job_id": "job-1"}]
+        assert call[3] is (index > 0)
 
 
 @dataclass
@@ -62,6 +71,7 @@ class FakeBatch:
 @dataclass
 class FakeJob:
     status: str
+    id: str | None = None
     video_id: str | None = None
     celery_task_id: str | None = None
     progress_pct: float = 0.0
@@ -69,6 +79,7 @@ class FakeJob:
     error_message: str | None = None
     started_at: object = None
     completed_at: object = None
+    current_stage: str | None = None
 
 
 class _FakeJobQuery:
@@ -125,7 +136,7 @@ class FakeDB:
 
 def test_update_batch_progress_noop_when_batch_missing(monkeypatch):
     called = []
-    monkeypatch.setattr(batch_progress, "run_pipeline", lambda video_id: called.append(video_id))
+    monkeypatch.setattr(batch_progress, "run_pipeline", lambda video_id, job_id=None: called.append((video_id, job_id)))
 
     class MissingBatchDB(FakeDB):
         def get(self, model, batch_id):
@@ -143,12 +154,12 @@ def test_update_batch_progress_noop_when_batch_missing(monkeypatch):
 
 def test_update_batch_progress_does_not_advance_for_non_terminal_batch(monkeypatch):
     called = []
-    monkeypatch.setattr(batch_progress, "run_pipeline", lambda video_id: called.append(video_id))
+    monkeypatch.setattr(batch_progress, "run_pipeline", lambda video_id, job_id=None: called.append((video_id, job_id)))
 
     batch = FakeBatch(id="b1", channel_id="c1", batch_number=1)
     current_jobs = [FakeJob(status="completed"), FakeJob(status="running")]
     next_batch = FakeBatch(id="b2", channel_id="c1", batch_number=2, status="pending")
-    next_jobs = [FakeJob(status="pending", video_id="vid-2")]
+    next_jobs = [FakeJob(status="pending", id="job-2", video_id="vid-2")]
     db = FakeDB(batch=batch, current_jobs=current_jobs, next_batch=next_batch, next_jobs=next_jobs)
 
     batch_progress.update_batch_progress_and_maybe_advance(db, "b1")
@@ -165,27 +176,27 @@ def test_update_batch_progress_advances_and_enqueues_next_batch(monkeypatch):
     monkeypatch.setattr(
         batch_progress,
         "run_pipeline",
-        lambda video_id: calls.append(video_id) or f"task-{video_id}",
+        lambda video_id, job_id=None: calls.append((video_id, job_id)) or f"task-{video_id}",
     )
 
     batch = FakeBatch(id="b1", channel_id="c1", batch_number=1)
     current_jobs = [FakeJob(status="completed"), FakeJob(status="failed")]
     next_batch = FakeBatch(id="b2", channel_id="c1", batch_number=2, status="pending")
     next_jobs = [
-        FakeJob(status="pending", video_id="vid-2"),
-        FakeJob(status="pending", video_id="vid-3", celery_task_id="already-set"),
-        FakeJob(status="pending", video_id=None),
+        FakeJob(status="pending", id="job-2", video_id="vid-2"),
+        FakeJob(status="pending", id="job-3", video_id="vid-3", celery_task_id="already-set"),
+        FakeJob(status="pending", id="job-4", video_id=None),
     ]
     db = FakeDB(batch=batch, current_jobs=current_jobs, next_batch=next_batch, next_jobs=next_jobs)
 
     batch_progress.update_batch_progress_and_maybe_advance(db, "b1")
 
-    assert batch.status == "completed_with_errors"  # partial failure — BUG-06 fix
+    assert batch.status == "completed_with_errors"
     assert batch.completed_videos == 1
     assert batch.failed_videos == 1
     assert batch.completed_at is not None
     assert next_batch.status == "running"
-    assert calls == ["vid-2"]
+    assert calls == [("vid-2", "job-2")]
     assert next_jobs[0].status == "queued"
     assert next_jobs[0].current_stage == "queued"
     assert next_jobs[0].celery_task_id == "task-vid-2"

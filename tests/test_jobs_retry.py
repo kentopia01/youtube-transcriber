@@ -100,7 +100,7 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
     monkeypatch.setattr(
         jobs_router,
         "run_pipeline_from",
-        lambda video_id, start_from: "celery-123",
+        lambda video_id, start_from, job_id=None: "celery-123",
     )
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
@@ -162,7 +162,7 @@ async def test_retry_job_returns_existing_active_retry(monkeypatch):
     monkeypatch.setattr(
         jobs_router,
         "run_pipeline_from",
-        lambda video_id, start_from: (_ for _ in ()).throw(AssertionError("should not run")),
+        lambda video_id, start_from, job_id=None: (_ for _ in ()).throw(AssertionError("should not run")),
     )
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
@@ -206,7 +206,7 @@ async def test_retry_job_returns_existing_pending_attempt(monkeypatch):
     monkeypatch.setattr(
         jobs_router,
         "run_pipeline_from",
-        lambda video_id, start_from: (_ for _ in ()).throw(AssertionError("should not run")),
+        lambda video_id, start_from, job_id=None: (_ for _ in ()).throw(AssertionError("should not run")),
     )
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
@@ -261,7 +261,7 @@ async def test_retry_job_returns_existing_attempt_when_db_active_index_is_hit(mo
     monkeypatch.setattr(
         jobs_router,
         "run_pipeline_from",
-        lambda video_id, start_from: (_ for _ in ()).throw(AssertionError("should not run")),
+        lambda video_id, start_from, job_id=None: (_ for _ in ()).throw(AssertionError("should not run")),
     )
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)

@@ -123,7 +123,7 @@ async def test_resubmit_failed_video_hides_prior_failed_jobs(monkeypatch):
         },
     )
     monkeypatch.setattr(videos_router, "get_or_create_channel", _fake_get_or_create_channel)
-    monkeypatch.setattr(videos_router, "run_pipeline", lambda _: "celery-123")
+    monkeypatch.setattr(videos_router, "run_pipeline", lambda _, job_id=None: "celery-123")
 
     result = await videos_router.submit_video(
         SimpleNamespace(),
@@ -195,7 +195,7 @@ async def test_resubmit_failed_video_reuses_existing_active_attempt(monkeypatch)
     monkeypatch.setattr(
         videos_router,
         "run_pipeline",
-        lambda _: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
+        lambda _, job_id=None: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
     )
 
     result = await videos_router.submit_video(
@@ -270,7 +270,7 @@ async def test_resubmit_failed_video_returns_existing_attempt_on_db_active_confl
     monkeypatch.setattr(
         videos_router,
         "run_pipeline",
-        lambda _: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
+        lambda _, job_id=None: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
     )
 
     result = await videos_router.submit_video(
@@ -389,7 +389,7 @@ async def test_submit_existing_non_failed_video_keeps_dedupe_behavior(monkeypatc
     monkeypatch.setattr(
         videos_router,
         "run_pipeline",
-        lambda _: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
+        lambda _, job_id=None: (_ for _ in ()).throw(AssertionError("run_pipeline should not be called")),
     )
 
     result = await videos_router.submit_video(

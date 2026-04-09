@@ -181,7 +181,7 @@ async def submit_video(
     await db.commit()
 
     # Launch pipeline
-    celery_id = run_pipeline(str(video_uuid))
+    celery_id = run_pipeline(str(video_uuid), job_id=str(job.id))
     job.celery_task_id = celery_id
     await db.commit()
 

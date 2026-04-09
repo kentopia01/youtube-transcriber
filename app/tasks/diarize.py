@@ -19,45 +19,44 @@ from app.services.pipeline_recovery import record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_DIARIZE
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 logger = structlog.get_logger()
 
 
 @celery.task(bind=True, name="tasks.diarize_and_align")
-def diarize_and_align_task(self, video_id: str) -> str:
+def diarize_and_align_task(self, payload: dict[str, str] | str) -> dict[str, str] | str:
     """Run diarization and alignment on a transcribed video.
 
     Skips if diarization is disabled or HF token is not set.
-    Returns video_id for chaining.
+    Returns payload for chaining.
     """
-    vid = uuid.UUID(video_id)
-
     # Skip if disabled
     if not settings.diarization_enabled:
-        return video_id
+        return payload
 
     if not settings.hf_token:
         logger.warning(
             "diarization_skipped",
             reason="HF_TOKEN not set",
-            video_id=video_id,
+            payload=payload,
         )
-        return video_id
+        return payload
 
     with Session(sync_engine) as db:
-        video = db.get(Video, vid)
-        if not video:
-            raise ValueError(f"Video {video_id} not found")
+        payload, video, job = get_pipeline_job_context(
+            db,
+            payload,
+            expected_stage=PIPELINE_STAGE_DIARIZE,
+        )
+        vid = video.id
 
         transcription = db.query(Transcription).filter(
             Transcription.video_id == vid
         ).first()
         if not transcription:
-            raise ValueError(f"No transcription found for video {video_id}")
-
-        job = get_latest_pipeline_job(db, vid)
+            raise ValueError(f"No transcription found for video {vid}")
         update_pipeline_job(
             job,
             task=self,
@@ -122,7 +121,7 @@ def diarize_and_align_task(self, video_id: str) -> str:
             # Keep audio on disk for retryable execution and safer resume behavior.
             logger.info("audio_file_retained_for_retry", path=video.audio_file_path)
 
-            return video_id
+            return payload
 
         except Exception as exc:
             record_pipeline_failure(

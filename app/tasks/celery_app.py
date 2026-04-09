@@ -1,6 +1,7 @@
 from celery import Celery
 
 from app.config import settings
+from app.services.pipeline_routing import PIPELINE_TASK_STAGE_MAP, get_queue_for_task
 
 celery = Celery(
     "youtube_transcriber",
@@ -29,4 +30,8 @@ celery.conf.update(
         "app.tasks.embed",
         "app.tasks.channel_sync",
     ],
+    task_routes={
+        task_name: {"queue": get_queue_for_task(task_name)}
+        for task_name in PIPELINE_TASK_STAGE_MAP
+    },
 )

@@ -1,9 +1,11 @@
 from celery import chain, signature
 
+from app.services.pipeline_routing import get_queue_for_task
 from app.tasks.celery_app import celery
+from app.tasks.helpers import build_pipeline_task_payload
 
-# Ordered list of pipeline steps
-PIPELINE_STEPS = [
+# Ordered list of all pipeline tasks.
+PIPELINE_TASKS = [
     "tasks.download_audio",
     "tasks.transcribe_audio",
     "tasks.diarize_and_align",
@@ -13,44 +15,32 @@ PIPELINE_STEPS = [
 ]
 
 
-def run_pipeline(video_id: str) -> str:
-    """Launch the full processing pipeline for a video.
-
-    Pipeline: download → transcribe → diarize → cleanup → summarize → embed
-
-    Diarization step is a no-op if DIARIZATION_ENABLED=false.
-    Cleanup step is a no-op if TRANSCRIPT_CLEANUP_ENABLED=false.
-
-    Uses task signatures by name to avoid importing worker-only dependencies
-    in the web process.
-
-    Returns the Celery chain AsyncResult ID.
-    """
-    return run_pipeline_from(video_id, start_from="tasks.download_audio")
+def _stage_signature(task_name: str, payload: dict[str, str], *, immutable: bool = False):
+    return signature(task_name, args=[payload], app=celery, immutable=immutable).set(
+        queue=get_queue_for_task(task_name)
+    )
 
 
-def run_pipeline_from(video_id: str, start_from: str) -> str:
-    """Launch a partial pipeline starting from the given step.
+def run_pipeline(video_id: str, job_id: str | None = None) -> str:
+    payload = build_pipeline_task_payload(video_id, job_id or "")
+    sigs = [
+        _stage_signature(task_name, payload, immutable=index > 0)
+        for index, task_name in enumerate(PIPELINE_TASKS)
+    ]
+    result = chain(*sigs).apply_async()
+    return result.id
 
-    Used by smart retry to skip steps whose output already exists.
-    The first step in the partial chain receives video_id as an argument;
-    subsequent steps receive it from the previous step via chaining.
 
-    Returns the Celery chain AsyncResult ID.
-    """
-    if start_from not in PIPELINE_STEPS:
-        raise ValueError(f"Unknown pipeline step: {start_from}")
+def run_pipeline_from(video_id: str, start_from: str, job_id: str | None = None) -> str:
+    if start_from not in PIPELINE_TASKS:
+        raise ValueError(f"Unknown start task: {start_from}")
 
-    start_idx = PIPELINE_STEPS.index(start_from)
-    steps = PIPELINE_STEPS[start_idx:]
-
-    sigs = []
-    for i, step_name in enumerate(steps):
-        if i == 0:
-            sigs.append(signature(step_name, args=[video_id], app=celery))
-        else:
-            sigs.append(signature(step_name, app=celery))
-
-    pipeline = chain(*sigs)
-    result = pipeline.apply_async()
+    payload = build_pipeline_task_payload(video_id, job_id or "")
+    start_index = PIPELINE_TASKS.index(start_from)
+    remaining_tasks = PIPELINE_TASKS[start_index:]
+    sigs = [
+        _stage_signature(task_name, payload, immutable=index > 0)
+        for index, task_name in enumerate(remaining_tasks)
+    ]
+    result = chain(*sigs).apply_async()
     return result.id

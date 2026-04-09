@@ -12,7 +12,7 @@ from app.services.pipeline_state import PIPELINE_STAGE_SUMMARIZE
 from app.services.summarization import summarize_text
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -23,21 +23,21 @@ sync_engine = create_engine(settings.database_url_sync)
     max_retries=get_stage_retry_limit(PIPELINE_STAGE_SUMMARIZE),
     default_retry_delay=10,
 )
-def summarize_transcription_task(self, video_id: str) -> str:
-    """Summarize a video's transcription. Returns video_id for chaining."""
-    vid = uuid.UUID(video_id)
-
+def summarize_transcription_task(self, payload: dict[str, str] | str) -> dict[str, str] | str:
+    """Summarize a video's transcription. Returns payload for chaining."""
     with Session(sync_engine) as db:
-        video = db.get(Video, vid)
-        if not video:
-            raise ValueError(f"Video {video_id} not found")
+        payload, video, job = get_pipeline_job_context(
+            db,
+            payload,
+            expected_stage=PIPELINE_STAGE_SUMMARIZE,
+        )
+        vid = video.id
 
         transcription = db.query(Transcription).filter(Transcription.video_id == vid).first()
         if not transcription:
-            raise ValueError(f"No transcription found for video {video_id}")
+            raise ValueError(f"No transcription found for video {vid}")
 
         video.status = "summarizing"
-        job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
             task=self,
@@ -87,7 +87,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
             )
 
             db.commit()
-            return video_id
+            return payload
 
         except Exception as exc:
             if self.request.retries < self.max_retries:

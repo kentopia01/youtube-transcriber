@@ -1,125 +1,118 @@
 """Celery task for LLM-powered transcript cleanup.
 
-Sends transcript through Anthropic Haiku for filler word removal and
-grammar cleanup. Speaker-aware. Runs after diarization, before summarization.
+Sends transcript through Anthropic Haiku for cleanup/correction.
+Runs after diarization (if enabled) or after transcription (if diarization disabled).
 """
-
-import uuid
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.transcription import Transcription
-from app.models.video import Video
+from app.services.pipeline_recovery import record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_CLEANUP
 from app.services.transcript_cleanup import clean_transcript
+from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
 
 @celery.task(bind=True, name="tasks.cleanup_transcript")
-def cleanup_transcript_task(self, video_id: str) -> str:
+def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, str] | str:
     """Clean up a video's transcript using LLM.
 
     Skips if transcript cleanup is disabled.
-    Returns video_id for chaining.
+    Returns payload for chaining.
     """
-    vid = uuid.UUID(video_id)
-
-    # Skip if disabled
     if not settings.transcript_cleanup_enabled:
-        return video_id
+        return payload
 
     if not settings.anthropic_api_key:
         import structlog
+
         structlog.get_logger().warn(
             "transcript_cleanup_skipped",
             reason="ANTHROPIC_API_KEY not set",
-            video_id=video_id,
+            payload=payload,
         )
-        return video_id
+        return payload
 
     with Session(sync_engine) as db:
-        video = db.get(Video, vid)
-        if not video:
-            raise ValueError(f"Video {video_id} not found")
+        payload, video, job = get_pipeline_job_context(
+            db,
+            payload,
+            expected_stage=PIPELINE_STAGE_CLEANUP,
+        )
+        vid = video.id
 
         transcription = db.query(Transcription).filter(
             Transcription.video_id == vid
         ).first()
         if not transcription:
-            raise ValueError(f"No transcription found for video {video_id}")
+            raise ValueError(f"No transcription found for video {vid}")
 
-        job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
             task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_CLEANUP,
-            progress_pct=67.0,
-            progress_message="Cleaning transcript with LLM...",
-            completed_at=None,
+            progress_pct=70.0,
+            progress_message="Cleaning transcript with Haiku…",
         )
         db.commit()
 
         try:
-            # Build segment data
-            segments = [
+            segment_payload = [
                 {
-                    "text": s.text,
-                    "speaker": s.speaker,
-                    "start": s.start_time,
-                    "end": s.end_time,
-                    "confidence": s.confidence,
+                    "start": segment.start_time,
+                    "end": segment.end_time,
+                    "text": segment.text,
+                    "confidence": segment.confidence,
+                    "speaker": segment.speaker,
                 }
-                for s in transcription.segments
+                for segment in transcription.segments
             ]
-
-            # Run LLM cleanup
             cleaned_segments = clean_transcript(
-                segments,
+                segment_payload,
                 api_key=settings.anthropic_api_key,
                 model=settings.anthropic_cleanup_model,
             )
 
-            # Update segment text in DB
-            for seg_model, cleaned in zip(transcription.segments, cleaned_segments):
-                seg_model.text = cleaned["text"]
+            for segment_model, cleaned in zip(transcription.segments, cleaned_segments):
+                segment_model.text = cleaned.get("text", segment_model.text)
+                if "speaker" in cleaned:
+                    segment_model.speaker = cleaned.get("speaker")
 
-            # Rebuild full_text from cleaned segments
-            full_text_parts = [s["text"] for s in cleaned_segments]
-            transcription.full_text = " ".join(full_text_parts)
-            transcription.word_count = len(transcription.full_text.split())
+            transcription.full_text = " ".join(
+                segment.text.strip()
+                for segment in transcription.segments
+                if segment.text and segment.text.strip()
+            )
+            video.status = "cleaned"
 
             update_pipeline_job(
                 job,
                 task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_CLEANUP,
-                progress_pct=72.0,
-                progress_message="Transcript cleanup complete",
+                progress_pct=75.0,
+                progress_message="Transcript cleaned, continuing pipeline",
             )
             db.commit()
-
-            return video_id
-
+            return payload
         except Exception as exc:
-            # Don't fail the pipeline on cleanup errors — log and continue
-            import structlog
-            structlog.get_logger().error(
-                "transcript_cleanup_failed",
-                error=str(exc),
-                video_id=video_id,
-            )
-            update_pipeline_job(
+            record_pipeline_failure(
+                db,
                 job,
                 task=self,
-                lifecycle_status="running",
-                current_stage=PIPELINE_STAGE_CLEANUP,
-                progress_message=f"Cleanup failed (continuing): {exc}",
+                video=video,
+                stage=PIPELINE_STAGE_CLEANUP,
+                error=exc,
+                default_message=f"Transcript cleanup failed: {exc}",
             )
+            if job and job.batch_id:
+                update_batch_progress_and_maybe_advance(db, job.batch_id)
             db.commit()
-            return video_id
+            raise

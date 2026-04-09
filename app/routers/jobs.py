@@ -161,7 +161,11 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         superseded_by_job_id=retry.id,
     )
 
-    retry.celery_task_id = run_pipeline_from(str(video_uuid), start_from=start_from)
+    retry.celery_task_id = run_pipeline_from(
+        str(video_uuid),
+        start_from=start_from,
+        job_id=str(retry.id),
+    )
     await db.commit()
 
     payload = {"status": "queued", "job_id": str(retry.id), "video_id": str(video_uuid)}

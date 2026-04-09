@@ -156,7 +156,7 @@ async def test_concurrent_submit_only_creates_one_active_attempt(monkeypatch):
         monkeypatch.setattr(
             videos_router,
             "run_pipeline",
-            lambda video_id: pipeline_runs.append(video_id) or f"celery-{len(pipeline_runs)}",
+            lambda video_id, job_id=None: pipeline_runs.append((video_id, job_id)) or f"celery-{len(pipeline_runs)}",
         )
 
         real_get_active_attempt = videos_router.get_active_pipeline_attempt

@@ -3,27 +3,87 @@
 import uuid
 from typing import Any
 
+from celery.exceptions import Ignore
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.models.video import Video
 from app.services.pipeline_observability import get_task_worker_identity
-from app.services.pipeline_state import set_pipeline_job_state
+from app.services.pipeline_routing import PIPELINE_STAGE_RANK
+from app.services.pipeline_state import (
+    PIPELINE_ATTEMPT_ACTIVE_STATUSES,
+    set_pipeline_job_state,
+)
 
 _SENTINEL = object()
 
 
-def get_latest_pipeline_job(db: Session, video_id: uuid.UUID) -> Job | None:
-    """Return the most recent pipeline job for a video.
+def build_pipeline_task_payload(video_id: uuid.UUID | str, job_id: uuid.UUID | str) -> dict[str, str]:
+    return {"video_id": str(video_id), "job_id": str(job_id)}
 
-    Tasks must update the LATEST job so that retries (which create new Job
-    records) get the progress updates instead of the original failed job.
-    """
+
+def parse_pipeline_task_payload(payload: dict[str, str] | str) -> tuple[uuid.UUID, uuid.UUID | None]:
+    if isinstance(payload, str):
+        return uuid.UUID(payload), None
+
+    return uuid.UUID(payload["video_id"]), uuid.UUID(payload["job_id"]) if payload.get("job_id") else None
+
+
+def get_latest_pipeline_job(db: Session, video_id: uuid.UUID) -> Job | None:
     return (
         db.query(Job)
         .filter(Job.video_id == video_id, Job.job_type == "pipeline")
         .order_by(Job.created_at.desc())
         .first()
     )
+
+
+def get_pipeline_job_context(
+    db: Session,
+    payload: dict[str, str] | str,
+    *,
+    expected_stage: str,
+) -> tuple[dict[str, str], Video, Job]:
+    video_id, job_id = parse_pipeline_task_payload(payload)
+    normalized_payload = build_pipeline_task_payload(video_id, job_id or "") if job_id else {"video_id": str(video_id)}
+
+    video = db.get(Video, video_id)
+    if video is None:
+        raise Ignore()
+
+    if job_id is None:
+        job = get_latest_pipeline_job(db, video_id)
+    else:
+        job = db.get(Job, job_id)
+
+    if job is None or job.job_type != "pipeline" or job.video_id != video_id:
+        raise Ignore()
+
+    active_attempt = (
+        db.query(Job)
+        .filter(
+            Job.video_id == video_id,
+            Job.job_type == "pipeline",
+            Job.status.in_(PIPELINE_ATTEMPT_ACTIVE_STATUSES),
+        )
+        .order_by(Job.created_at.desc())
+        .first()
+    )
+    if active_attempt is not None and active_attempt.id != job.id:
+        raise Ignore()
+
+    if job.status not in PIPELINE_ATTEMPT_ACTIVE_STATUSES:
+        raise Ignore()
+
+    if getattr(job, "hidden_reason", None) == "superseded":
+        raise Ignore()
+
+    current_stage = getattr(job, "current_stage", None) or "queued"
+    if PIPELINE_STAGE_RANK.get(current_stage, 0) > PIPELINE_STAGE_RANK.get(expected_stage, 0):
+        raise Ignore()
+
+    normalized_payload["job_id"] = str(job.id)
+    return normalized_payload, video, job
 
 
 def update_pipeline_job(
@@ -38,7 +98,6 @@ def update_pipeline_job(
     completed_at=_SENTINEL,
     task: Any | None = None,
 ) -> None:
-    """Safely apply a state transition when a pipeline job exists."""
     if not job:
         return
 

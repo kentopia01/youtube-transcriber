@@ -1,7 +1,7 @@
 # T010 - Queue routing contract and stage gates
 
 ## Status
-In Progress
+Done
 
 ## Objective
 Introduce explicit queue routing and attempt-safe stage gates so each pipeline stage runs in the correct workload lane and only against the intended active attempt.

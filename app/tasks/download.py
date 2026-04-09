@@ -10,7 +10,7 @@ from app.services.pipeline_state import PIPELINE_STAGE_DOWNLOAD
 from app.services.youtube import download_audio
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -21,17 +21,17 @@ sync_engine = create_engine(settings.database_url_sync)
     max_retries=get_stage_retry_limit(PIPELINE_STAGE_DOWNLOAD),
     default_retry_delay=30,
 )
-def download_audio_task(self, video_id: str) -> str:
-    """Download audio for a video. Returns video_id for chaining."""
-    vid = uuid.UUID(video_id)
-
+def download_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] | str:
+    """Download audio for a video. Returns payload for chaining."""
     with Session(sync_engine) as db:
-        video = db.get(Video, vid)
-        if not video:
-            raise ValueError(f"Video {video_id} not found")
+        payload, video, job = get_pipeline_job_context(
+            db,
+            payload,
+            expected_stage=PIPELINE_STAGE_DOWNLOAD,
+        )
+        vid = video.id
 
         video.status = "downloading"
-        job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
             task=self,
@@ -74,7 +74,7 @@ def download_audio_task(self, video_id: str) -> str:
             )
 
             db.commit()
-            return video_id
+            return payload
 
         except Exception as exc:
             if self.request.retries < self.max_retries:
