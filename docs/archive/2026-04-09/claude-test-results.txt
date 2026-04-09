@@ -1,0 +1,23 @@
+Fix Sprint Test Results — 2026-03-21
+=====================================
+
+Command: python -m pytest tests/ -x -q 2>&1 | tail -10
+Result:  761 passed, 67 warnings in 8.59s
+
+All fixes validated by existing test suite + new cost tracker tests.
+
+Note: 67 warnings are pre-existing Starlette TemplateResponse deprecation warnings
+(unrelated to this sprint). All are non-fatal warnings only.
+
+Docker service note: After adding `tenacity` to pyproject.toml, the Docker web
+container (which mounts the source directory) needed `pip install tenacity` to
+pick up the new dependency. This was done manually. The Docker image should be
+rebuilt on next deploy: `docker compose build web`.
+
+Alembic migration note: `alembic/versions/007_add_llm_usage_table.py` adds the
+`llm_usage` table. Run `alembic upgrade head` to apply. Until applied, the cost
+tracker will silently fail on DB write (logs warning, does not raise).
+
+FIX 5 (Plist): ~/Library/LaunchAgents/com.sentryclaw.yt-worker.plist already
+had KeepAlive (SuccessfulExit=false), StandardOutPath=/tmp/yt-worker/yt-worker.log,
+and StandardErrorPath set. No changes were required.

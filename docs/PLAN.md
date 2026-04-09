@@ -76,6 +76,7 @@ That would make a flaky system fail faster, not better.
 ## Execution rule
 
 All serious implementation should use:
+- `AGENTS.md`
 - this `docs/PLAN.md`
 - `docs/CLARIFICATIONS.md`
 - `docs/tasks/TASK_INDEX.md`

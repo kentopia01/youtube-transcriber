@@ -40,3 +40,4 @@ Phases 1 to 3 made the pipeline safer, but debugging still depends too much on i
 ## Notes
 - This is the next phase after T007.
 - Throughput work should not start until this observability layer is in place.
+- Read `AGENTS.md` before implementing. T008 must not drift into queue UI polish before the structured observability contract exists.

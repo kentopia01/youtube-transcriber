@@ -2,6 +2,7 @@
 
 ## Workflow rule
 For serious implementation work in this repo, the execution source of truth is:
+- `AGENTS.md`
 - `docs/PLAN.md`
 - `docs/CLARIFICATIONS.md`
 - `docs/tasks/TASK_INDEX.md`
