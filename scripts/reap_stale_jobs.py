@@ -1,79 +1,133 @@
 #!/usr/bin/env python3
-"""Reap stale jobs that are stuck in 'running' or 'processing' state.
+"""Reap truly stale pipeline jobs using stage-aware guardrails.
 
-If the worker crashes mid-transcription, jobs stay in a running state forever.
-This script marks them as 'failed' after a configurable timeout.
+This Phase 3 version uses explicit pipeline stage/activity metadata instead of
+legacy status names so slow but still-active work is not reaped too eagerly.
 
 Usage:
-  python scripts/reap_stale_jobs.py [--timeout-hours 2] [--dry-run]
+  python scripts/reap_stale_jobs.py [--dry-run]
 """
+
 import argparse
+import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-import psycopg2
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.config import settings
+from app.models.job import Job
+from app.models.video import Video
+from app.services.pipeline_recovery import (
+    get_job_activity_anchor,
+    get_stage_stale_timeout_minutes,
+    is_pipeline_job_stale,
+    record_pipeline_failure,
+)
+
+def _resolve_db_url_sync() -> str:
+    explicit = os.environ.get("DATABASE_URL_SYNC")
+    if explicit:
+        return explicit
+
+    native_env = PROJECT_ROOT / ".env.native"
+    if native_env.exists():
+        for line in native_env.read_text().splitlines():
+            if line.startswith("DATABASE_URL_SYNC="):
+                return line.split("=", 1)[1].strip()
+
+    return settings.database_url_sync
 
 
-def reap_stale_jobs(db_url: str, timeout_hours: float, dry_run: bool):
-    """Find and mark stale jobs as failed."""
-    conn = psycopg2.connect(db_url)
-    conn.autocommit = True
-    cur = conn.cursor()
+sync_engine = create_engine(_resolve_db_url_sync())
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=timeout_hours)
 
-    # Find stale jobs (use COALESCE: started_at if running, else created_at)
-    cur.execute("""
-        SELECT id, video_id, status, started_at, COALESCE(started_at, created_at) AS anchor
-        FROM jobs
-        WHERE status IN ('running', 'processing', 'downloading', 'transcribing',
-                         'diarizing', 'cleaning', 'summarizing', 'embedding')
-        AND COALESCE(started_at, created_at) < %s
-    """, (cutoff,))
+def reap_stale_jobs(dry_run: bool, timeout_hours: float | None = None):
+    now = datetime.now(UTC)
+    reaped = 0
 
-    stale_jobs = cur.fetchall()
+    with Session(sync_engine) as db:
+        candidates = (
+            db.query(Job)
+            .filter(Job.job_type == "pipeline", Job.status.in_(["pending", "queued", "running"]))
+            .order_by(Job.created_at.asc())
+            .all()
+        )
 
-    if not stale_jobs:
-        print(f"No stale jobs found (cutoff: {timeout_hours}h)")
-        conn.close()
-        return 0
+        stale_jobs = []
+        for job in candidates:
+            if timeout_hours is not None:
+                anchor = get_job_activity_anchor(job)
+                if anchor is None:
+                    continue
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=UTC)
+                if now - anchor > timedelta(hours=timeout_hours):
+                    stale_jobs.append(job)
+                continue
 
-    print(f"Found {len(stale_jobs)} stale job(s):")
-    for job_id, video_id, status, started_at, anchor in stale_jobs:
-        age = datetime.now(timezone.utc) - anchor.replace(tzinfo=timezone.utc)
-        print(f"  Job {job_id}: status={status}, stale for {age}")
+            if is_pipeline_job_stale(job, now=now):
+                stale_jobs.append(job)
 
-        if not dry_run:
-            cur.execute("""
-                UPDATE jobs
-                SET status = 'failed',
-                    error_message = 'Reaped: job stale for over %s hours (likely worker crash)',
-                    completed_at = NOW()
-                WHERE id = %s
-            """, (timeout_hours, job_id))
+        if not stale_jobs:
+            print("No stale jobs found")
+            return 0
 
-            # Also reset the video status so it can be re-submitted
-            cur.execute("""
-                UPDATE videos
-                SET status = 'failed'
-                WHERE id = %s AND status IN ('processing', 'downloading', 'transcribing')
-            """, (video_id,))
+        print(f"Found {len(stale_jobs)} stale job(s):")
+        for job in stale_jobs:
+            anchor = get_job_activity_anchor(job)
+            if anchor and anchor.tzinfo is None:
+                anchor = anchor.replace(tzinfo=UTC)
+            age_minutes = int((now - anchor).total_seconds() // 60) if anchor else -1
+            timeout_minutes = int(timeout_hours * 60) if timeout_hours is not None else get_stage_stale_timeout_minutes(job.current_stage)
+            print(
+                f"  Job {job.id}: stage={job.current_stage or 'queued'}, "
+                f"status={job.status}, age={age_minutes}m, timeout={timeout_minutes}m"
+            )
 
-            print(f"    → Marked as failed")
+            if dry_run:
+                continue
 
-    conn.close()
-    return len(stale_jobs)
+            video = db.get(Video, job.video_id) if job.video_id else None
+            record_pipeline_failure(
+                db,
+                job,
+                video=video,
+                stage=job.current_stage or "queued",
+                error=RuntimeError(
+                    f"Stale job reaped after {age_minutes} minutes in stage "
+                    f"'{job.current_stage or 'queued'}'"
+                ),
+                default_message=(
+                    f"Marked failed by stale-job reaper after {age_minutes} minutes in "
+                    f"stage '{job.current_stage or 'queued'}'."
+                ),
+                stale_reap=True,
+            )
+            reaped += 1
+
+        if not dry_run and reaped:
+            db.commit()
+
+    return reaped
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reap stale transcription jobs")
-    parser.add_argument("--timeout-hours", type=float, default=2.0,
-                        help="Hours after which a running job is considered stale (default: 2)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Only show stale jobs, don't mark them as failed")
-    parser.add_argument("--db-url", default="postgresql://transcriber:transcriber@localhost:5432/transcriber",
-                        help="Database URL")
+    parser.add_argument("--dry-run", action="store_true", help="Only show stale jobs, don't mark them failed")
+    parser.add_argument(
+        "--timeout-hours",
+        type=float,
+        default=None,
+        help="Legacy global timeout override. If omitted, stage-aware timeouts are used.",
+    )
     args = parser.parse_args()
 
-    count = reap_stale_jobs(args.db_url, args.timeout_hours, args.dry_run)
-    sys.exit(0 if count == 0 else 1)
+    count = reap_stale_jobs(args.dry_run, timeout_hours=args.timeout_hours)
+    raise SystemExit(0 if count == 0 else 1)

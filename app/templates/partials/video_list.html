@@ -11,7 +11,7 @@
             {% endif %}
             <div class="video-card-body">
                 <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
-                <div class="flex items-center gap-2 mt-2">
+                <div class="flex items-center gap-2 mt-2 flex-wrap">
                     <span class="status-pill status-{{ video.status }}">
                         <span class="dot"></span>
                         {{ video.status }}
@@ -19,6 +19,10 @@
                     {% if video.duration_seconds %}
                     <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
                     {% endif %}
+                    <span class="video-card-rag-badge {% if video.chat_enabled %}rag-on{% else %}rag-off{% endif %}">
+                        <i class="iconoir-brain" style="font-size:0.7rem"></i>
+                        {% if video.chat_enabled %}RAG on{% else %}RAG off{% endif %}
+                    </span>
                 </div>
             </div>
         </a>

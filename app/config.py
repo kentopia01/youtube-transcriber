@@ -73,8 +73,24 @@ class Settings(BaseSettings):
     # Per-video duration limit
     max_video_duration_minutes: int = 120
 
+    # Phase 3 recovery guardrails
+    pipeline_manual_review_after_failures: int = 2
+    pipeline_stale_timeout_queued_minutes: int = 30
+    pipeline_stale_timeout_download_minutes: int = 90
+    pipeline_stale_timeout_transcribe_minutes: int = 360
+    pipeline_stale_timeout_diarize_minutes: int = 360
+    pipeline_stale_timeout_cleanup_minutes: int = 60
+    pipeline_stale_timeout_summarize_minutes: int = 60
+    pipeline_stale_timeout_embed_minutes: int = 60
+
     # Daily LLM budget cap (USD)
     daily_llm_budget_usd: float = 5.0
+
+    # yt-dlp authentication
+    # Use a pre-exported cookies file (recommended for production)
+    ytdlp_cookies_file: str = ""
+    # OR pull cookies live from a browser ("chrome", "safari", etc.) — requires keychain access
+    ytdlp_cookies_from_browser: str = ""
 
     # App
     app_env: str = "development"

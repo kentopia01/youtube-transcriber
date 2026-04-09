@@ -1,10 +1,13 @@
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_db
 from app.models.embedding_chunk import EmbeddingChunk
 from app.models.job import Job
@@ -13,7 +16,18 @@ from app.models.transcription import Transcription
 from app.models.video import Video
 from app.schemas.video import JobResponse
 from app.services.job_visibility import hide_superseded_failed_jobs
-from app.tasks.pipeline import run_pipeline, run_pipeline_from
+from app.services.pipeline_state import (
+    PIPELINE_STAGE_CANCELLED,
+    PIPELINE_STAGE_QUEUED,
+    set_pipeline_job_state,
+)
+from app.services.pipeline_attempts import (
+    get_active_pipeline_attempt,
+    get_latest_pipeline_attempt,
+    is_active_pipeline_attempt_conflict,
+)
+from app.services.pipeline_recovery import get_retry_block_reason
+from app.tasks.pipeline import run_pipeline_from
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -35,7 +49,12 @@ async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     if job.status in ("pending", "queued"):
-        job.status = "cancelled"
+        set_pipeline_job_state(
+            job,
+            lifecycle_status="cancelled",
+            current_stage=PIPELINE_STAGE_CANCELLED,
+            progress_message="Cancelled by user",
+        )
         if job.video_id:
             video_result = await db.execute(select(Video).where(Video.id == job.video_id))
             video = video_result.scalar_one_or_none()
@@ -61,6 +80,10 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     if job.job_type != "pipeline" or not job.video_id:
         raise HTTPException(status_code=400, detail="Only failed pipeline jobs can be retried")
 
+    retry_block_reason = get_retry_block_reason(job)
+    if retry_block_reason:
+        raise HTTPException(status_code=409, detail=retry_block_reason)
+
     video_result = await db.execute(select(Video).where(Video.id == job.video_id))
     video = video_result.scalar_one_or_none()
     if not video:
@@ -69,42 +92,73 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     video.status = "pending"
     video.error_message = None
 
-    # Check for existing queued/running job to prevent duplicates
-    existing_result = await db.execute(
-        select(Job).where(
-            Job.video_id == video.id,
-            Job.status.in_(["queued", "running"]),
-        )
-    )
-    existing_job = existing_result.scalar_one_or_none()
-    if existing_job:
-        return {"status": existing_job.status, "job_id": str(existing_job.id), "video_id": str(video.id)}
+    # One-active-attempt guard.
+    existing_attempt = await get_active_pipeline_attempt(db, video.id)
+    if existing_attempt:
+        return {
+            "status": existing_attempt.status,
+            "job_id": str(existing_attempt.id),
+            "video_id": str(video.id),
+        }
 
-    # Smart retry: detect where to resume based on existing data
-    start_from = await _detect_resume_point(db, video.id)
+    latest_attempt = await get_latest_pipeline_attempt(db, job.video_id)
+    retry_block_reason = get_retry_block_reason(latest_attempt or job)
+    if retry_block_reason:
+        raise HTTPException(status_code=409, detail=retry_block_reason)
+
+    # Artifact-aware retry planning.
+    start_from = await _detect_resume_point(db, video)
+
+    video_uuid = video.id
+    attempt_number = ((latest_attempt.attempt_number if latest_attempt else 0) or 0) + 1
+    start_label = start_from.split(".")[-1]
 
     retry = Job(
-        video_id=video.id,
+        video_id=video_uuid,
         channel_id=job.channel_id,
         job_type="pipeline",
         status="queued",
+        attempt_number=attempt_number,
+        supersedes_job_id=job.id,
+    )
+    set_pipeline_job_state(
+        retry,
+        lifecycle_status="queued",
+        current_stage=PIPELINE_STAGE_QUEUED,
         progress_pct=0.0,
-        progress_message=f"Queued for retry (resuming from {start_from.split('.')[-1]})",
+        progress_message=f"Queued retry attempt #{attempt_number} (resuming from {start_label})",
         error_message=None,
+        started_at=None,
+        completed_at=None,
     )
     db.add(retry)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        if not is_active_pipeline_attempt_conflict(exc):
+            raise
+
+        active_attempt = await get_active_pipeline_attempt(db, video_uuid)
+        if not active_attempt:
+            raise HTTPException(status_code=409, detail="Active pipeline attempt already exists")
+
+        return {
+            "status": active_attempt.status,
+            "job_id": str(active_attempt.id),
+            "video_id": str(video_uuid),
+        }
 
     await hide_superseded_failed_jobs(
         db,
-        video_id=video.id,
+        video_id=video_uuid,
         superseded_by_job_id=retry.id,
     )
 
-    retry.celery_task_id = run_pipeline_from(str(video.id), start_from=start_from)
+    retry.celery_task_id = run_pipeline_from(str(video_uuid), start_from=start_from)
     await db.commit()
 
-    payload = {"status": "queued", "job_id": str(retry.id), "video_id": str(video.id)}
+    payload = {"status": "queued", "job_id": str(retry.id), "video_id": str(video_uuid)}
     if request.headers.get("HX-Request"):
         response = JSONResponse(payload)
         response.headers["HX-Redirect"] = f"/jobs/{retry.id}"
@@ -113,37 +167,58 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     return payload
 
 
-async def _detect_resume_point(db: AsyncSession, video_id: uuid.UUID) -> str:
-    """Detect the correct pipeline step to resume from based on existing data.
+async def _detect_resume_point(db: AsyncSession, video: Video) -> str:
+    """Choose the safest pipeline stage to resume from based on available artifacts."""
+    video_id = video.id
 
-    Checks what artifacts already exist and returns the earliest step that
-    still needs to run.
-    """
-    # Check for existing embeddings
     emb_result = await db.execute(
         select(EmbeddingChunk.id).where(EmbeddingChunk.video_id == video_id).limit(1)
     )
     has_embeddings = emb_result.scalar_one_or_none() is not None
 
-    # Check for existing summary
-    sum_result = await db.execute(
-        select(Summary.id).where(Summary.video_id == video_id)
-    )
+    sum_result = await db.execute(select(Summary.id).where(Summary.video_id == video_id).limit(1))
     has_summary = sum_result.scalar_one_or_none() is not None
 
-    # Check for existing transcription
     tx_result = await db.execute(
-        select(Transcription.id).where(Transcription.video_id == video_id)
+        select(Transcription.id).where(Transcription.video_id == video_id).limit(1)
     )
     has_transcription = tx_result.scalar_one_or_none() is not None
 
-    if has_embeddings:
-        # Everything exists — just re-run embeddings to mark complete
+    audio_path = (video.audio_file_path or "").strip()
+    has_audio = bool(audio_path and os.path.exists(audio_path))
+
+    return _select_resume_stage(
+        has_embeddings=has_embeddings,
+        has_summary=has_summary,
+        has_transcription=has_transcription,
+        has_audio=has_audio,
+        diarization_requires_audio=settings.diarization_enabled and bool(settings.hf_token),
+    )
+
+
+def _select_resume_stage(
+    *,
+    has_embeddings: bool,
+    has_summary: bool,
+    has_transcription: bool,
+    has_audio: bool,
+    diarization_requires_audio: bool,
+) -> str:
+    """Pick a resume stage only when that stage's required artifacts exist."""
+    if has_embeddings and has_transcription:
         return "tasks.generate_embeddings"
-    if has_summary:
+
+    if has_summary and has_transcription:
         return "tasks.generate_embeddings"
+
     if has_transcription:
-        # Transcription exists, skip download + transcribe, resume from diarize
-        return "tasks.diarize_and_align"
+        if diarization_requires_audio:
+            if has_audio:
+                return "tasks.diarize_and_align"
+            return "tasks.download_audio"
+        return "tasks.cleanup_transcript"
+
+    if has_audio:
+        return "tasks.transcribe_audio"
 
     return "tasks.download_audio"

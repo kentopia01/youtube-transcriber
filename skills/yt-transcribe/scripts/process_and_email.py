@@ -610,13 +610,14 @@ def send_email(recipient: str, subject: str, text_body: str, html_body: str) -> 
             html_fh.write(html_body)
             html_path = html_fh.name
 
+        html_content = Path(html_path).read_text()
         cmd = [
             "gog", "gmail", "send",
             "--account", NORA_ACCOUNT,
             "--to", recipient,
             "--subject", subject,
             "--body-file", text_path,
-            "--body-html-file", html_path,
+            "--body-html", html_content,
         ]
         subprocess.run(cmd, check=True)
     finally:

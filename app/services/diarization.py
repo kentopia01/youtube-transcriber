@@ -11,6 +11,33 @@ import structlog
 logger = structlog.get_logger()
 
 
+def _load_audio_for_pyannote(audio_path: str) -> dict:
+    """Load audio into-memory for pyannote when torchcodec decoding is unavailable."""
+    import torchaudio
+
+    waveform, sample_rate = torchaudio.load(audio_path)
+    return {"waveform": waveform, "sample_rate": sample_rate}
+
+
+def _iter_diarization_tracks(diarization_result):
+    """Yield diarization tracks across pyannote output formats.
+
+    pyannote<4 returns an Annotation directly (has ``itertracks``).
+    pyannote>=4 returns a DiarizeOutput wrapper with annotation fields.
+    """
+    if hasattr(diarization_result, "itertracks"):
+        return diarization_result.itertracks(yield_label=True)
+
+    for attr in ("exclusive_speaker_diarization", "speaker_diarization"):
+        annotation = getattr(diarization_result, attr, None)
+        if annotation is not None and hasattr(annotation, "itertracks"):
+            return annotation.itertracks(yield_label=True)
+
+    raise TypeError(
+        f"Unsupported diarization output type: {type(diarization_result)!r}"
+    )
+
+
 def diarize(
     audio_path: str,
     hf_token: str,
@@ -48,10 +75,21 @@ def diarize(
     if max_speakers is not None:
         kwargs["max_speakers"] = max_speakers
 
-    diarization = pipeline(audio_path, **kwargs)
+    try:
+        diarization = pipeline(audio_path, **kwargs)
+    except Exception as exc:
+        if "AudioDecoder" not in str(exc):
+            raise
+
+        logger.warning(
+            "diarization_audio_decoder_missing",
+            error=str(exc),
+            msg="Falling back to in-memory torchaudio decode",
+        )
+        diarization = pipeline(_load_audio_for_pyannote(audio_path), **kwargs)
 
     segments = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
+    for turn, _, speaker in _iter_diarization_tracks(diarization):
         segments.append({
             "start": turn.start,
             "end": turn.end,

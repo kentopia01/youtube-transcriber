@@ -67,6 +67,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     active_batches = batch_result.scalars().all()
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "index.html",
         {
             "request": request,
@@ -90,6 +91,7 @@ async def recent_jobs_partial(request: Request, db: AsyncSession = Depends(get_d
     )
     jobs = result.scalars().all()
     return request.app.state.templates.TemplateResponse(
+        request,
         "partials/recent_jobs.html", {"request": request, "jobs": jobs}
     )
 
@@ -123,6 +125,7 @@ async def library_page(
     channels = channel_result.scalars().all()
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "library.html",
         {
             "request": request,
@@ -163,6 +166,7 @@ async def video_list(
     # For HTMX pagination requests, return partial
     if request.headers.get("HX-Request"):
         return request.app.state.templates.TemplateResponse(
+            request,
             "partials/video_list.html",
             {
                 "request": request,
@@ -174,6 +178,7 @@ async def video_list(
         )
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "videos.html",
         {
             "request": request,
@@ -194,6 +199,7 @@ async def video_detail(request: Request, video_id: uuid.UUID, db: AsyncSession =
     video = result.scalar_one_or_none()
     if not video:
         return request.app.state.templates.TemplateResponse(
+            request,
             "error.html", {"request": request, "message": "Video not found"}, status_code=404
         )
 
@@ -213,13 +219,20 @@ async def video_detail(request: Request, video_id: uuid.UUID, db: AsyncSession =
     )
     summary = summary_result.scalar_one_or_none()
 
+    latest_job_result = await db.execute(
+        select(Job).where(Job.video_id == video_id).order_by(Job.created_at.desc()).limit(1)
+    )
+    latest_job = latest_job_result.scalar_one_or_none()
+
     return request.app.state.templates.TemplateResponse(
+        request,
         "video_detail.html",
         {
             "request": request,
             "video": video,
             "transcription": transcription,
             "summary": summary,
+            "latest_job": latest_job,
         },
     )
 
@@ -239,6 +252,7 @@ async def channel_detail(
     channel = result.scalar_one_or_none()
     if not channel:
         return request.app.state.templates.TemplateResponse(
+            request,
             "error.html", {"request": request, "message": "Channel not found"}, status_code=404
         )
 
@@ -250,6 +264,7 @@ async def channel_detail(
     videos = videos_result.scalars().all()
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "channel_detail.html",
         {"request": request, "channel": channel, "videos": videos},
     )
@@ -309,6 +324,7 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
     ) or 0
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "chat.html",
         {
             "request": request,
@@ -338,6 +354,7 @@ async def chat_session_page(
     session = result.scalar_one_or_none()
     if not session:
         return request.app.state.templates.TemplateResponse(
+            request,
             "error.html", {"request": request, "message": "Chat session not found"}, status_code=404
         )
 
@@ -356,6 +373,7 @@ async def chat_session_page(
     ) or 0
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "chat.html",
         {
             "request": request,
@@ -371,6 +389,7 @@ async def chat_session_page(
 @router.get("/search")
 async def search_page(request: Request):
     return request.app.state.templates.TemplateResponse(
+        request,
         "search.html", {"request": request}
     )
 
@@ -381,6 +400,7 @@ async def job_detail(request: Request, job_id: uuid.UUID, db: AsyncSession = Dep
     job = result.scalar_one_or_none()
     if not job:
         return request.app.state.templates.TemplateResponse(
+            request,
             "error.html", {"request": request, "message": "Job not found"}, status_code=404
         )
 
@@ -389,11 +409,13 @@ async def job_detail(request: Request, job_id: uuid.UUID, db: AsyncSession = Dep
     # For HTMX polling, return partial
     if request.headers.get("HX-Request"):
         return request.app.state.templates.TemplateResponse(
+            request,
             "partials/job_status.html",
             {"request": request, "job": job, "video": video},
         )
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "job_detail.html", {"request": request, "job": job, "video": video}
     )
 
@@ -438,6 +460,7 @@ async def queue_page(request: Request, db: AsyncSession = Depends(get_db)):
     # For HTMX polling
     if request.headers.get("HX-Request"):
         return request.app.state.templates.TemplateResponse(
+            request,
             "partials/queue_content.html",
             {
                 "request": request,
@@ -450,6 +473,7 @@ async def queue_page(request: Request, db: AsyncSession = Depends(get_db)):
         )
 
     return request.app.state.templates.TemplateResponse(
+        request,
         "queue.html",
         {
             "request": request,

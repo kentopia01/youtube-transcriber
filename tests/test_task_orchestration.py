@@ -180,12 +180,13 @@ def test_update_batch_progress_advances_and_enqueues_next_batch(monkeypatch):
 
     batch_progress.update_batch_progress_and_maybe_advance(db, "b1")
 
-    assert batch.status == "failed"
+    assert batch.status == "completed_with_errors"  # partial failure — BUG-06 fix
     assert batch.completed_videos == 1
     assert batch.failed_videos == 1
     assert batch.completed_at is not None
     assert next_batch.status == "running"
     assert calls == ["vid-2"]
     assert next_jobs[0].status == "queued"
+    assert next_jobs[0].current_stage == "queued"
     assert next_jobs[0].celery_task_id == "task-vid-2"
     assert next_jobs[1].celery_task_id == "already-set"

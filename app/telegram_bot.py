@@ -53,12 +53,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     await update.message.reply_text(
         "Welcome to the YouTube Transcriber Chat Bot!\n\n"
-        "Send me a message to ask questions about your video transcript library.\n\n"
-        "Commands:\n"
+        "Send me a message to ask questions across your RAG-enabled videos.\n\n"
+        "Chat:\n"
         "/new - Start a new chat session\n"
         "/sessions - List recent sessions\n"
-        "/status - Show library stats\n"
-        "/videos - List chat-enabled videos"
+        "/status - Library stats\n"
+        "/videos - List RAG-enabled videos\n\n"
+        "RAG controls:\n"
+        "/ragstatus - Show all videos with on/off state\n"
+        "/enable [keyword] - Enable RAG for matching videos (all if no keyword)\n"
+        "/disable [keyword] - Disable RAG for matching videos\n"
+        "/toggle [keyword] - Flip RAG state for matching videos\n\n"
+        "Examples:\n"
+        "  /enable agents\n"
+        "  /disable podcast\n"
+        "  /toggle security"
     )
 
 
@@ -357,6 +366,152 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await db.close()
 
 
+# ---------------------------------------------------------------------------
+# RAG toggle helpers
+# ---------------------------------------------------------------------------
+
+def _fuzzy_match_videos(query: str, videos: list[Video]) -> list[Video]:
+    """Return videos whose titles contain any word from query (case-insensitive)."""
+    if not query:
+        return []
+    words = [w.lower() for w in query.split() if len(w) > 2]
+    if not words:
+        return []
+    return [
+        v for v in videos
+        if any(w in (v.title or "").lower() for w in words)
+    ]
+
+
+async def ragstatus_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List all videos with their RAG on/off status."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    db = await _get_db()
+    try:
+        result = await db.execute(
+            select(Video)
+            .where(Video.status == "completed")
+            .order_by(Video.title)
+            .limit(100)
+        )
+        videos = result.scalars().all()
+        if not videos:
+            await update.message.reply_text("No completed videos in library.")
+            return
+        on  = [v for v in videos if v.chat_enabled]
+        off = [v for v in videos if not v.chat_enabled]
+        lines = [f"RAG status — {len(on)} on / {len(off)} off\n"]
+        if on:
+            lines.append("✅ Enabled:")
+            for v in on:
+                lines.append(f"  • {v.title}")
+        if off:
+            lines.append("\n⬜ Disabled:")
+            for v in off:
+                lines.append(f"  • {v.title}")
+        for chunk in split_message("\n".join(lines)):
+            await update.message.reply_text(chunk)
+    finally:
+        await db.close()
+
+
+async def _rag_set_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    enable: bool,
+) -> None:
+    """Shared logic for /enable and /disable."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    keyword = " ".join(context.args).strip() if context.args else ""
+    db = await _get_db()
+    try:
+        result = await db.execute(
+            select(Video).where(Video.status == "completed").order_by(Video.title)
+        )
+        all_videos = result.scalars().all()
+
+        if keyword:
+            matched = _fuzzy_match_videos(keyword, all_videos)
+        else:
+            matched = all_videos  # bulk apply to everything
+
+        if not matched:
+            await update.message.reply_text(
+                f"No completed videos matched '{keyword}'.\nTip: use a few words from the title."
+            )
+            return
+
+        changed = []
+        for v in matched:
+            if v.chat_enabled != enable:
+                v.chat_enabled = enable
+                changed.append(v.title)
+
+        await db.commit()
+
+        action = "enabled" if enable else "disabled"
+        if not changed:
+            titles = "\n".join(f"  • {v.title}" for v in matched)
+            await update.message.reply_text(
+                f"All {len(matched)} matched video(s) already {action}:\n{titles}"
+            )
+        else:
+            titles = "\n".join(f"  • {t}" for t in changed)
+            skipped = len(matched) - len(changed)
+            msg = f"RAG {action} for {len(changed)} video(s):\n{titles}"
+            if skipped:
+                msg += f"\n\n({skipped} already {action}, skipped)"
+            await update.message.reply_text(msg)
+    finally:
+        await db.close()
+
+
+async def enable_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/enable [keyword] — enable RAG for matching videos (all if no keyword)."""
+    await _rag_set_command(update, context, enable=True)
+
+
+async def disable_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/disable [keyword] — disable RAG for matching videos (all if no keyword)."""
+    await _rag_set_command(update, context, enable=False)
+
+
+async def toggle_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/toggle [keyword] — flip RAG state for each matching video."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    keyword = " ".join(context.args).strip() if context.args else ""
+    db = await _get_db()
+    try:
+        result = await db.execute(
+            select(Video).where(Video.status == "completed").order_by(Video.title)
+        )
+        all_videos = result.scalars().all()
+        matched = _fuzzy_match_videos(keyword, all_videos) if keyword else all_videos
+
+        if not matched:
+            await update.message.reply_text(
+                f"No completed videos matched '{keyword}'."
+            )
+            return
+
+        lines = [f"Toggled {len(matched)} video(s):"]
+        for v in matched:
+            v.chat_enabled = not v.chat_enabled
+            state = "✅ on" if v.chat_enabled else "⬜ off"
+            lines.append(f"  {state} — {v.title}")
+        await db.commit()
+        for chunk in split_message("\n".join(lines)):
+            await update.message.reply_text(chunk)
+    finally:
+        await db.close()
+
+
 def create_bot_application() -> Application:
     if not settings.telegram_bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN is not configured")
@@ -372,6 +527,10 @@ def create_bot_application() -> Application:
     app.add_handler(CommandHandler("sessions", sessions_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("videos", videos_command))
+    app.add_handler(CommandHandler("ragstatus", ragstatus_command))
+    app.add_handler(CommandHandler("enable", enable_command))
+    app.add_handler(CommandHandler("disable", disable_command))
+    app.add_handler(CommandHandler("toggle", toggle_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(telegram_error_handler)
 

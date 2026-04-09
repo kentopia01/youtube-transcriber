@@ -5,19 +5,17 @@ grammar cleanup. Speaker-aware. Runs after diarization, before summarization.
 """
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.job import Job
 from app.models.transcription import Transcription
 from app.models.video import Video
+from app.services.pipeline_state import PIPELINE_STAGE_CLEANUP
 from app.services.transcript_cleanup import clean_transcript
-from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job
+from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -56,9 +54,14 @@ def cleanup_transcript_task(self, video_id: str) -> str:
             raise ValueError(f"No transcription found for video {video_id}")
 
         job = get_latest_pipeline_job(db, vid)
-        if job:
-            job.progress_pct = 67.0
-            job.progress_message = "Cleaning transcript with LLM..."
+        update_pipeline_job(
+            job,
+            lifecycle_status="running",
+            current_stage=PIPELINE_STAGE_CLEANUP,
+            progress_pct=67.0,
+            progress_message="Cleaning transcript with LLM...",
+            completed_at=None,
+        )
         db.commit()
 
         try:
@@ -90,9 +93,13 @@ def cleanup_transcript_task(self, video_id: str) -> str:
             transcription.full_text = " ".join(full_text_parts)
             transcription.word_count = len(transcription.full_text.split())
 
-            if job:
-                job.progress_pct = 72.0
-                job.progress_message = "Transcript cleanup complete"
+            update_pipeline_job(
+                job,
+                lifecycle_status="running",
+                current_stage=PIPELINE_STAGE_CLEANUP,
+                progress_pct=72.0,
+                progress_message="Transcript cleanup complete",
+            )
             db.commit()
 
             return video_id
@@ -105,7 +112,11 @@ def cleanup_transcript_task(self, video_id: str) -> str:
                 error=str(exc),
                 video_id=video_id,
             )
-            if job:
-                job.progress_message = f"Cleanup failed (continuing): {exc}"
+            update_pipeline_job(
+                job,
+                lifecycle_status="running",
+                current_stage=PIPELINE_STAGE_CLEANUP,
+                progress_message=f"Cleanup failed (continuing): {exc}",
+            )
             db.commit()
             return video_id

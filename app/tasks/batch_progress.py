@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.batch import Batch
 from app.models.job import Job
+from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.tasks.pipeline import run_pipeline
 
 
@@ -25,7 +26,12 @@ def update_batch_progress_and_maybe_advance(db: Session, batch_id):
     if total_jobs == 0 or terminal < total_jobs:
         return
 
-    batch.status = "failed" if failed > 0 else "completed"
+    if completed == 0 and failed > 0:
+        batch.status = "failed"
+    elif failed > 0:
+        batch.status = "completed_with_errors"
+    else:
+        batch.status = "completed"
     batch.completed_at = datetime.now(UTC)
 
     next_batch = (
@@ -47,10 +53,14 @@ def update_batch_progress_and_maybe_advance(db: Session, batch_id):
     for job in next_jobs:
         if not job.video_id or job.celery_task_id:
             continue
-        job.status = "queued"
-        job.progress_pct = 0.0
-        job.progress_message = "Queued for processing"
-        job.error_message = None
-        job.started_at = None
-        job.completed_at = None
+        set_pipeline_job_state(
+            job,
+            lifecycle_status="queued",
+            current_stage=PIPELINE_STAGE_QUEUED,
+            progress_pct=0.0,
+            progress_message="Queued for processing",
+            error_message=None,
+            started_at=None,
+            completed_at=None,
+        )
         job.celery_task_id = run_pipeline(str(job.video_id))

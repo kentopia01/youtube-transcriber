@@ -1,24 +1,29 @@
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.embedding_chunk import EmbeddingChunk
-from app.models.job import Job
 from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
 from app.services.embedding import chunk_and_embed, chunk_and_embed_summary
+from app.services.pipeline_recovery import get_stage_retry_limit, record_pipeline_failure
+from app.services.pipeline_state import PIPELINE_STAGE_COMPLETED, PIPELINE_STAGE_EMBED
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job
+from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
 
 
-@celery.task(bind=True, name="tasks.generate_embeddings", max_retries=2, default_retry_delay=10)
+@celery.task(
+    bind=True,
+    name="tasks.generate_embeddings",
+    max_retries=get_stage_retry_limit(PIPELINE_STAGE_EMBED),
+    default_retry_delay=10,
+)
 def generate_embeddings_task(self, video_id: str) -> str:
     """Generate embeddings for a video's transcription. Returns video_id for chaining."""
     vid = uuid.UUID(video_id)
@@ -37,9 +42,14 @@ def generate_embeddings_task(self, video_id: str) -> str:
             raise ValueError(f"No transcription found for video {video_id}")
 
         job = get_latest_pipeline_job(db, vid)
-        if job:
-            job.progress_pct = 80.0
-            job.progress_message = "Generating embeddings..."
+        update_pipeline_job(
+            job,
+            lifecycle_status="running",
+            current_stage=PIPELINE_STAGE_EMBED,
+            progress_pct=93.0,
+            progress_message="Generating embeddings...",
+            completed_at=None,
+        )
         db.commit()
 
         try:
@@ -83,13 +93,15 @@ def generate_embeddings_task(self, video_id: str) -> str:
                 db.add(ec)
 
             video.status = "completed"
-            if job:
-                job.status = "completed"
-                job.progress_pct = 100.0
-                job.progress_message = "Processing complete"
-                job.completed_at = datetime.now(UTC)
-                if job.batch_id:
-                    update_batch_progress_and_maybe_advance(db, job.batch_id)
+            update_pipeline_job(
+                job,
+                lifecycle_status="completed",
+                current_stage=PIPELINE_STAGE_COMPLETED,
+                progress_pct=100.0,
+                progress_message="Processing complete",
+            )
+            if job and job.batch_id:
+                update_batch_progress_and_maybe_advance(db, job.batch_id)
 
             db.commit()
             return video_id
@@ -97,20 +109,28 @@ def generate_embeddings_task(self, video_id: str) -> str:
         except Exception as exc:
             if self.request.retries < self.max_retries:
                 backoff = 10 * (2 ** self.request.retries)  # 10s, 20s
-                video.status = "pending"
+                video.status = "summarized"
                 video.error_message = f"Retrying embeddings after error: {exc}"
-                if job:
-                    job.progress_message = f"Retrying embeddings ({self.request.retries + 1}/{self.max_retries})"
+                update_pipeline_job(
+                    job,
+                    lifecycle_status="running",
+                    current_stage=PIPELINE_STAGE_EMBED,
+                    progress_message=f"Retrying embeddings ({self.request.retries + 1}/{self.max_retries})",
+                    error_message=None,
+                    completed_at=None,
+                )
                 db.commit()
                 raise self.retry(exc=exc, countdown=backoff)
 
-            video.status = "failed"
-            video.error_message = str(exc)
-            if job:
-                job.status = "failed"
-                job.error_message = str(exc)
-                job.completed_at = datetime.now(UTC)
-                if job.batch_id:
-                    update_batch_progress_and_maybe_advance(db, job.batch_id)
+            record_pipeline_failure(
+                db,
+                job,
+                video=video,
+                stage=PIPELINE_STAGE_EMBED,
+                error=exc,
+                default_message=f"Embedding failed: {exc}",
+            )
+            if job and job.batch_id:
+                update_batch_progress_and_maybe_advance(db, job.batch_id)
             db.commit()
             raise

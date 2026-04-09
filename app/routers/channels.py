@@ -17,6 +17,7 @@ from app.services.channel_sync import (
     refresh_channel_video_count,
     sync_discovered_videos,
 )
+from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.services.youtube import discover_channel_videos, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -149,7 +150,16 @@ async def process_selected_videos(
                 batch_id=batch.id,
                 job_type="pipeline",
                 status="queued" if batch_num == 0 else "pending",
+            )
+            set_pipeline_job_state(
+                job,
+                lifecycle_status="queued" if batch_num == 0 else "pending",
+                current_stage=PIPELINE_STAGE_QUEUED,
+                progress_pct=0.0,
                 progress_message="Queued for processing" if batch_num == 0 else f"Waiting for batch {batch_num}",
+                error_message=None,
+                started_at=None,
+                completed_at=None,
             )
             db.add(job)
             await db.flush()

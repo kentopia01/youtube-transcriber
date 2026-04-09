@@ -5,7 +5,18 @@ from urllib.parse import urlsplit, urlunsplit
 import structlog
 import yt_dlp
 
+from app.config import settings
+
 logger = structlog.get_logger()
+
+
+def _apply_cookie_opts(ydl_opts: dict) -> dict:
+    """Inject yt-dlp cookie options from settings."""
+    if settings.ytdlp_cookies_file and os.path.exists(settings.ytdlp_cookies_file):
+        ydl_opts["cookiefile"] = settings.ytdlp_cookies_file
+    elif settings.ytdlp_cookies_from_browser:
+        ydl_opts["cookiesfrombrowser"] = (settings.ytdlp_cookies_from_browser,)
+    return ydl_opts
 
 
 def extract_video_id(url: str) -> str | None:
@@ -78,6 +89,7 @@ def download_audio(video_id: str, audio_dir: str) -> dict:
         "quiet": True,
         "no_warnings": True,
     }
+    _apply_cookie_opts(ydl_opts)
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
@@ -103,6 +115,7 @@ def get_video_info(url: str) -> dict:
         "no_warnings": True,
         "skip_download": True,
     }
+    _apply_cookie_opts(ydl_opts)
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -140,6 +153,7 @@ def discover_channel_videos(
         "extract_flat": True,
         "skip_download": True,
     }
+    _apply_cookie_opts(ydl_opts)
 
     if limit is not None:
         ydl_opts["playlistend"] = limit

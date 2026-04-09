@@ -30,6 +30,7 @@ async def search(
     if not query:
         if request.headers.get("HX-Request"):
             return request.app.state.templates.TemplateResponse(
+                request,
                 "partials/search_results.html",
                 {"request": request, "results": [], "query": ""},
             )
@@ -50,11 +51,13 @@ async def search(
         query_embedding=query_embedding,
         limit=10,
         query=query,
+        chat_enabled_only=True,
     )
 
     # For HTMX, return HTML partial
     if request.headers.get("HX-Request"):
         return request.app.state.templates.TemplateResponse(
+            request,
             "partials/search_results.html",
             {"request": request, "results": results, "query": query},
         )

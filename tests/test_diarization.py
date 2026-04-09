@@ -1,7 +1,11 @@
 """Tests for speaker diarization and alignment services."""
 
+import sys
+import types
+
 import pytest
 
+from app.services import diarization as diarization_service
 from app.services.alignment import _find_speaker, align_and_merge
 
 
@@ -80,3 +84,118 @@ class TestAlignAndMerge:
         assert result[0]["text"] == "test"
         assert result[0]["start"] == 0.0
         assert result[0]["end"] == 2.0
+
+
+class _FakeTurn:
+    def __init__(self, start: float, end: float):
+        self.start = start
+        self.end = end
+
+
+class _FakeDiarizationResult:
+    def __init__(self, tracks):
+        self._tracks = tracks
+
+    def itertracks(self, yield_label=False):
+        for start, end, speaker in self._tracks:
+            yield _FakeTurn(start, end), None, speaker
+
+
+class _FakeDiarizeOutput:
+    def __init__(self, speaker_tracks, exclusive_tracks=None):
+        self.speaker_diarization = _FakeDiarizationResult(speaker_tracks)
+        if exclusive_tracks is not None:
+            self.exclusive_speaker_diarization = _FakeDiarizationResult(exclusive_tracks)
+
+
+def _patch_pyannote(monkeypatch, pipeline_cls):
+    fake_audio_module = types.ModuleType("pyannote.audio")
+    fake_audio_module.Pipeline = pipeline_cls
+    fake_pyannote_module = types.ModuleType("pyannote")
+    fake_pyannote_module.audio = fake_audio_module
+    monkeypatch.setitem(sys.modules, "pyannote", fake_pyannote_module)
+    monkeypatch.setitem(sys.modules, "pyannote.audio", fake_audio_module)
+
+
+class TestDiarizeService:
+    def test_diarize_uses_audio_path_by_default(self, monkeypatch):
+        calls = []
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                calls.append(audio_input)
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+
+        segments = diarization_service.diarize("/tmp/demo.wav", hf_token="hf_test")
+
+        assert calls == ["/tmp/demo.wav"]
+        assert segments == [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"}]
+
+    def test_diarize_falls_back_when_audio_decoder_missing(self, monkeypatch):
+        calls = []
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                calls.append(audio_input)
+                if isinstance(audio_input, str):
+                    raise NameError("name 'AudioDecoder' is not defined")
+                return _FakeDiarizationResult([(1.5, 2.5, "SPEAKER_01")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+        monkeypatch.setattr(
+            diarization_service,
+            "_load_audio_for_pyannote",
+            lambda path: {"waveform": "wf", "sample_rate": 16000},
+        )
+
+        segments = diarization_service.diarize("/tmp/demo.wav", hf_token="hf_test")
+
+        assert calls == ["/tmp/demo.wav", {"waveform": "wf", "sample_rate": 16000}]
+        assert segments == [{"start": 1.5, "end": 2.5, "speaker": "SPEAKER_01"}]
+
+    def test_diarize_handles_pyannote_v4_diarize_output(self, monkeypatch):
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizeOutput(
+                    speaker_tracks=[(0.0, 2.0, "SPEAKER_00")],
+                    exclusive_tracks=[(0.25, 1.75, "SPEAKER_01")],
+                )
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+
+        segments = diarization_service.diarize("/tmp/demo.wav", hf_token="hf_test")
+
+        # Prefer exclusive diarization when present (pyannote>=4 output)
+        assert segments == [{"start": 0.25, "end": 1.75, "speaker": "SPEAKER_01"}]
+
+    def test_diarize_handles_pyannote_v4_output_without_exclusive(self, monkeypatch):
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizeOutput(
+                    speaker_tracks=[(2.0, 3.0, "SPEAKER_02")],
+                    exclusive_tracks=None,
+                )
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+
+        segments = diarization_service.diarize("/tmp/demo.wav", hf_token="hf_test")
+
+        assert segments == [{"start": 2.0, "end": 3.0, "speaker": "SPEAKER_02"}]

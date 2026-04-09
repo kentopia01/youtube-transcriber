@@ -1,22 +1,21 @@
-import os
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
 import structlog
-from app.models.job import Job
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
+from app.services.pipeline_recovery import record_pipeline_failure
+from app.services.pipeline_state import PIPELINE_STAGE_TRANSCRIBE
 from app.services.transcription import transcribe_audio
-
-_logger = structlog.get_logger()
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
-from app.tasks.helpers import get_latest_pipeline_job
+from app.tasks.helpers import get_latest_pipeline_job, update_pipeline_job
+
+_logger = structlog.get_logger()
 
 sync_engine = create_engine(settings.database_url_sync)
 
@@ -33,9 +32,14 @@ def transcribe_audio_task(self, video_id: str) -> str:
 
         video.status = "transcribing"
         job = get_latest_pipeline_job(db, vid)
-        if job:
-            job.progress_pct = 30.0
-            job.progress_message = "Transcribing audio..."
+        update_pipeline_job(
+            job,
+            lifecycle_status="running",
+            current_stage=PIPELINE_STAGE_TRANSCRIBE,
+            progress_pct=30.0,
+            progress_message="Transcribing audio...",
+            completed_at=None,
+        )
         db.commit()
 
         try:
@@ -100,30 +104,32 @@ def transcribe_audio_task(self, video_id: str) -> str:
                 db.add(segment)
 
             video.status = "transcribed"
-            if job:
-                job.progress_pct = 50.0
-                job.progress_message = "Transcription complete"
+            update_pipeline_job(
+                job,
+                lifecycle_status="running",
+                current_stage=PIPELINE_STAGE_TRANSCRIBE,
+                progress_pct=50.0,
+                progress_message="Transcription complete",
+            )
 
             db.commit()
 
-            # Delete audio file after successful transcription
-            if video.audio_file_path and os.path.exists(video.audio_file_path):
-                try:
-                    os.unlink(video.audio_file_path)
-                    _logger.info("audio_file_deleted", path=video.audio_file_path)
-                except OSError as e:
-                    _logger.warning("audio_file_delete_failed", path=video.audio_file_path, error=str(e))
+            # Keep audio on disk for retryable execution.
+            # Cleanup is intentionally deferred so resume planning can trust artifacts.
+            _logger.info("audio_file_retained_for_retry", path=video.audio_file_path)
 
             return video_id
 
         except Exception as exc:
-            video.status = "failed"
-            video.error_message = str(exc)
-            if job:
-                job.status = "failed"
-                job.error_message = str(exc)
-                job.completed_at = datetime.now(UTC)
-                if job.batch_id:
-                    update_batch_progress_and_maybe_advance(db, job.batch_id)
+            record_pipeline_failure(
+                db,
+                job,
+                video=video,
+                stage=PIPELINE_STAGE_TRANSCRIBE,
+                error=exc,
+                default_message=f"Transcription failed: {exc}",
+            )
+            if job and job.batch_id:
+                update_batch_progress_and_maybe_advance(db, job.batch_id)
             db.commit()
             raise

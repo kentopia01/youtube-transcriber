@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transcriber}
       POSTGRES_DB: ${POSTGRES_DB:-transcriber}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/create_extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql
@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,6 +37,7 @@ services:
       - audio_data:/data/audio
       - model_cache:/data/models
       - ./app:/app/app:ro
+      - ./data/cookies:/data/cookies
     depends_on:
       postgres:
         condition: service_healthy

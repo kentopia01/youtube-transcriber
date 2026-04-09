@@ -76,9 +76,18 @@ class JobResponse(BaseModel):
     channel_id: uuid.UUID | None = None
     job_type: str
     status: str
+    lifecycle_status: str | None = None
+    attempt_state: str | None = None
+    current_stage: str | None = None
+    stage_updated_at: datetime | None = None
+    last_activity_at: datetime | None = None
     progress_pct: float
     progress_message: str | None = None
     error_message: str | None = None
+    failure_signature_count: int = 0
+    recovery_status: str | None = None
+    recovery_reason: str | None = None
+    manual_review_required: bool = False
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime

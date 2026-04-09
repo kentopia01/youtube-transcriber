@@ -36,7 +36,10 @@
                 </span>
             </div>
             <progress class="progress-bar w-full" value="{{ job.progress_pct }}" max="100"></progress>
-            <p class="font-mono text-xs text-faint mt-1">{{ job.progress_message or '' }} &middot; {{ "%.0f"|format(job.progress_pct) }}%</p>
+            <p class="font-mono text-xs text-faint mt-1">{{ job.current_stage or ('queued' if job.status in ['pending', 'queued'] else 'unknown') }} &middot; {{ job.progress_message or '' }} &middot; {{ "%.0f"|format(job.progress_pct) }}%</p>
+            {% if job.recovery_status == 'manual_review' %}
+            <p class="text-xs text-warning mt-1">Manual review required, automatic retry is blocked.</p>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -103,12 +106,16 @@
             <div class="flex items-center justify-between text-sm">
                 <span class="truncate pr-2">{{ job.display_name }}</span>
                 <div class="flex items-center gap-2">
+                    {% if not job.manual_review_required %}
                     <form hx-post="/api/jobs/{{ job.id }}/retry"
                           hx-swap="none"
                           hx-on::after-request="htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'})"
                           class="inline">
                         <button class="btn btn-warning btn-xs">Retry</button>
                     </form>
+                    {% else %}
+                    <span class="text-xs text-warning">Manual review</span>
+                    {% endif %}
                     <a href="/jobs/{{ job.id }}" class="text-xs text-error hover:underline">Details</a>
                 </div>
             </div>

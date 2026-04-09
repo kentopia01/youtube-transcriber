@@ -79,28 +79,15 @@ def get_period_cost(days: int = 7) -> float:
         with Session(_get_engine()) as db:
             result = db.execute(
                 text(
-                    "SELECT COALESCE(SUM(estimated_cost_usd), 0) "
-                    "FROM llm_usage "
-                    "WHERE created_at >= NOW() - INTERVAL ':days days'"
-                ),
-                {"days": days},
+                    f"SELECT COALESCE(SUM(estimated_cost_usd), 0) "
+                    f"FROM llm_usage "
+                    f"WHERE created_at >= NOW() - INTERVAL '{int(days)} days'"
+                )
             )
             return float(result.scalar() or 0)
-    except Exception:
-        # Fallback: use parameterized interval via Python string (safe — days is an int)
-        try:
-            with Session(_get_engine()) as db:
-                result = db.execute(
-                    text(
-                        f"SELECT COALESCE(SUM(estimated_cost_usd), 0) "
-                        f"FROM llm_usage "
-                        f"WHERE created_at >= NOW() - INTERVAL '{int(days)} days'"
-                    )
-                )
-                return float(result.scalar() or 0)
-        except Exception as exc:
-            logger.warning("cost_tracker_get_period_failed: %s", exc)
-            return 0.0
+    except Exception as exc:
+        logger.warning("cost_tracker_get_period_failed: %s", exc)
+        return 0.0
 
 
 def check_budget() -> None:

@@ -6,33 +6,71 @@
                 <span class="dot"></span>
                 {{ job.status }}
             </span>
+            {% if job.recovery_status == 'manual_review' %}
+            <span class="status-pill status-manual_review">
+                <span class="dot"></span>
+                manual review
+            </span>
+            {% elif job.recovery_status == 'stale_reaped' %}
+            <span class="status-pill status-stale_reaped">
+                <span class="dot"></span>
+                stale recovery
+            </span>
+            {% endif %}
         </div>
 
         <!-- Pipeline progress visualization -->
-        {% set steps = ['download', 'transcribe', 'summarize', 'embed'] %}
-        {% set step_labels = {'download': 'Download', 'transcribe': 'Transcribe', 'summarize': 'Summarize', 'embed': 'Embed'} %}
-        {% set step_thresholds = {'download': 25, 'transcribe': 50, 'summarize': 75, 'embed': 100} %}
-
         {% if job.job_type == 'pipeline' %}
+        {% set steps = [
+            ('download', 'Download'),
+            ('transcribe', 'Transcribe'),
+            ('diarize', 'Diarize'),
+            ('cleanup', 'Cleanup'),
+            ('summarize', 'Summarize'),
+            ('embed', 'Embed'),
+        ] %}
+        {% set stage_rank = {
+            'queued': 0,
+            'download': 1,
+            'transcribe': 2,
+            'diarize': 3,
+            'cleanup': 4,
+            'summarize': 5,
+            'embed': 6,
+            'completed': 7,
+            'cancelled': 7,
+        } %}
+
+        {% set derived_stage = job.current_stage %}
+        {% if not derived_stage %}
+            {% if job.status in ['pending', 'queued'] %}
+                {% set derived_stage = 'queued' %}
+            {% elif job.status == 'completed' %}
+                {% set derived_stage = 'completed' %}
+            {% elif job.status == 'cancelled' %}
+                {% set derived_stage = 'cancelled' %}
+            {% endif %}
+        {% endif %}
+
+        {% set current_rank = stage_rank.get(derived_stage, 0) %}
+
         <div class="pipeline-steps">
-            {% for step in steps %}
-            {% set threshold = step_thresholds[step] %}
-            {% set prev_threshold = step_thresholds[steps[loop.index0 - 1]] if loop.index0 > 0 else 0 %}
-            <div class="pipeline-step
-                {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}is-error
-                {% elif job.progress_pct >= threshold %}is-done
-                {% elif job.progress_pct > prev_threshold %}is-active
-                {% endif %}">
+            {% for step_key, step_label in steps %}
+            {% set step_rank = stage_rank[step_key] %}
+            {% set is_done = job.status == 'completed' or current_rank > step_rank %}
+            {% set is_active = job.status in ['running', 'queued', 'pending'] and current_rank == step_rank and derived_stage != 'queued' %}
+            {% set is_error = job.status == 'failed' and current_rank == step_rank %}
+            <div class="pipeline-step {% if is_error %}is-error{% elif is_done %}is-done{% elif is_active %}is-active{% endif %}">
                 <div class="pipeline-step-dot">
-                    {% if job.status == 'failed' and job.progress_pct >= prev_threshold and job.progress_pct < threshold %}
+                    {% if is_error %}
                     <i class="iconoir-xmark" style="font-size:0.7rem"></i>
-                    {% elif job.progress_pct >= threshold %}
+                    {% elif is_done %}
                     <i class="iconoir-check" style="font-size:0.7rem"></i>
                     {% else %}
                     {{ loop.index }}
                     {% endif %}
                 </div>
-                <div class="pipeline-step-label">{{ step_labels[step] }}</div>
+                <div class="pipeline-step-label">{{ step_label }}</div>
             </div>
             {% endfor %}
         </div>
@@ -42,7 +80,7 @@
                   value="{{ job.progress_pct }}" max="100"></progress>
         <p class="text-center mt-2">
             <span class="font-mono font-bold">{{ "%.0f"|format(job.progress_pct) }}%</span>
-            {% if job.progress_message %} &mdash; <span class="text-muted">{{ job.progress_message }}</span>{% endif %}
+            {% if job.progress_message %} · <span class="text-muted">{{ job.progress_message }}</span>{% endif %}
         </p>
 
         <div class="overflow-x-auto mt-6">
@@ -57,7 +95,7 @@
                         <td>{{ job.display_name }}</td>
                     </tr>
                     <tr>
-                        <td class="font-medium">Status</td>
+                        <td class="font-medium">Lifecycle</td>
                         <td>
                             <span class="status-pill status-{{ job.status }}">
                                 <span class="dot"></span>
@@ -65,6 +103,30 @@
                             </span>
                         </td>
                     </tr>
+                    {% if job.job_type == 'pipeline' %}
+                    <tr>
+                        <td class="font-medium">Stage</td>
+                        <td class="font-mono text-sm">
+                            {% if job.current_stage %}
+                                {{ job.current_stage }}
+                            {% elif job.status in ['pending', 'queued'] %}
+                                queued
+                            {% elif job.status == 'completed' %}
+                                completed
+                            {% elif job.status == 'cancelled' %}
+                                cancelled
+                            {% else %}
+                                unknown
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if job.attempt_state %}
+                    <tr>
+                        <td class="font-medium">Attempt State</td>
+                        <td class="font-mono text-sm">{{ job.attempt_state }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endif %}
                     {% if job.started_at %}
                     <tr>
                         <td class="font-medium">Started</td>
@@ -81,6 +143,29 @@
                         <td class="font-medium">Created</td>
                         <td class="font-mono text-sm">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                     </tr>
+                    {% if job.recovery_status %}
+                    <tr>
+                        <td class="font-medium">Recovery</td>
+                        <td>
+                            {% if job.recovery_status == 'manual_review' %}
+                            <span class="status-pill status-manual_review"><span class="dot"></span>manual review</span>
+                            {% elif job.recovery_status == 'stale_reaped' %}
+                            <span class="status-pill status-stale_reaped"><span class="dot"></span>stale recovery</span>
+                            {% else %}
+                            <span class="font-mono text-sm">{{ job.recovery_status }}</span>
+                            {% endif %}
+                            {% if job.recovery_reason %}
+                            <div class="text-sm text-muted mt-1">{{ job.recovery_reason }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% if job.failure_signature_count and job.failure_signature_count > 1 %}
+                    <tr>
+                        <td class="font-medium">Repeat Failures</td>
+                        <td class="font-mono text-sm">{{ job.failure_signature_count }} identical failures</td>
+                    </tr>
+                    {% endif %}
                     {% if job.error_message %}
                     <tr>
                         <td class="font-medium">Error</td>
@@ -108,12 +193,14 @@
             </form>
             {% endif %}
 
-            {% if job.status == 'failed' %}
+            {% if job.status == 'failed' and not job.manual_review_required %}
             <form hx-post="/api/jobs/{{ job.id }}/retry" hx-swap="none">
                 <button class="btn btn-warning btn-sm">
                     <i class="iconoir-refresh-double" style="font-size:0.8rem"></i> Retry Job
                 </button>
             </form>
+            {% elif job.manual_review_required %}
+            <span class="text-sm text-warning">Manual review required before retry</span>
             {% endif %}
         </div>
     </div>
