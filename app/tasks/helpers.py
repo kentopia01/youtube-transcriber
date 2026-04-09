@@ -1,10 +1,12 @@
 """Shared helpers for pipeline task files."""
 
 import uuid
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.services.pipeline_observability import get_task_worker_identity
 from app.services.pipeline_state import set_pipeline_job_state
 
 _SENTINEL = object()
@@ -34,6 +36,7 @@ def update_pipeline_job(
     error_message: str | None | object = _SENTINEL,
     started_at=_SENTINEL,
     completed_at=_SENTINEL,
+    task: Any | None = None,
 ) -> None:
     """Safely apply a state transition when a pipeline job exists."""
     if not job:
@@ -54,5 +57,9 @@ def update_pipeline_job(
         kwargs["started_at"] = started_at
     if completed_at is not _SENTINEL:
         kwargs["completed_at"] = completed_at
+    if task is not None:
+        worker_hostname, worker_task_id = get_task_worker_identity(task)
+        kwargs["worker_hostname"] = worker_hostname
+        kwargs["worker_task_id"] = worker_task_id
 
     set_pipeline_job_state(job, **kwargs)

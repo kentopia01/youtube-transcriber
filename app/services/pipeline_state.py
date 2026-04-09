@@ -65,6 +65,8 @@ def set_pipeline_job_state(
     error_message: str | None | object = _SENTINEL,
     started_at: datetime | None | object = _SENTINEL,
     completed_at: datetime | None | object = _SENTINEL,
+    worker_hostname: str | None | object = _SENTINEL,
+    worker_task_id: str | None | object = _SENTINEL,
 ) -> None:
     """Apply a consistent lifecycle + stage transition for pipeline jobs."""
     now = datetime.now(UTC)
@@ -107,11 +109,18 @@ def set_pipeline_job_state(
 
     if resolved_stage is not _SENTINEL:
         if existing_stage != resolved_stage:
+            if existing_stage is not None:
+                job.last_ended_stage = existing_stage
+                job.last_stage_ended_at = now
             job.current_stage = resolved_stage
             job.stage_updated_at = now
+            job.current_stage_started_at = now
             state_changed = True
         elif getattr(job, "stage_updated_at", None) is None:
             job.stage_updated_at = now
+            state_changed = True
+        elif getattr(job, "current_stage_started_at", None) is None:
+            job.current_stage_started_at = now
             state_changed = True
 
     if progress_pct is not _SENTINEL:
@@ -131,6 +140,19 @@ def set_pipeline_job_state(
 
     if completed_at is not _SENTINEL:
         job.completed_at = completed_at
+
+    if (
+        lifecycle_status in PIPELINE_ATTEMPT_TERMINAL_STATUSES
+        and existing_stage
+        and (resolved_stage is _SENTINEL or resolved_stage == existing_stage)
+    ):
+        job.last_ended_stage = existing_stage
+        job.last_stage_ended_at = now
+
+    if worker_hostname is not _SENTINEL:
+        job.worker_hostname = worker_hostname
+    if worker_task_id is not _SENTINEL:
+        job.worker_task_id = worker_task_id
 
     if state_changed or getattr(job, "last_activity_at", None) is None:
         job.last_activity_at = now

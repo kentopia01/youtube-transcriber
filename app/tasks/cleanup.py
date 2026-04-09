@@ -56,6 +56,7 @@ def cleanup_transcript_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_CLEANUP,
             progress_pct=67.0,
@@ -95,6 +96,7 @@ def cleanup_transcript_task(self, video_id: str) -> str:
 
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_CLEANUP,
                 progress_pct=72.0,
@@ -114,6 +116,7 @@ def cleanup_transcript_task(self, video_id: str) -> str:
             )
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_CLEANUP,
                 progress_message=f"Cleanup failed (continuing): {exc}",

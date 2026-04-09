@@ -44,6 +44,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_EMBED,
             progress_pct=93.0,
@@ -95,6 +96,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
             video.status = "completed"
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="completed",
                 current_stage=PIPELINE_STAGE_COMPLETED,
                 progress_pct=100.0,
@@ -113,6 +115,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
                 video.error_message = f"Retrying embeddings after error: {exc}"
                 update_pipeline_job(
                     job,
+                    task=self,
                     lifecycle_status="running",
                     current_stage=PIPELINE_STAGE_EMBED,
                     progress_message=f"Retrying embeddings ({self.request.retries + 1}/{self.max_retries})",
@@ -125,6 +128,7 @@ def generate_embeddings_task(self, video_id: str) -> str:
             record_pipeline_failure(
                 db,
                 job,
+                task=self,
                 video=video,
                 stage=PIPELINE_STAGE_EMBED,
                 error=exc,

@@ -40,6 +40,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_SUMMARIZE,
             progress_pct=76.0,
@@ -78,6 +79,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
             video.status = "summarized"
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_SUMMARIZE,
                 progress_pct=90.0,
@@ -94,6 +96,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
                 video.error_message = f"Retrying summarization after error: {exc}"
                 update_pipeline_job(
                     job,
+                    task=self,
                     lifecycle_status="running",
                     current_stage=PIPELINE_STAGE_SUMMARIZE,
                     progress_message=f"Retrying summary ({self.request.retries + 1}/{self.max_retries})",
@@ -106,6 +109,7 @@ def summarize_transcription_task(self, video_id: str) -> str:
             record_pipeline_failure(
                 db,
                 job,
+                task=self,
                 video=video,
                 stage=PIPELINE_STAGE_SUMMARIZE,
                 error=exc,

@@ -26,6 +26,10 @@ from app.services.pipeline_attempts import (
     get_latest_pipeline_attempt,
     is_active_pipeline_attempt_conflict,
 )
+from app.services.pipeline_observability import (
+    ATTEMPT_REASON_USER_RETRY,
+    build_artifact_check_result,
+)
 from app.services.pipeline_recovery import get_retry_block_reason
 from app.tasks.pipeline import run_pipeline_from
 
@@ -107,7 +111,7 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         raise HTTPException(status_code=409, detail=retry_block_reason)
 
     # Artifact-aware retry planning.
-    start_from = await _detect_resume_point(db, video)
+    start_from, artifact_check_result = await _detect_resume_point(db, video)
 
     video_uuid = video.id
     attempt_number = ((latest_attempt.attempt_number if latest_attempt else 0) or 0) + 1
@@ -120,6 +124,8 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         status="queued",
         attempt_number=attempt_number,
         supersedes_job_id=job.id,
+        attempt_creation_reason=ATTEMPT_REASON_USER_RETRY,
+        last_artifact_check_result=artifact_check_result,
     )
     set_pipeline_job_state(
         retry,
@@ -167,7 +173,7 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     return payload
 
 
-async def _detect_resume_point(db: AsyncSession, video: Video) -> str:
+async def _detect_resume_point(db: AsyncSession, video: Video) -> tuple[str, dict]:
     """Choose the safest pipeline stage to resume from based on available artifacts."""
     video_id = video.id
 
@@ -187,13 +193,24 @@ async def _detect_resume_point(db: AsyncSession, video: Video) -> str:
     audio_path = (video.audio_file_path or "").strip()
     has_audio = bool(audio_path and os.path.exists(audio_path))
 
-    return _select_resume_stage(
+    diarization_requires_audio = settings.diarization_enabled and bool(settings.hf_token)
+    selected_stage = _select_resume_stage(
         has_embeddings=has_embeddings,
         has_summary=has_summary,
         has_transcription=has_transcription,
         has_audio=has_audio,
-        diarization_requires_audio=settings.diarization_enabled and bool(settings.hf_token),
+        diarization_requires_audio=diarization_requires_audio,
     )
+    artifact_check_result = build_artifact_check_result(
+        has_embeddings=has_embeddings,
+        has_summary=has_summary,
+        has_transcription=has_transcription,
+        has_audio=has_audio,
+        diarization_requires_audio=diarization_requires_audio,
+        selected_resume_stage=selected_stage,
+    )
+
+    return selected_stage, artifact_check_result
 
 
 def _select_resume_stage(

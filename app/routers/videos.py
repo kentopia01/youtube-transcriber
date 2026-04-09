@@ -18,6 +18,10 @@ from app.services.pipeline_attempts import (
     get_latest_pipeline_attempt,
     is_active_pipeline_attempt_conflict,
 )
+from app.services.pipeline_observability import (
+    ATTEMPT_REASON_MANUAL_RESUBMIT,
+    ATTEMPT_REASON_VIDEO_SUBMIT,
+)
 from app.services.pipeline_recovery import get_retry_block_reason
 from app.services.youtube import extract_video_id, get_video_info, is_channel_url
 from app.tasks.pipeline import run_pipeline
@@ -135,6 +139,9 @@ async def submit_video(
         status="queued",
         attempt_number=attempt_number,
         supersedes_job_id=latest_attempt.id if latest_attempt else None,
+        attempt_creation_reason=(
+            ATTEMPT_REASON_MANUAL_RESUBMIT if existing_was_failed else ATTEMPT_REASON_VIDEO_SUBMIT
+        ),
     )
     set_pipeline_job_state(
         job,

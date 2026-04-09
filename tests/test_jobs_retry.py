@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.job import Job
 from app.models.video import Video
 from app.routers import jobs as jobs_router
+from app.services.pipeline_observability import ATTEMPT_REASON_USER_RETRY
 from app.services.pipeline_recovery import MANUAL_REVIEW_RECOVERY_STATUS
 
 
@@ -120,6 +121,8 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
     assert retried_job.celery_task_id == "celery-123"
     assert retried_job.attempt_number == 3
     assert retried_job.supersedes_job_id == job.id
+    assert retried_job.attempt_creation_reason == ATTEMPT_REASON_USER_RETRY
+    assert retried_job.last_artifact_check_result["selected_resume_stage"] == "tasks.download_audio"
 
     for superseded in (job, older_failed):
         assert superseded.hidden_from_queue is True

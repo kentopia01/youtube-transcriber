@@ -1,7 +1,7 @@
 # T008 - Pipeline observability and attempt reasoning
 
 ## Status
-Planned
+Done
 
 ## Objective
 Make pipeline triage easy by recording enough structured state to explain what is running, why a retry exists, what artifacts were checked, and whether a worker is healthy or just busy.

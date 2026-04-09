@@ -10,6 +10,7 @@ from app.models.job import Job
 from app.models.video import Video
 from app.routers import videos as videos_router
 from app.schemas.video import VideoSubmit
+from app.services.pipeline_observability import ATTEMPT_REASON_MANUAL_RESUBMIT
 from app.services.pipeline_recovery import MANUAL_REVIEW_RECOVERY_STATUS
 
 
@@ -143,6 +144,7 @@ async def test_resubmit_failed_video_hides_prior_failed_jobs(monkeypatch):
     assert replacement_job.celery_task_id == "celery-123"
     assert replacement_job.attempt_number == 3
     assert replacement_job.supersedes_job_id == older_failed_2.id
+    assert replacement_job.attempt_creation_reason == ATTEMPT_REASON_MANUAL_RESUBMIT
 
     for superseded in (older_failed_1, older_failed_2):
         assert superseded.hidden_from_queue is True

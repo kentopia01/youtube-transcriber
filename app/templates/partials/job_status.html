@@ -143,6 +143,39 @@
                         <td class="font-medium">Created</td>
                         <td class="font-mono text-sm">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                     </tr>
+                    {% if job.attempt_creation_reason %}
+                    <tr>
+                        <td class="font-medium">Attempt Reason</td>
+                        <td class="font-mono text-sm">{{ job.attempt_creation_reason }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if job.worker_hostname or job.worker_task_id %}
+                    <tr>
+                        <td class="font-medium">Worker</td>
+                        <td class="font-mono text-sm">
+                            {{ job.worker_hostname or '--' }}
+                            {% if job.worker_task_id %}<div class="text-xs text-faint mt-1">task {{ job.worker_task_id }}</div>{% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% if job.current_stage_started_at %}
+                    <tr>
+                        <td class="font-medium">Stage Started</td>
+                        <td class="font-mono text-sm">{{ job.current_stage_started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if job.last_ended_stage and job.last_stage_ended_at %}
+                    <tr>
+                        <td class="font-medium">Last Stage Ended</td>
+                        <td class="font-mono text-sm">{{ job.last_ended_stage }} at {{ job.last_stage_ended_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if job.last_artifact_check_result %}
+                    <tr>
+                        <td class="font-medium">Artifact Check</td>
+                        <td><pre class="font-mono text-xs whitespace-pre-wrap">{{ job.last_artifact_check_result | tojson(indent=2) }}</pre></td>
+                    </tr>
+                    {% endif %}
                     {% if job.recovery_status %}
                     <tr>
                         <td class="font-medium">Recovery</td>

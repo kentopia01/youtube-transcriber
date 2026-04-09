@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.job import Job
 from app.models.video import Video
+from app.services.pipeline_observability import get_task_worker_identity
 from app.services.pipeline_state import set_pipeline_job_state
 
 MANUAL_REVIEW_RECOVERY_STATUS = "manual_review"
@@ -116,6 +117,7 @@ def record_pipeline_failure(
     error: Exception | str,
     default_message: str,
     stale_reap: bool = False,
+    task=None,
 ) -> str:
     final_message = default_message
 
@@ -135,12 +137,18 @@ def record_pipeline_failure(
             )
             final_message = f"{default_message} Manual review required after {signature_count} identical failures."
 
+        worker_hostname = worker_task_id = None
+        if task is not None:
+            worker_hostname, worker_task_id = get_task_worker_identity(task)
+
         set_pipeline_job_state(
             job,
             lifecycle_status="failed",
             current_stage=stage,
             error_message=str(error),
             progress_message=final_message,
+            worker_hostname=worker_hostname,
+            worker_task_id=worker_task_id,
         )
 
     if video:

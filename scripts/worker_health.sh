@@ -1,70 +1,86 @@
 #!/usr/bin/env bash
 # Check if the native Celery worker is healthy.
-# Returns 0 if healthy, 1 if unhealthy.
-# Usage: worker_health.sh [--restart] [--quiet]
+# Returns 0 if healthy or busy-but-healthy, 1 if unhealthy.
 set -euo pipefail
 
-RESTART=false
-QUIET=false
-PLIST_LABEL="com.sentryclaw.yt-worker"
-WORKER_LOG="/tmp/yt-worker/yt-worker.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+QUIET=0
+RESTART=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --restart) RESTART=true; shift ;;
-    --quiet|-q) QUIET=true; shift ;;
-    *) shift ;;
+    --quiet)
+      QUIET=1
+      shift
+      ;;
+    --restart)
+      RESTART=1
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
-log() { $QUIET || echo "$@"; }
-
-# Check 1: Is the launchd job running?
-if ! launchctl list | grep -q "$PLIST_LABEL"; then
-  log "❌ Worker launchd job not loaded"
-  if $RESTART; then
-    log "🔄 Loading and starting worker..."
-    launchctl load ~/Library/LaunchAgents/${PLIST_LABEL}.plist 2>/dev/null
-    launchctl start "$PLIST_LABEL"
-    sleep 3
+log() {
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "$@"
   fi
-  exit 1
-fi
+}
 
-# Check 2: Is the worker process alive?
-WORKER_PID=$(launchctl list | grep "$PLIST_LABEL" | awk '{print $1}')
-if [[ "$WORKER_PID" == "-" ]] || [[ -z "$WORKER_PID" ]]; then
-  log "❌ Worker process not running (launchd shows no PID)"
-  if $RESTART; then
-    log "🔄 Restarting worker..."
-    launchctl kickstart -kp "gui/$(id -u)/$PLIST_LABEL"
-    sleep 3
-  fi
-  exit 1
-fi
+cd "$PROJECT_ROOT"
+set -a
+source .env.native
+set +a
+source .venv-native/bin/activate
 
-# Check 3: Can we ping Celery via Redis?
-CELERY_PING=$(cd ~/Projects/youtube-transcriber && source .venv-native/bin/activate && \
-  REDIS_URL=redis://localhost:6379/0 celery -A app.tasks.celery_app inspect ping --timeout=5 2>/dev/null || true)
-
-if echo "$CELERY_PING" | grep -q "pong"; then
-  log "✅ Worker healthy (PID: $WORKER_PID, Celery responds to ping)"
+if python - <<'PY' >/dev/null 2>&1
+from app.tasks.celery_app import celery
+res = celery.control.inspect(timeout=3).ping() or {}
+raise SystemExit(0 if res else 1)
+PY
+then
+  log "HEALTH_OK: Worker responded to Celery ping"
   exit 0
-else
-  log "⚠️  Worker process running (PID: $WORKER_PID) but Celery not responding"
-  
-  # Check for recent crashes in log
-  if [[ -f "$WORKER_LOG" ]]; then
-    RECENT_ERRORS=$(tail -20 "$WORKER_LOG" | grep -c "SIGABRT\|WorkerLostError\|CRITICAL\|Traceback" || true)
-    if [[ "$RECENT_ERRORS" -gt 0 ]]; then
-      log "🔥 Found $RECENT_ERRORS error indicators in recent logs"
-    fi
-  fi
-
-  if $RESTART; then
-    log "🔄 Restarting worker..."
-    launchctl kickstart -kp "gui/$(id -u)/$PLIST_LABEL"
-    sleep 3
-  fi
-  exit 1
 fi
+
+if python - <<'PY' >/dev/null 2>&1
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.job import Job
+from app.services.worker_health import any_busy_healthy_jobs
+
+engine = create_engine(settings.database_url_sync)
+with Session(engine) as db:
+    jobs = db.execute(
+        select(Job).where(Job.job_type == 'pipeline', Job.status.in_(['pending', 'queued', 'running']))
+    ).scalars().all()
+    raise SystemExit(0 if any_busy_healthy_jobs(jobs) else 1)
+PY
+then
+  log "HEALTH_OK: Worker appears busy but healthy on a long-running active stage"
+  exit 0
+fi
+
+if [[ "$RESTART" -eq 1 ]]; then
+  log "HEALTH_WARN: Restarting native worker"
+  launchctl kickstart -k "gui/$(id -u)/com.sentryclaw.yt-worker"
+  sleep 2
+  if python - <<'PY' >/dev/null 2>&1
+from app.tasks.celery_app import celery
+res = celery.control.inspect(timeout=5).ping() or {}
+raise SystemExit(0 if res else 1)
+PY
+  then
+    log "HEALTH_RECOVERED: Worker restarted successfully"
+    exit 0
+  fi
+fi
+
+log "HEALTH_FAIL: Worker did not respond to ping and no busy-but-healthy active jobs were detected"
+exit 1

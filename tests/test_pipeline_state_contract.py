@@ -41,6 +41,7 @@ def test_set_pipeline_job_state_tracks_lifecycle_and_current_stage():
     assert job.progress_message == "Transcribing audio..."
     assert job.started_at is not None
     assert job.stage_updated_at is not None
+    assert job.current_stage_started_at is not None
     assert job.completed_at is None
     assert job.attempt_state == "active"
     assert job.last_activity_at is not None
@@ -55,6 +56,8 @@ def test_set_pipeline_job_state_tracks_lifecycle_and_current_stage():
     assert job.current_stage == PIPELINE_STAGE_TRANSCRIBE
     assert job.error_message == "boom"
     assert job.completed_at is not None
+    assert job.last_ended_stage == PIPELINE_STAGE_TRANSCRIBE
+    assert job.last_stage_ended_at is not None
     assert job.attempt_state == "terminal"
 
 
@@ -143,6 +146,21 @@ def test_manual_review_required_property_reflects_recovery_status():
 
     job.recovery_status = "manual_review"
     assert job.manual_review_required is True
+
+
+def test_set_pipeline_job_state_tracks_worker_identity_when_provided():
+    job = Job(job_type="pipeline", status="queued")
+
+    set_pipeline_job_state(
+        job,
+        lifecycle_status="running",
+        current_stage=PIPELINE_STAGE_TRANSCRIBE,
+        worker_hostname="worker-a",
+        worker_task_id="task-123",
+    )
+
+    assert job.worker_hostname == "worker-a"
+    assert job.worker_task_id == "task-123"
 
 
 def test_set_pipeline_job_state_only_updates_stage_timestamp_on_stage_transition():

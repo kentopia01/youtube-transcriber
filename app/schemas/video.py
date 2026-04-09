@@ -80,10 +80,17 @@ class JobResponse(BaseModel):
     attempt_state: str | None = None
     current_stage: str | None = None
     stage_updated_at: datetime | None = None
+    current_stage_started_at: datetime | None = None
+    last_stage_ended_at: datetime | None = None
+    last_ended_stage: str | None = None
     last_activity_at: datetime | None = None
     progress_pct: float
     progress_message: str | None = None
     error_message: str | None = None
+    attempt_creation_reason: str | None = None
+    worker_hostname: str | None = None
+    worker_task_id: str | None = None
+    last_artifact_check_result: dict | None = None
     failure_signature_count: int = 0
     recovery_status: str | None = None
     recovery_reason: str | None = None

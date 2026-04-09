@@ -34,6 +34,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_TRANSCRIBE,
             progress_pct=30.0,
@@ -106,6 +107,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
             video.status = "transcribed"
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_TRANSCRIBE,
                 progress_pct=50.0,
@@ -124,6 +126,7 @@ def transcribe_audio_task(self, video_id: str) -> str:
             record_pipeline_failure(
                 db,
                 job,
+                task=self,
                 video=video,
                 stage=PIPELINE_STAGE_TRANSCRIBE,
                 error=exc,

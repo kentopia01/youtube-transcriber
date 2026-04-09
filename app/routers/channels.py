@@ -17,6 +17,7 @@ from app.services.channel_sync import (
     refresh_channel_video_count,
     sync_discovered_videos,
 )
+from app.services.pipeline_observability import ATTEMPT_REASON_CHANNEL_PROCESS
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.services.youtube import discover_channel_videos, is_channel_url
 from app.tasks.pipeline import run_pipeline
@@ -150,6 +151,7 @@ async def process_selected_videos(
                 batch_id=batch.id,
                 job_type="pipeline",
                 status="queued" if batch_num == 0 else "pending",
+                attempt_creation_reason=ATTEMPT_REASON_CHANNEL_PROCESS,
             )
             set_pipeline_job_state(
                 job,

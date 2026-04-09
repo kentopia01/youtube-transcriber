@@ -60,6 +60,7 @@ def diarize_and_align_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_DIARIZE,
             progress_pct=52.0,
@@ -88,6 +89,7 @@ def diarize_and_align_task(self, video_id: str) -> str:
 
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_DIARIZE,
                 progress_pct=58.0,
@@ -109,6 +111,7 @@ def diarize_and_align_task(self, video_id: str) -> str:
 
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_DIARIZE,
                 progress_pct=65.0,
@@ -125,6 +128,7 @@ def diarize_and_align_task(self, video_id: str) -> str:
             record_pipeline_failure(
                 db,
                 job,
+                task=self,
                 video=video,
                 stage=PIPELINE_STAGE_DIARIZE,
                 error=exc,

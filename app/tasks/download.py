@@ -34,6 +34,7 @@ def download_audio_task(self, video_id: str) -> str:
         job = get_latest_pipeline_job(db, vid)
         update_pipeline_job(
             job,
+            task=self,
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_DOWNLOAD,
             progress_pct=5.0,
@@ -65,6 +66,7 @@ def download_audio_task(self, video_id: str) -> str:
 
             update_pipeline_job(
                 job,
+                task=self,
                 lifecycle_status="running",
                 current_stage=PIPELINE_STAGE_DOWNLOAD,
                 progress_pct=25.0,
@@ -80,6 +82,7 @@ def download_audio_task(self, video_id: str) -> str:
                 video.error_message = f"Retrying download after error: {exc}"
                 update_pipeline_job(
                     job,
+                    task=self,
                     lifecycle_status="running",
                     current_stage=PIPELINE_STAGE_DOWNLOAD,
                     progress_pct=5.0,
@@ -93,6 +96,7 @@ def download_audio_task(self, video_id: str) -> str:
             record_pipeline_failure(
                 db,
                 job,
+                task=self,
                 video=video,
                 stage=PIPELINE_STAGE_DOWNLOAD,
                 error=exc,
