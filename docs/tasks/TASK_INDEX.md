@@ -12,10 +12,10 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T006 | Pipeline stabilization Phase 2: separate execution status from stage/progress | done | BuildClaw / QAClaw | Lifecycle/stage contract hardened + tests updated |
 | T007 | Pipeline stabilization Phase 3: recovery guardrails, stale-job behavior, and retry containment | done | BuildClaw / QAClaw | Recovery guardrails, stale classification, and manual-review containment implemented |
 | T008 | Pipeline observability and attempt reasoning | done | BuildClaw / QAClaw | Structured attempt reasoning, artifact checks, stage timing, and worker health observability implemented |
-| T009 | Throughput queues after stability | planned | BuildClaw / QAClaw | Queue split + durable dispatch + fairness as the next throughput umbrella |
+| T009 | Throughput queues after stability | done | BuildClaw / QAClaw | Queue routing, channel backlog fairness, and split-worker rollout validated on the target host |
 | T010 | Queue routing contract and stage gates | done | BuildClaw / QAClaw | Explicit queue routing, payload identity, and attempt-safe stage execution implemented |
-| T011 | Channel backlog dispatcher and fairness | planned | BuildClaw / QAClaw | Durable long-running channel backlog with protected manual-job progress |
-| T012 | Worker topology rollout and throughput validation | planned | BuildClaw / QAClaw | Conservative worker split and measurement on current Mac mini |
+| T011 | Channel backlog dispatcher and fairness | done | BuildClaw / QAClaw | Durable DB-backed channel backlog and dispatcher-based release path implemented and validated |
+| T012 | Worker topology rollout and throughput validation | done | BuildClaw / QAClaw | Split native worker topology, queue coverage, health checks, and practical overlap validation completed |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

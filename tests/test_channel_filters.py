@@ -175,6 +175,9 @@ class StubDB:
     async def commit(self):
         self.committed = True
 
+    async def run_sync(self, fn):
+        return fn(self)
+
 
 def _build_client(db=None):
     app = create_app()
@@ -332,13 +335,14 @@ class TestProcessLatest:
             None,           # video lookup (not found)
         ])
         client = _build_client(db)
-        with patch("app.routers.channels.run_pipeline", return_value="celery-task-id"):
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
             resp = client.post(
                 f"/api/channels/{fake_channel.id}/process",
                 json={"video_ids": ["vid1"]},
             )
         assert resp.status_code == 200
         assert resp.json()["total_videos"] == 1
+        assert resp.json()["dispatched_job_ids"] == ["job-1"]
 
     def test_process_with_latest_param(self):
         """When latest is set and video_ids is empty, auto-select from DB."""
@@ -351,13 +355,14 @@ class TestProcessLatest:
             None,                   # video vid2 lookup
         ])
         client = _build_client(db)
-        with patch("app.routers.channels.run_pipeline", return_value="celery-task-id"):
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
             resp = client.post(
                 f"/api/channels/{fake_channel.id}/process",
                 json={"latest": 2},
             )
         assert resp.status_code == 200
         assert resp.json()["total_videos"] == 2
+        assert resp.json()["dispatched_job_ids"] == ["job-1"]
 
     def test_process_moves_discovered_video_to_pending(self):
         fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
@@ -374,7 +379,7 @@ class TestProcessLatest:
         ])
         client = _build_client(db)
 
-        with patch("app.routers.channels.run_pipeline", return_value="celery-task-id"):
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
             resp = client.post(
                 f"/api/channels/{fake_channel.id}/process",
                 json={"video_ids": ["vid1"]},

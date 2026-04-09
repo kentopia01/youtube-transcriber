@@ -17,10 +17,10 @@ from app.services.channel_sync import (
     refresh_channel_video_count,
     sync_discovered_videos,
 )
+from app.services.channel_dispatcher import dispatch_channel_backlog
 from app.services.pipeline_observability import ATTEMPT_REASON_CHANNEL_PROCESS
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.services.youtube import discover_channel_videos, is_channel_url
-from app.tasks.pipeline import run_pipeline
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
 
@@ -150,28 +150,24 @@ async def process_selected_videos(
                 channel_id=channel.id,
                 batch_id=batch.id,
                 job_type="pipeline",
-                status="queued" if batch_num == 0 else "pending",
+                status="pending",
                 attempt_creation_reason=ATTEMPT_REASON_CHANNEL_PROCESS,
             )
             set_pipeline_job_state(
                 job,
-                lifecycle_status="queued" if batch_num == 0 else "pending",
+                lifecycle_status="pending",
                 current_stage=PIPELINE_STAGE_QUEUED,
                 progress_pct=0.0,
-                progress_message="Queued for processing" if batch_num == 0 else f"Waiting for batch {batch_num}",
+                progress_message="Waiting for channel dispatcher" if batch_num == 0 else f"Waiting for batch {batch_num}",
                 error_message=None,
                 started_at=None,
                 completed_at=None,
             )
             db.add(job)
             await db.flush()
-
-            # Only launch first batch immediately
-            if batch_num == 0:
-                celery_id = run_pipeline(str(video.id), job_id=str(job.id))
-                job.celery_task_id = celery_id
-
             created_jobs.append(str(job.id))
+
+    dispatched_job_ids = await db.run_sync(lambda sync_db: dispatch_channel_backlog(sync_db, max_jobs=1))
 
     await db.commit()
 
@@ -180,6 +176,7 @@ async def process_selected_videos(
         "total_videos": len(video_ids),
         "total_batches": total_batches,
         "jobs_created": len(created_jobs),
+        "dispatched_job_ids": dispatched_job_ids,
     }
 
 

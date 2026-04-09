@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Native macOS Celery worker startup script.
 # Uses MLX Whisper with Metal acceleration on Apple Silicon.
-# Concurrency=1 because MLX uses the Metal GPU — parallel workers would compete.
 
 set -euo pipefail
 
@@ -18,12 +17,18 @@ set -a
 source .env.native
 set +a
 
-# Ensure data directories exist
-mkdir -p data/audio data/models
+# Ensure Homebrew CLI tools are visible under launchd, especially ffmpeg/ffprobe for yt-dlp.
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
-# Start Celery worker
+# Ensure data and log directories exist
+mkdir -p data/audio data/models /tmp/yt-worker
+
+CELERY_HOSTNAME="${CELERY_HOSTNAME:-native-worker@%h}"
+CELERY_QUEUES="${CELERY_QUEUES:-audio,diarize,post,celery}"
+CELERY_LOG_LEVEL="${LOG_LEVEL:-info}"
+
 exec celery -A app.tasks.celery_app worker \
-    --loglevel="${LOG_LEVEL:-info}" \
+    --loglevel="$CELERY_LOG_LEVEL" \
     --pool=solo \
-    --hostname="native-worker@%h" \
-    -Q celery
+    --hostname="$CELERY_HOSTNAME" \
+    -Q "$CELERY_QUEUES"

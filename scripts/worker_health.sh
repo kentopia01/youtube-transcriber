@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Check if the native Celery worker is healthy.
-# Returns 0 if healthy or busy-but-healthy, 1 if unhealthy.
+# Check if the native Celery worker topology is healthy.
+# Returns 0 if required queues are covered, or if work is actively progressing on a long stage.
+# Returns 1 if unhealthy.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 QUIET=0
 RESTART=0
+REQUIRED_QUEUES="${REQUIRED_QUEUES:-audio,diarize,post,celery}"
+SERVICES=("com.sentryclaw.yt-worker" "com.sentryclaw.yt-worker-audio" "com.sentryclaw.yt-worker-diarize")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,19 +34,38 @@ log() {
   fi
 }
 
+check_queue_coverage() {
+  python - <<'PY'
+from app.tasks.celery_app import celery
+import os
+
+required = {q.strip() for q in os.environ.get('REQUIRED_QUEUES', '').split(',') if q.strip()}
+insp = celery.control.inspect(timeout=5)
+queues_by_worker = insp.active_queues() or {}
+if not queues_by_worker:
+    raise SystemExit(1)
+covered = set()
+for queues in queues_by_worker.values():
+    for q in queues or []:
+        name = q.get('name')
+        if name:
+            covered.add(name)
+missing = required - covered
+if missing:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+}
+
 cd "$PROJECT_ROOT"
 set -a
 source .env.native
 set +a
 source .venv-native/bin/activate
+export REQUIRED_QUEUES
 
-if python - <<'PY' >/dev/null 2>&1
-from app.tasks.celery_app import celery
-res = celery.control.inspect(timeout=3).ping() or {}
-raise SystemExit(0 if res else 1)
-PY
-then
-  log "HEALTH_OK: Worker responded to Celery ping"
+if check_queue_coverage >/dev/null 2>&1; then
+  log "HEALTH_OK: Required queues are covered by live Celery workers"
   exit 0
 fi
 
@@ -63,24 +85,26 @@ with Session(engine) as db:
     raise SystemExit(0 if any_busy_healthy_jobs(jobs) else 1)
 PY
 then
-  log "HEALTH_OK: Worker appears busy but healthy on a long-running active stage"
+  log "HEALTH_OK: Worker topology appears busy but healthy on a long-running active stage"
   exit 0
 fi
 
 if [[ "$RESTART" -eq 1 ]]; then
-  log "HEALTH_WARN: Restarting native worker"
-  launchctl kickstart -k "gui/$(id -u)/com.sentryclaw.yt-worker"
-  sleep 2
-  if python - <<'PY' >/dev/null 2>&1
-from app.tasks.celery_app import celery
-res = celery.control.inspect(timeout=5).ping() or {}
-raise SystemExit(0 if res else 1)
-PY
-  then
-    log "HEALTH_RECOVERED: Worker restarted successfully"
+  log "HEALTH_WARN: Restarting native worker topology"
+  for service in "${SERVICES[@]}"; do
+    if launchctl print "gui/$(id -u)/$service" >/dev/null 2>&1; then
+      launchctl kickstart -k "gui/$(id -u)/$service" || true
+    elif [[ -f "$HOME/Library/LaunchAgents/$service.plist" ]]; then
+      launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$service.plist" >/dev/null 2>&1 || true
+      launchctl kickstart -k "gui/$(id -u)/$service" || true
+    fi
+  done
+  sleep 3
+  if check_queue_coverage >/dev/null 2>&1; then
+    log "HEALTH_RECOVERED: Required queues restored successfully"
     exit 0
   fi
 fi
 
-log "HEALTH_FAIL: Worker did not respond to ping and no busy-but-healthy active jobs were detected"
+log "HEALTH_FAIL: Required queues are not covered and no busy-but-healthy active jobs were detected"
 exit 1

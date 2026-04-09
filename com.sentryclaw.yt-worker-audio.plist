@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.sentryclaw.yt-worker</string>
+  <string>com.sentryclaw.yt-worker-audio</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -14,9 +14,9 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>CELERY_HOSTNAME</key>
-    <string>native-post-worker@%h</string>
+    <string>native-audio-worker@%h</string>
     <key>CELERY_QUEUES</key>
-    <string>post,celery</string>
+    <string>audio</string>
   </dict>
 
   <key>WorkingDirectory</key>
@@ -28,8 +28,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/tmp/yt-worker/yt-worker-post.log</string>
+  <string>/tmp/yt-worker/yt-worker-audio.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/yt-worker/yt-worker-post.log</string>
+  <string>/tmp/yt-worker/yt-worker-audio.log</string>
 </dict>
 </plist>

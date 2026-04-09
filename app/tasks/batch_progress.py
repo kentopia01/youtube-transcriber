@@ -1,66 +1,107 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.batch import Batch
 from app.models.job import Job
+from app.services.pipeline_observability import ATTEMPT_REASON_CHANNEL_PROCESS
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.tasks.pipeline import run_pipeline
 
+CHANNEL_BATCH_PENDING = "pending"
+CHANNEL_BATCH_RUNNING = "running"
+CHANNEL_JOB_TERMINAL = {"completed", "failed", "cancelled"}
 
-def update_batch_progress_and_maybe_advance(db: Session, batch_id):
-    """Refresh batch counters and start the next batch when current one is terminal."""
+
+def _refresh_batch_progress(db: Session, batch_id) -> Batch | None:
     batch = db.get(Batch, batch_id)
     if not batch:
-        return
+        return None
 
-    jobs = db.query(Job).filter(Job.batch_id == batch.id).all()
-    total_jobs = len(jobs)
-    completed = sum(1 for j in jobs if j.status == "completed")
-    failed = sum(1 for j in jobs if j.status == "failed")
-    terminal = completed + failed
+    jobs = db.query(Job).filter(Job.batch_id == batch_id).all()
+    if not jobs:
+        return batch
+
+    total = len(jobs)
+    completed = sum(1 for job in jobs if job.status == "completed")
+    failed = sum(1 for job in jobs if job.status in {"failed", "cancelled"})
+    terminal = sum(1 for job in jobs if job.status in CHANNEL_JOB_TERMINAL)
 
     batch.completed_videos = completed
     batch.failed_videos = failed
 
-    if total_jobs == 0 or terminal < total_jobs:
-        return
+    if terminal == total:
+        batch.status = "completed" if failed == 0 else "completed_with_errors"
+        batch.completed_at = datetime.now(UTC)
+    elif terminal > 0 or completed > 0 or failed > 0:
+        batch.status = CHANNEL_BATCH_RUNNING
 
-    if completed == 0 and failed > 0:
-        batch.status = "failed"
-    elif failed > 0:
-        batch.status = "completed_with_errors"
-    else:
-        batch.status = "completed"
-    batch.completed_at = datetime.now(UTC)
+    return batch
 
-    next_batch = (
+
+def _find_next_batch(db: Session, batch: Batch) -> Batch | None:
+    return (
         db.query(Batch)
         .filter(
             Batch.channel_id == batch.channel_id,
-            Batch.status == "pending",
+            Batch.status == CHANNEL_BATCH_PENDING,
             Batch.batch_number > batch.batch_number,
         )
         .order_by(Batch.batch_number.asc())
-        .with_for_update(skip_locked=True)
+        .with_for_update()
         .first()
     )
-    if not next_batch:
-        return
 
-    next_batch.status = "running"
-    next_jobs = db.query(Job).filter(Job.batch_id == next_batch.id).all()
-    for job in next_jobs:
-        if not job.video_id or job.celery_task_id:
+
+def _dispatch_first_pending_job(db: Session, batch: Batch) -> str | None:
+    jobs = (
+        db.query(Job)
+        .filter(
+            Job.batch_id == batch.id,
+            Job.job_type == "pipeline",
+            Job.attempt_creation_reason == ATTEMPT_REASON_CHANNEL_PROCESS,
+            Job.status == CHANNEL_BATCH_PENDING,
+        )
+        .all()
+    )
+
+    for job in jobs:
+        if job.celery_task_id or not job.video_id:
             continue
+
         set_pipeline_job_state(
             job,
             lifecycle_status="queued",
             current_stage=PIPELINE_STAGE_QUEUED,
             progress_pct=0.0,
-            progress_message="Queued for processing",
-            error_message=None,
-            started_at=None,
-            completed_at=None,
+            progress_message="Queued by channel dispatcher",
         )
         job.celery_task_id = run_pipeline(str(job.video_id), job_id=str(job.id))
+        return str(job.id)
+
+    return None
+
+
+def update_batch_progress_and_maybe_advance(db: Session, batch_id):
+    """Refresh batch progress and, if terminal, release the next batch carefully.
+
+    This task-layer helper intentionally keeps a small compatibility surface for the
+    orchestration tests, even though the broader dispatcher logic now lives under
+    `app.services.channel_dispatcher`.
+    """
+    batch = _refresh_batch_progress(db, batch_id)
+    if not batch:
+        return []
+
+    if batch.status not in {"completed", "completed_with_errors"}:
+        return []
+
+    next_batch = _find_next_batch(db, batch)
+    if not next_batch:
+        return []
+
+    next_batch.status = CHANNEL_BATCH_RUNNING
+    dispatched = _dispatch_first_pending_job(db, next_batch)
+    return [dispatched] if dispatched else []
