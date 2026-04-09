@@ -55,3 +55,11 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Record structured attempt-creation reasons, worker identity/activity, and artifact-check results before splitting queues.
 - Worker health should distinguish busy-but-healthy from unhealthy before any throughput/concurrency tuning.
 - Do not increase concurrency on the existing single queue as a substitute for proper workload separation.
+
+### T009 throughput clarifications
+- Throughput work should target podcast-style videos, usually 15 to 45 minutes.
+- Channel jobs should use the same core pipeline semantics as manual jobs.
+- Channel jobs should be represented durably in DB-backed backlog state and released gradually into runnable queues.
+- Manual jobs should retain a protected path to progress even while channel backlog exists.
+- Queue routing must be explicit and attempt-safe; tasks should not guess ownership from "latest job for video" behavior.
+- Prefer conservative heavy-stage concurrency on current hardware: start with one active `audio`, one active `diarize`, and one active `post` lane.

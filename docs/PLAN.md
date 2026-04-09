@@ -58,16 +58,37 @@ Make pipeline triage easy by recording enough structured state to explain:
 - broad UI redesign
 - throughput tuning by turning up concurrency on the existing single queue
 
-## Future implementation target: T009
+## Next implementation target: T009
 
 ### Goal
-Improve throughput only after T008 is done.
+Improve throughput only after T008 is done, using queue separation plus durable dispatch and fairness, not blunt concurrency increases.
 
-### Strategy
-Split workloads by stage/resource profile, for example:
-- download/transcribe queue
-- diarize/align queue
-- summarize/embed queue
+### Architecture direction
+Split workloads into three lanes:
+- `audio`: download + transcribe
+- `diarize`: diarize + align
+- `post`: cleanup + summarize + embed
+
+Use the DB as the durable source of truth for backlog and attempt ownership.
+Channel jobs should share the same core pipeline, but they should enter execution through controlled DB-backed dispatch instead of flooding the queue transport directly.
+
+### Hardware reality
+Current target host is an Apple M4 Mac mini with 16 GB RAM.
+Realistic safe overlap target:
+- 1 active transcribe/audio job
+- 1 active diarize job
+- 1 lightweight post-processing job
+
+Not a safe target:
+- multiple simultaneous diarize jobs
+- multiple simultaneous transcribe jobs
+- blind queue-wide concurrency increases
+
+### Execution chunks
+T009 should be implemented through:
+- T010: queue routing contract and stage gates
+- T011: channel backlog dispatcher and fairness
+- T012: worker topology rollout and throughput validation
 
 ### Guardrail
 Do not blindly increase concurrency on the current single queue.
