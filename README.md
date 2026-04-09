@@ -25,19 +25,30 @@ A self-hosted web application that transcribes YouTube videos using Apple Silico
 └─────────────────────────────────────────────┘
         ↕ tcp            ↕ tcp
 ┌─────────────────────────────────────────────┐
-│          Native macOS Process                │
+│           Native macOS Worker Topology       │
 │  ┌──────────────────────────────────────┐   │
-│  │         Celery Worker                 │   │
-│  │  • mlx-whisper (Metal GPU)           │   │
-│  │  • pyannote.audio (CPU diarization)  │   │
+│  │ native-audio-worker                  │   │
+│  │  • queue: audio                      │   │
+│  │  • yt-dlp download                   │   │
+│  │  • mlx-whisper transcription         │   │
+│  └──────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────┐   │
+│  │ native-diarize-worker                │   │
+│  │  • queue: diarize                    │   │
+│  │  • pyannote.audio diarization        │   │
 │  │  • whisperX alignment                │   │
-│  │  • LLM cleanup (Anthropic API)       │   │
-│  │  • sentence-transformers (embed)     │   │
+│  └──────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────┐   │
+│  │ native-post-worker                   │   │
+│  │  • queues: post, celery              │   │
+│  │  • transcript cleanup                │   │
+│  │  • summarization                     │   │
+│  │  • embeddings                        │   │
 │  └──────────────────────────────────────┘   │
 └─────────────────────────────────────────────┘
 ```
 
-The hybrid architecture runs database/web services in Docker while the Celery worker runs natively on macOS to access Apple Silicon Metal GPU acceleration for whisper inference.
+The hybrid architecture runs database/web services in Docker while the worker topology runs natively on macOS so the audio lane can use Apple Silicon Metal for whisper inference while diarization and post-processing remain isolated on their own queues.
 
 ## V2 Pipeline
 
@@ -103,13 +114,26 @@ DATABASE_URL_SYNC="postgresql+psycopg2://transcriber:transcriber@localhost:5432/
   alembic upgrade head
 ```
 
-### 4. Install the worker as a launchd service
+### 4. Install the native workers as launchd services
 
 ```bash
 cp com.sentryclaw.yt-worker.plist ~/Library/LaunchAgents/
+cp com.sentryclaw.yt-worker-audio.plist ~/Library/LaunchAgents/
+cp com.sentryclaw.yt-worker-diarize.plist ~/Library/LaunchAgents/
+
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sentryclaw.yt-worker.plist
-launchctl kickstart gui/$(id -u)/com.sentryclaw.yt-worker
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sentryclaw.yt-worker-audio.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.sentryclaw.yt-worker-diarize.plist
+
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker-audio
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker-diarize
 ```
+
+This installs the split worker topology:
+- `com.sentryclaw.yt-worker` → `post,celery`
+- `com.sentryclaw.yt-worker-audio` → `audio`
+- `com.sentryclaw.yt-worker-diarize` → `diarize`
 
 ### 5. Open the app
 
@@ -148,6 +172,36 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 
 See `.env.example` for the full list with all defaults.
+
+## Worker health and verification
+
+```bash
+# Check that required queues are covered
+bash scripts/worker_health.sh --quiet
+
+# Inspect live queue coverage directly
+source .venv-native/bin/activate
+set -a
+source .env.native
+set +a
+python - <<'PY'
+from app.tasks.celery_app import celery
+print(celery.control.inspect(timeout=5).active_queues())
+PY
+```
+
+Expected live coverage after the T012 rollout:
+- `native-audio-worker@...` on `audio`
+- `native-diarize-worker@...` on `diarize`
+- `native-post-worker@...` on `post` and `celery`
+
+If you need to restart the topology:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker-audio
+launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker-diarize
+```
 
 ## Usage
 
