@@ -134,6 +134,7 @@ async def _process_one_subscription(
         return result
 
     ingested_ids: list[str] = []
+    rejected_filter_ids: list[str] = []
     rejected_count = 0
     for entry in to_ingest:
         # Filter Shorts / live streams before we pay to submit them.
@@ -154,6 +155,7 @@ async def _process_one_subscription(
 
         if not classification.is_regular:
             rejected_count += 1
+            rejected_filter_ids.append(entry.video_id)
             logger.info(
                 "auto_ingest_skipped_filter",
                 video_id=entry.video_id,
@@ -177,9 +179,11 @@ async def _process_one_subscription(
 
     result["rejected_by_filter"] = rejected_count
 
-    # Include unsubmitted-but-seen entries in last_seen so they don't re-queue
-    # if the per-sub cap wasn't reached but more videos arrived after a pause.
-    mark_poll_success(sub, new_ids=[e.video_id for e in new_entries])
+    # Only mark as seen: videos we actually ingested + ones the classifier
+    # deliberately rejected. Entries truncated by the per-poll cap stay in the
+    # diff pool so the next poll run can pick them up. This prevents the
+    # "saw but never ingested" orphaning that happens on first-poll backlogs.
+    mark_poll_success(sub, new_ids=ingested_ids + rejected_filter_ids)
     await db.commit()
     result["ingested"] = len(ingested_ids)
     return result

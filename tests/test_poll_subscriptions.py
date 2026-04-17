@@ -103,6 +103,11 @@ class TestProcessOneSubscription:
         assert out["ingested"] == 2
         assert sub.videos_ingested_today == 2
         assert out.get("rejected_by_filter") == 0
+        # The 3 cap-truncated entries MUST NOT be marked as seen — they need
+        # to surface on the next poll so we eventually drain the backlog.
+        assert set(sub.last_seen_video_ids) == {"new0", "new1"}
+        for cap_truncated in ("new2", "new3", "new4"):
+            assert cap_truncated not in sub.last_seen_video_ids
 
     @pytest.mark.asyncio
     async def test_classifier_rejects_shorts_and_live(self, monkeypatch):
