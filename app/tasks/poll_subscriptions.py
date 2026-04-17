@@ -134,7 +134,33 @@ async def _process_one_subscription(
         return result
 
     ingested_ids: list[str] = []
+    rejected_count = 0
     for entry in to_ingest:
+        # Filter Shorts / live streams before we pay to submit them.
+        try:
+            from app.services.video_classifier import classify_video_url
+
+            classification = classify_video_url(entry.url)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "auto_ingest_classifier_error",
+                video_id=entry.video_id,
+                error=str(exc),
+            )
+            # Fail-open
+            from app.services.video_classifier import ClassificationResult
+
+            classification = ClassificationResult(True, None)
+
+        if not classification.is_regular:
+            rejected_count += 1
+            logger.info(
+                "auto_ingest_skipped_filter",
+                video_id=entry.video_id,
+                reason=classification.reason,
+            )
+            continue
+
         try:
             submit_resp = await _submit_video(entry.url)
             job_id = submit_resp.get("job_id")
@@ -148,6 +174,8 @@ async def _process_one_subscription(
             await db.commit()
             result["skipped_reason"] = f"submit_error: {exc}"
             return result
+
+    result["rejected_by_filter"] = rejected_count
 
     # Include unsubmitted-but-seen entries in last_seen so they don't re-queue
     # if the per-sub cap wasn't reached but more videos arrived after a pause.
@@ -163,7 +191,8 @@ async def _run_poll() -> dict[str, Any]:
 
     total_ingested = 0
     stats: list[dict[str, Any]] = []
-    skipped_budget = False
+    soft_cap_crossed = False  # notify once per run when auto-ingest spend
+                              # crosses the soft cap. Polling continues.
 
     try:
         async with SessionLocal() as db:
@@ -180,11 +209,17 @@ async def _run_poll() -> dict[str, Any]:
                     continue
 
                 remaining = auto_ingest_budget_remaining()
-                if remaining <= 0.10:
-                    skipped_budget = True
-                    break
+                if remaining <= 0 and not soft_cap_crossed:
+                    soft_cap_crossed = True
+                    logger.info(
+                        "auto_ingest_soft_cap_crossed",
+                        cap=settings.auto_ingest_daily_cost_cap_usd,
+                    )
 
-                s = await _process_one_subscription(db, sub, budget_remaining=remaining)
+                # Soft cap: pass a large budget to the per-sub handler so it
+                # never gates on autonomous spend. The global daily_llm_budget_usd
+                # inside check_budget() remains the hard ceiling.
+                s = await _process_one_subscription(db, sub, budget_remaining=1e9)
                 stats.append(s)
                 total_ingested += int(s.get("ingested") or 0)
     finally:
@@ -193,18 +228,21 @@ async def _run_poll() -> dict[str, Any]:
     result = {
         "processed_subscriptions": len(stats),
         "total_ingested": total_ingested,
-        "skipped_due_to_budget": skipped_budget,
+        "soft_cap_crossed": soft_cap_crossed,
         "details": stats,
     }
     logger.info("poll_subscriptions_done", **{k: v for k, v in result.items() if k != "details"})
 
-    if skipped_budget:
+    if soft_cap_crossed:
         try:
             from app.services.telegram_notify import notify as _tg_notify
 
             _tg_notify(
                 "cost.threshold_100",
-                {"spent": 0, "cap": settings.auto_ingest_daily_cost_cap_usd},
+                {
+                    "spent": settings.auto_ingest_daily_cost_cap_usd,
+                    "cap": settings.auto_ingest_daily_cost_cap_usd,
+                },
             )
         except Exception:  # noqa: BLE001
             pass

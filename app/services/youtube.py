@@ -131,6 +131,8 @@ def get_video_info(url: str) -> dict:
         "channel_url": info.get("channel_url"),
         "published_at": info.get("upload_date"),
         "url": info.get("webpage_url", url),
+        "is_live": info.get("is_live"),
+        "live_status": info.get("live_status"),
     }
 
 
