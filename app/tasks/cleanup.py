@@ -48,6 +48,9 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
         )
         vid = video.id
 
+        from app.services.cost_tracker import set_cost_source, source_for_attempt_reason
+        set_cost_source(source_for_attempt_reason(getattr(job, "attempt_creation_reason", None)))
+
         transcription = db.query(Transcription).filter(
             Transcription.video_id == vid
         ).first()

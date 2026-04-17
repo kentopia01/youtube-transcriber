@@ -31,6 +31,8 @@ celery.conf.update(
         "app.tasks.channel_sync",
         "app.tasks.generate_persona",
         "app.tasks.weekly_digest",
+        "app.tasks.poll_subscriptions",
+        "app.tasks.compress_stale_videos",
     ],
     task_routes={
         task_name: {"queue": get_queue_for_task(task_name)}

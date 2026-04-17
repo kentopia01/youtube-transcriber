@@ -27,6 +27,10 @@ class Video(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     chat_enabled: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
+    # Activity tracking — bumped whenever the user interacts with this video.
+    # Drives the compression sweep (stale videos get their WAV removed).
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    compressed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

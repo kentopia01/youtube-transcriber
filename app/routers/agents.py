@@ -168,6 +168,16 @@ async def send_channel_message(
         exemplar_chunks=exemplars,
     )
 
+    try:
+        import uuid as _uuid
+        from app.services.subscriptions import touch_video_activity
+        for src in chat_result.get("sources", []):
+            vid = src.get("video_id")
+            if vid:
+                await touch_video_activity(db, _uuid.UUID(vid))
+    except Exception:  # noqa: BLE001
+        pass
+
     assistant_msg = ChatMessage(
         session_id=session.id,
         role="assistant",

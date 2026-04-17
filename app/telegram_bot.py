@@ -859,6 +859,13 @@ async def ask_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             return
 
+        # Bump activity so this video stays out of compression sweep
+        try:
+            from app.services.subscriptions import touch_video_activity
+            await touch_video_activity(db, match.id)
+        except Exception:
+            pass
+
         # Reuse chat_with_context with a channel_id=None; filter chunks manually
         # by calling semantic_search scoped to this video's channel, then
         # restricting chunks whose video_id matches.
@@ -1042,6 +1049,123 @@ NOTIFY_EVENTS_ALL = [
 ]
 
 
+async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Subscribe to a channel for nightly auto-ingest."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Usage: /subscribe <YouTube channel URL or handle>\n"
+            "Example: /subscribe https://youtube.com/@lexfridman"
+        )
+        return
+    url = args[0].strip()
+
+    import httpx
+
+    async with httpx.AsyncClient(
+        base_url=settings.internal_web_base_url, timeout=30.0
+    ) as client:
+        try:
+            resp = await client.post(
+                "/api/subscriptions", json={"url": url}, headers=_api_headers()
+            )
+        except httpx.HTTPError as exc:
+            await update.message.reply_text(f"❌ Network error: {exc}")
+            return
+
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail") or resp.text
+        except Exception:
+            detail = resp.text
+        await update.message.reply_text(f"❌ {detail}")
+        return
+
+    body = resp.json()
+    await update.message.reply_text(
+        f"✅ Subscribed to *{body.get('channel_name', 'channel')}*.\n"
+        f"Polling every {body.get('poll_frequency_hours', 24)}h, "
+        f"up to {body.get('max_videos_per_poll', 3)} videos per poll.",
+        parse_mode="Markdown",
+    )
+
+
+async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Disable a subscription by channel name keyword."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text("Usage: /unsubscribe <channel name or keyword>")
+        return
+    query = " ".join(args).strip()
+
+    db = await _get_db()
+    try:
+        from app.services.subscriptions import (
+            disable_subscription,
+            resolve_channel_by_query,
+        )
+
+        channel = await resolve_channel_by_query(db, query)
+        if channel is None:
+            await update.message.reply_text(
+                f"No channel matches '{query}'. Try /subscriptions."
+            )
+            return
+        sub = await disable_subscription(db, channel.id, reason="user_disabled")
+        if sub is None:
+            await update.message.reply_text(
+                f"'{channel.name}' is not subscribed."
+            )
+            return
+        await update.message.reply_text(
+            f"🔕 Unsubscribed from *{channel.name}*.", parse_mode="Markdown"
+        )
+    finally:
+        await db.close()
+
+
+async def subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List active subscriptions and their state."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    db = await _get_db()
+    try:
+        from app.services.subscriptions import list_subscriptions
+
+        subs = await list_subscriptions(db)
+        if not subs:
+            await update.message.reply_text(
+                "No subscriptions. Add one with /subscribe <channel url>."
+            )
+            return
+        enabled = [s for s in subs if s.enabled]
+        disabled = [s for s in subs if not s.enabled]
+        lines = [f"📡 *Subscriptions* ({len(enabled)} active, {len(disabled)} disabled)\n"]
+        for s in enabled:
+            name = s.channel.name if s.channel else str(s.channel_id)
+            last = s.last_polled_at.strftime("%b %d %H:%M") if s.last_polled_at else "never"
+            lines.append(
+                f"• ✅ {name[:40]} — every {s.poll_frequency_hours}h, last {last}"
+                + (f", {s.videos_ingested_today}/{s.max_videos_per_poll} today" if s.videos_ingested_today else "")
+            )
+        if disabled:
+            lines.append("\n*Disabled:*")
+            for s in disabled:
+                name = s.channel.name if s.channel else str(s.channel_id)
+                reason = (s.disabled_reason or "user")[:40]
+                lines.append(f"• ⏸ {name[:40]} — {reason}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    finally:
+        await db.close()
+
+
 async def notify_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/notify [on|off|status] [event_type]"""
     if not _is_user_allowed(update.effective_user.id):
@@ -1135,6 +1259,10 @@ def _build_command_manifest() -> list[BotCmd]:
         _cmd("enable", "Library", "Enable RAG for videos", enable_command, args="[keyword]"),
         _cmd("disable", "Library", "Disable RAG for videos", disable_command, args="[keyword]"),
         _cmd("toggle", "Library", "Flip RAG state", toggle_command, args="[keyword]"),
+
+        _cmd("subscribe", "Content", "Subscribe to a channel for nightly auto-ingest", subscribe_command, args="<channel_url>"),
+        _cmd("unsubscribe", "Content", "Stop auto-ingesting from a channel", unsubscribe_command, args="<channel>"),
+        _cmd("subscriptions", "Content", "List active subscriptions", subscriptions_command),
 
         _cmd("cost", "Admin", "Today / month LLM spend vs budget", cost_command),
         _cmd("notify", "Admin", "Toggle push notifications", notify_command, args="on|off|status [event]"),

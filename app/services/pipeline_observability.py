@@ -4,6 +4,7 @@ import socket
 from typing import Any
 
 ATTEMPT_REASON_CHANNEL_PROCESS = "channel_process"
+ATTEMPT_REASON_AUTO_INGEST = "auto_ingest"
 ATTEMPT_REASON_BATCH_ADVANCE = "batch_advance"
 ATTEMPT_REASON_MANUAL_RESUBMIT = "manual_resubmit"
 ATTEMPT_REASON_USER_RETRY = "user_retry"

@@ -98,6 +98,16 @@ class Settings(BaseSettings):
     # Daily LLM budget cap (USD)
     daily_llm_budget_usd: float = 5.0
 
+    # Autonomous work budgets — prevent auto-ingest from blowing the overall cap.
+    auto_ingest_daily_cost_cap_usd: float = 4.0
+    auto_ingest_poll_hours_default: int = 24
+    auto_ingest_max_videos_per_poll_default: int = 3
+
+    # Library compression — a video untouched for N days has its WAV removed.
+    # Transcript/summary/embeddings stay in Postgres; chat still works.
+    compression_stale_days: int = 14
+    compression_enabled: bool = True
+
     # yt-dlp authentication
     # Use a pre-exported cookies file (recommended for production)
     ytdlp_cookies_file: str = ""

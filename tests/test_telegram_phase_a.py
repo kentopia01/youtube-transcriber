@@ -39,8 +39,8 @@ def _allow_single_user(monkeypatch):
 
 
 class TestCommandManifest:
-    def test_manifest_has_19_commands(self):
-        assert len(telegram_bot._build_command_manifest()) == 19
+    def test_manifest_has_22_commands(self):
+        assert len(telegram_bot._build_command_manifest()) == 22
 
     def test_manifest_includes_new_commands(self):
         names = {c.name for c in telegram_bot._build_command_manifest()}
