@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Chat with {{ persona.display_name }} — {{ channel.name }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb">
+    <a href="/library?tab=channels"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
+    <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
+    <a href="/channels/{{ channel.id }}" class="link-muted">{{ channel.name }}</a>
+    <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
+    <span>Chat</span>
+</nav>
+
+<div class="surface mb-4">
+    <div class="surface-body">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+                <h1 class="page-title" style="margin-bottom:0.25rem">
+                    {{ persona.display_name }}
+                </h1>
+                <p class="text-sm text-muted">
+                    Channel persona &middot; built from {{ persona.source_chunk_count }} chunks
+                    &middot; confidence {{ "%.2f"|format(persona.confidence) }}
+                </p>
+            </div>
+            <a href="/channels/{{ channel.id }}" class="btn btn-outline btn-sm">
+                <i class="iconoir-arrow-left" style="font-size:0.8rem"></i> Back to channel
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="surface">
+    <div class="surface-body" id="chat-log" style="min-height:240px; display:flex; flex-direction:column; gap:1rem"></div>
+    <div style="padding:1rem; border-top:1px solid var(--border)">
+        <form id="chat-form" style="display:flex; gap:0.5rem">
+            <input id="chat-input"
+                   class="input"
+                   style="flex:1"
+                   placeholder="Ask {{ persona.display_name }} something…"
+                   autocomplete="off" required>
+            <button type="submit" class="btn btn-primary" id="chat-send">
+                <i class="iconoir-send" style="font-size:0.85rem"></i> Send
+            </button>
+        </form>
+        <p class="text-xs text-muted mt-2">
+            Grounded in this channel's transcripts and summaries. Answers include citations to
+            specific video excerpts.
+        </p>
+    </div>
+</div>
+
+<script>
+const CHANNEL_ID = "{{ channel.id }}";
+const PERSONA_NAME = {{ persona.display_name|tojson }};
+let sessionId = null;
+
+function appendMessage(role, text, sources) {
+    const log = document.getElementById('chat-log');
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.gap = '0.25rem';
+
+    const label = document.createElement('span');
+    label.className = 'text-xs text-muted';
+    label.textContent = role === 'user' ? 'You' : PERSONA_NAME;
+    wrap.appendChild(label);
+
+    const body = document.createElement('div');
+    body.className = 'surface-body';
+    body.style.background = role === 'user' ? 'var(--surface-raised)' : 'var(--surface)';
+    body.style.border = '1px solid var(--border)';
+    body.style.borderRadius = '8px';
+    body.style.padding = '0.75rem 1rem';
+    body.style.whiteSpace = 'pre-wrap';
+    body.textContent = text;
+    wrap.appendChild(body);
+
+    if (sources && sources.length) {
+        const srcList = document.createElement('div');
+        srcList.className = 'text-xs text-muted';
+        srcList.style.marginTop = '0.25rem';
+        srcList.textContent = 'Sources: ' + sources.map((s, i) =>
+            '[' + (i + 1) + '] ' + (s.video_title || 'video')
+            + (s.start_time != null ? ' @ ' + Math.floor(s.start_time) + 's' : '')
+        ).join('  ');
+        wrap.appendChild(srcList);
+    }
+
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+}
+
+async function ensureSession() {
+    if (sessionId) return sessionId;
+    const resp = await fetch('/api/agents/channel/' + CHANNEL_ID + '/sessions', {method: 'POST'});
+    if (!resp.ok) {
+        const body = await resp.json().catch(() => ({detail: 'Failed to start session'}));
+        throw new Error(body.detail || 'Failed to start session');
+    }
+    const data = await resp.json();
+    sessionId = data.id;
+    return sessionId;
+}
+
+document.getElementById('chat-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('chat-send');
+    const text = input.value.trim();
+    if (!text) return;
+
+    appendMessage('user', text);
+    input.value = '';
+    sendBtn.disabled = true;
+
+    const thinking = document.createElement('div');
+    thinking.className = 'text-sm text-muted';
+    thinking.textContent = PERSONA_NAME + ' is thinking…';
+    document.getElementById('chat-log').appendChild(thinking);
+
+    try {
+        const sid = await ensureSession();
+        const resp = await fetch(
+            '/api/agents/channel/' + CHANNEL_ID + '/sessions/' + sid + '/messages',
+            {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: text}),
+            }
+        );
+        thinking.remove();
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({detail: 'Failed to send message'}));
+            appendMessage('assistant', '[error] ' + (body.detail || resp.statusText));
+        } else {
+            const data = await resp.json();
+            appendMessage('assistant', data.content, data.sources || []);
+        }
+    } catch (e) {
+        thinking.remove();
+        appendMessage('assistant', '[network error] ' + e.message);
+    } finally {
+        sendBtn.disabled = false;
+        input.focus();
+    }
+});
+</script>
+{% endblock %}

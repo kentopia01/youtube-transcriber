@@ -155,4 +155,19 @@ def record_pipeline_failure(
         video.status = "failed"
         video.error_message = final_message
 
+    try:
+        from app.services.telegram_notify import notify as _tg_notify
+
+        _tg_notify(
+            "video.failed",
+            {
+                "job_id": str(job.id) if job else None,
+                "title": getattr(video, "title", None),
+                "stage": stage,
+                "error_message": final_message,
+            },
+        )
+    except Exception:  # noqa: BLE001 — never let notifier affect caller
+        pass
+
     return final_message

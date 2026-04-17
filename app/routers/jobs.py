@@ -27,10 +27,11 @@ from app.services.pipeline_attempts import (
     is_active_pipeline_attempt_conflict,
 )
 from app.services.pipeline_observability import (
+    ATTEMPT_REASON_STALE_RECOVERY,
     ATTEMPT_REASON_USER_RETRY,
     build_artifact_check_result,
 )
-from app.services.pipeline_recovery import get_retry_block_reason
+from app.services.pipeline_recovery import STALE_REAP_RECOVERY_STATUS, get_retry_block_reason
 from app.tasks.pipeline import run_pipeline_from
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -117,6 +118,12 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     attempt_number = ((latest_attempt.attempt_number if latest_attempt else 0) or 0) + 1
     start_label = start_from.split(".")[-1]
 
+    attempt_reason = (
+        ATTEMPT_REASON_STALE_RECOVERY
+        if job.recovery_status == STALE_REAP_RECOVERY_STATUS
+        else ATTEMPT_REASON_USER_RETRY
+    )
+
     retry = Job(
         video_id=video_uuid,
         channel_id=job.channel_id,
@@ -124,7 +131,7 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         status="queued",
         attempt_number=attempt_number,
         supersedes_job_id=job.id,
-        attempt_creation_reason=ATTEMPT_REASON_USER_RETRY,
+        attempt_creation_reason=attempt_reason,
         last_artifact_check_result=artifact_check_result,
     )
     set_pipeline_job_state(

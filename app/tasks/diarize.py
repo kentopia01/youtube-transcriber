@@ -49,6 +49,8 @@ def diarize_and_align_task(self, payload: dict[str, str] | str) -> dict[str, str
             db,
             payload,
             expected_stage=PIPELINE_STAGE_DIARIZE,
+            require_audio=True,
+            require_transcription=True,
         )
         vid = video.id
 

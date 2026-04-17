@@ -33,7 +33,12 @@ def _refresh_batch_progress(db: Session, batch_id) -> Batch | None:
     batch.failed_videos = failed
 
     if terminal == total:
-        batch.status = "completed" if failed == 0 else "completed_with_errors"
+        if completed == 0 and failed > 0:
+            batch.status = "failed"
+        elif failed > 0:
+            batch.status = "completed_with_errors"
+        else:
+            batch.status = "completed"
         batch.completed_at = datetime.now(UTC)
     elif terminal > 0 or completed > 0 or failed > 0:
         batch.status = CHANNEL_BATCH_RUNNING
@@ -95,7 +100,7 @@ def update_batch_progress_and_maybe_advance(db: Session, batch_id):
     if not batch:
         return []
 
-    if batch.status not in {"completed", "completed_with_errors"}:
+    if batch.status not in {"completed", "completed_with_errors", "failed"}:
         return []
 
     next_batch = _find_next_batch(db, batch)

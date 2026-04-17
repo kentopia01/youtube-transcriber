@@ -29,6 +29,8 @@ celery.conf.update(
         "app.tasks.summarize",
         "app.tasks.embed",
         "app.tasks.channel_sync",
+        "app.tasks.generate_persona",
+        "app.tasks.weekly_digest",
     ],
     task_routes={
         task_name: {"queue": get_queue_for_task(task_name)}

@@ -28,6 +28,7 @@ def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str]
             db,
             payload,
             expected_stage=PIPELINE_STAGE_TRANSCRIBE,
+            require_audio=True,
         )
         vid = video.id
 

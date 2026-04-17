@@ -4,13 +4,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services import embedding as embedding_service
 from app.services.search import (
     _build_where_clause,
     _hybrid_search,
     _keyword_search,
     _vector_search,
+    encode_query,
     semantic_search,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_embedding_cache_for_search():
+    embedding_service._reset_caches()
+    yield
+    embedding_service._reset_caches()
 
 
 # --- Helper fixtures ---
@@ -384,3 +393,53 @@ class TestHybridSearchSQL:
         assert "COALESCE(1.0 / (:rrf_k + vr.vector_rank), 0)" in sql_text
         # Keyword rank should COALESCE for vector-only items
         assert "COALESCE(1.0 / (:rrf_k + kr.keyword_rank), 0)" in sql_text
+
+
+class TestEncodeQuery:
+    """Verify encode_query applies the search_query: prefix and shares the embedding cache."""
+
+    def test_applies_search_query_prefix(self, monkeypatch):
+        captured = {}
+
+        class FakeST:
+            def __init__(self, *a, **kw):
+                pass
+
+            def encode(self, texts, normalize_embeddings=True):
+                captured["texts"] = texts
+                import numpy as np
+                return np.array([[0.1] * 768])
+
+        fake_module = MagicMock()
+        fake_module.SentenceTransformer = FakeST
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embedding_service, "get_torch_device", lambda: "cpu")
+
+        vec = encode_query("tell me about pricing", model_cache_dir="/tmp/m")
+
+        assert captured["texts"] == ["search_query: tell me about pricing"]
+        assert len(vec) == 768
+
+    def test_shares_cache_with_embedding_service(self, monkeypatch):
+        load_counter = {"n": 0}
+
+        class FakeST:
+            def __init__(self, *a, **kw):
+                load_counter["n"] += 1
+
+            def encode(self, texts, normalize_embeddings=True):
+                import numpy as np
+                return np.array([[0.0] * 768])
+
+        fake_module = MagicMock()
+        fake_module.SentenceTransformer = FakeST
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embedding_service, "get_torch_device", lambda: "cpu")
+
+        # Warm via embedding service first
+        embedding_service._get_embedding_model("/tmp/m")
+        # Now a search query should NOT reload the model
+        encode_query("anything", model_cache_dir="/tmp/m")
+        encode_query("again", model_cache_dir="/tmp/m")
+
+        assert load_counter["n"] == 1

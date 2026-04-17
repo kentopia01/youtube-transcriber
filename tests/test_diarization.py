@@ -9,6 +9,13 @@ from app.services import diarization as diarization_service
 from app.services.alignment import _find_speaker, align_and_merge
 
 
+@pytest.fixture(autouse=True)
+def _reset_diarization_cache():
+    diarization_service._reset_caches()
+    yield
+    diarization_service._reset_caches()
+
+
 class TestFindSpeaker:
     """Test the majority-vote speaker assignment."""
 
@@ -199,3 +206,105 @@ class TestDiarizeService:
         segments = diarization_service.diarize("/tmp/demo.wav", hf_token="hf_test")
 
         assert segments == [{"start": 2.0, "end": 3.0, "speaker": "SPEAKER_02"}]
+
+    def test_pipeline_is_cached_across_calls(self, monkeypatch):
+        load_counter = {"n": 0}
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                load_counter["n"] += 1
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+
+        diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
+        diarization_service.diarize("/tmp/b.wav", hf_token="hf_test")
+        diarization_service.diarize("/tmp/c.wav", hf_token="hf_test")
+
+        assert load_counter["n"] == 1
+
+    def test_pipeline_cache_keyed_by_token(self, monkeypatch):
+        load_counter = {"n": 0}
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                load_counter["n"] += 1
+                return cls()
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+
+        diarization_service.diarize("/tmp/a.wav", hf_token="token-A")
+        diarization_service.diarize("/tmp/a.wav", hf_token="token-B")
+
+        assert load_counter["n"] == 2
+
+    def test_pipeline_moved_to_device_when_available(self, monkeypatch):
+        to_calls = []
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def to(self, device):
+                to_calls.append(str(device))
+                return self
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+        monkeypatch.setattr(diarization_service, "get_torch_device", lambda: "mps")
+
+        diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
+
+        assert to_calls == ["mps"]
+
+    def test_pipeline_falls_back_to_cpu_on_device_error(self, monkeypatch):
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def to(self, device):
+                raise RuntimeError("MPS backend not supported for this op")
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+        monkeypatch.setattr(diarization_service, "get_torch_device", lambda: "mps")
+
+        # Should not raise — .to() failure is caught and logged
+        segments = diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
+        assert segments == [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"}]
+
+    def test_cpu_device_skips_to_call(self, monkeypatch):
+        to_calls = []
+
+        class FakePipeline:
+            @classmethod
+            def from_pretrained(cls, *args, **kwargs):
+                return cls()
+
+            def to(self, device):
+                to_calls.append(str(device))
+                return self
+
+            def __call__(self, audio_input, **kwargs):
+                return _FakeDiarizationResult([(0.0, 1.0, "SPEAKER_00")])
+
+        _patch_pyannote(monkeypatch, FakePipeline)
+        monkeypatch.setattr(diarization_service, "get_torch_device", lambda: "cpu")
+
+        diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
+
+        assert to_calls == []

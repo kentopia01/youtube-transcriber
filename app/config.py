@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Telegram bot
     telegram_bot_token: str = ""
     telegram_allowed_users: list[int] = []
+    telegram_notify_enabled: bool = True
+    telegram_notify_muted_events: list[str] = []
+    telegram_notify_state_path: str = "/tmp/yt-chatbot/notify_state.json"
+    # Shared base URL the bot uses to call the web API (same host in practice)
+    internal_web_base_url: str = "http://localhost:8000"
 
     # Native database URL (for processes running outside Docker)
     database_url_native: str = "postgresql+asyncpg://transcriber:transcriber@localhost:5432/transcriber"
@@ -69,6 +74,13 @@ class Settings(BaseSettings):
     anthropic_cleanup_model: str = "claude-haiku-4-5"
     anthropic_chat_model: str = "claude-haiku-4-5"
     anthropic_summary_model: str = "claude-sonnet-4-5"
+    anthropic_persona_model: str = "claude-sonnet-4-5"
+
+    # Persona generation tunables
+    persona_min_videos: int = 3
+    persona_refresh_after_videos: int = 5
+    persona_characteristic_chunks: int = 30
+    persona_exemplar_count: int = 5
 
     # Per-video duration limit
     max_video_duration_minutes: int = 120

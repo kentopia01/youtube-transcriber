@@ -1,14 +1,29 @@
 """Speaker diarization service using pyannote.audio.
 
-Identifies who speaks when in an audio file. Runs on CPU
-(pyannote supports CPU, no CUDA required).
+Identifies who speaks when in an audio file. Uses Apple Metal (MPS) when
+available, with graceful CPU fallback. The pyannote pipeline is cached
+per-process so repeated invocations in a worker avoid the 5-10s reload cost.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
+from app.services.device import get_torch_device
+
 logger = structlog.get_logger()
+
+# Pipeline cache keyed by HF token. Workers are single-tenant in practice,
+# so this is typically a single entry, but keying by token keeps behaviour
+# correct if multiple credentials are ever used in one process.
+_pipeline_cache: dict[str, Any] = {}
+
+
+def _reset_caches() -> None:
+    """Clear the pipeline cache. Intended for tests."""
+    _pipeline_cache.clear()
 
 
 def _load_audio_for_pyannote(audio_path: str) -> dict:
@@ -38,6 +53,37 @@ def _iter_diarization_tracks(diarization_result):
     )
 
 
+def _get_pipeline(hf_token: str):
+    """Load (or return cached) pyannote diarization pipeline on the best device."""
+    if hf_token in _pipeline_cache:
+        return _pipeline_cache[hf_token]
+
+    from pyannote.audio import Pipeline
+
+    pipeline = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization-community-1",
+        token=hf_token,
+    )
+
+    device = get_torch_device()
+    if device != "cpu":
+        try:
+            import torch
+
+            pipeline = pipeline.to(torch.device(device))
+            logger.info("diarization_device_set", device=device)
+        except Exception as exc:
+            logger.warning(
+                "diarization_device_fallback",
+                device=device,
+                error=str(exc),
+                msg="Falling back to CPU for diarization",
+            )
+
+    _pipeline_cache[hf_token] = pipeline
+    return pipeline
+
+
 def diarize(
     audio_path: str,
     hf_token: str,
@@ -57,14 +103,9 @@ def diarize(
     Returns:
         List of dicts: [{"start": float, "end": float, "speaker": str}, ...]
     """
-    from pyannote.audio import Pipeline
-
     logger.info("diarization_starting", audio=audio_path)
 
-    pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-community-1",
-        token=hf_token,
-    )
+    pipeline = _get_pipeline(hf_token)
 
     # Build kwargs for speaker hints
     kwargs: dict = {}

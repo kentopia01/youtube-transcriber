@@ -2,6 +2,7 @@ import structlog
 import tiktoken
 
 from app.config import settings
+from app.services.device import get_torch_device
 
 logger = structlog.get_logger()
 
@@ -9,16 +10,27 @@ _model_cache: dict = {}
 SUMMARY_SPEAKER_LABEL = "__SUMMARY__"
 
 
+def _reset_caches() -> None:
+    """Clear the embedding-model cache. Intended for tests."""
+    _model_cache.clear()
+
+
 def _get_embedding_model(model_cache_dir: str):
     """Get or create a sentence-transformers model (cached)."""
     if "embedding" not in _model_cache:
         from sentence_transformers import SentenceTransformer
 
-        logger.info("loading_embedding_model", model=settings.embedding_model)
+        device = get_torch_device()
+        logger.info(
+            "loading_embedding_model",
+            model=settings.embedding_model,
+            device=device,
+        )
         _model_cache["embedding"] = SentenceTransformer(
             settings.embedding_model,
             cache_folder=model_cache_dir,
             trust_remote_code=True,
+            device=device,
         )
     return _model_cache["embedding"]
 

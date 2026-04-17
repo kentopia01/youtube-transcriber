@@ -117,6 +117,10 @@ async def chat_with_context(
     question: str,
     history: list[dict],
     db: AsyncSession,
+    *,
+    channel_id: uuid.UUID | None = None,
+    system_prompt: str | None = None,
+    exemplar_chunks: list[dict] | None = None,
 ) -> dict:
     """RAG chat: retrieve relevant chunks and generate a response.
 
@@ -124,6 +128,13 @@ async def chat_with_context(
         question: The user's question.
         history: List of prior messages [{role, content}, ...].
         db: Async database session.
+        channel_id: Optional channel to scope retrieval to. When set, only
+            chunks from videos belonging to this channel are considered.
+        system_prompt: Override the default system prompt (used for persona
+            agents).
+        exemplar_chunks: Optional list of persona exemplar chunk rows. Rendered
+            as a ``[Persona Exemplars]`` block above the retrieved context so
+            the agent can anchor on voice even if retrieval is thin.
 
     Returns:
         Dict with content, sources, model, prompt_tokens, completion_tokens.
@@ -135,6 +146,7 @@ async def chat_with_context(
             query_embedding=query_embedding,
             limit=settings.chat_retrieval_top_k,
             query=question,
+            channel_id=channel_id,
             chat_enabled_only=True,
         )
     except Exception as exc:
@@ -142,6 +154,12 @@ async def chat_with_context(
         chunks = []
 
     context_text = _format_chunks_for_context(chunks)
+    if exemplar_chunks:
+        exemplar_text = _format_chunks_for_context(exemplar_chunks)
+        context_text = (
+            f"[Persona Exemplars — representative excerpts from this channel]\n{exemplar_text}\n\n"
+            f"[Retrieved for question]\n{context_text}"
+        )
 
     trimmed_history = history[-(settings.chat_max_history * 2) :]
 
@@ -183,10 +201,11 @@ async def chat_with_context(
 
     loop = asyncio.get_running_loop()
     model = settings.anthropic_chat_model
+    active_system = system_prompt or SYSTEM_PROMPT
     try:
         llm_result = await loop.run_in_executor(
             None,
-            partial(_call_anthropic, SYSTEM_PROMPT, messages, model),
+            partial(_call_anthropic, active_system, messages, model),
         )
     except BudgetExceededError as exc:
         logger.warning("chat_budget_exceeded", error=str(exc))

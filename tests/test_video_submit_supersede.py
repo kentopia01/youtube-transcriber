@@ -10,7 +10,7 @@ from app.models.job import Job
 from app.models.video import Video
 from app.routers import videos as videos_router
 from app.schemas.video import VideoSubmit
-from app.services.pipeline_observability import ATTEMPT_REASON_MANUAL_RESUBMIT
+from app.services.pipeline_observability import ATTEMPT_REASON_MANUAL_RESUBMIT, ATTEMPT_REASON_VIDEO_SUBMIT
 from app.services.pipeline_recovery import MANUAL_REVIEW_RECOVERY_STATUS
 
 
@@ -338,6 +338,43 @@ async def test_resubmit_failed_video_blocks_manual_review_retry(monkeypatch):
 
     assert exc.value.status_code == 409
     assert "Manual review required" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_submit_new_video_sets_operator_action_attempt_reason(monkeypatch):
+    db = _FakeDB([None, None, None])
+
+    monkeypatch.setattr(videos_router, "extract_video_id", lambda _: "dQw4w9WgXcQ")
+    monkeypatch.setattr(
+        videos_router,
+        "get_video_info",
+        lambda _: {
+            "video_id": "dQw4w9WgXcQ",
+            "title": "Brand New",
+            "description": "Fresh submit",
+            "duration": 88,
+            "thumbnail": "https://example.com/thumb.jpg",
+            "channel_id": None,
+            "channel_name": None,
+            "channel_url": None,
+            "published_at": "20260401",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        },
+    )
+    monkeypatch.setattr(videos_router, "get_or_create_channel", _fake_get_or_create_channel)
+    monkeypatch.setattr(videos_router, "run_pipeline", lambda _video_id, job_id=None: "celery-new")
+
+    result = await videos_router.submit_video(
+        SimpleNamespace(),
+        VideoSubmit(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+        db,
+    )
+
+    assert result["status"] == "queued"
+
+    new_job = next(obj for obj in db.added if isinstance(obj, Job))
+    assert new_job.attempt_creation_reason == ATTEMPT_REASON_VIDEO_SUBMIT
+    assert new_job.celery_task_id == "celery-new"
 
 
 @pytest.mark.asyncio

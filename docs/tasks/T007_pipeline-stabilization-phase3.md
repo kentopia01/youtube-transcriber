@@ -37,3 +37,8 @@ After Phases 1, 1.5, and 2, the next stability risk is recovery policy itself. T
 - BuildClaw implements against this file.
 - QAClaw validates against this file.
 - Focused regression/tests now cover recovery guardrails, manual-review blocking, repeat failure containment, and stale-job classification.
+
+### Verification evidence
+- Added stale-reaper regression coverage in `tests/test_reap_stale_jobs.py` (dry-run behavior, stale-only reaping, timeout-override behavior).
+- Added explicit active-progress stale-classification coverage in `tests/test_pipeline_recovery.py`.
+- `.venv314/bin/python -m pytest -q tests/test_pipeline_recovery.py tests/test_reap_stale_jobs.py tests/test_jobs_retry.py tests/test_video_submit_supersede.py tests/test_task_orchestration.py tests/test_diarization.py` → `40 passed`

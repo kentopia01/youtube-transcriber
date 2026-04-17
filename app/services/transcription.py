@@ -213,6 +213,17 @@ class FasterWhisperEngine:
 # Engine factory
 # ---------------------------------------------------------------------------
 
+# Cache engines per worker process so we don't pay reload cost for faster-whisper
+# weights on every task (~10-30s per video). Keyed by the full engine spec so a
+# config change produces a fresh instance.
+_engine_cache: dict[tuple, TranscriptionEngine] = {}
+
+
+def _reset_caches() -> None:
+    """Clear the engine cache. Intended for tests."""
+    _engine_cache.clear()
+
+
 def get_engine(
     engine_type: str = "faster-whisper",
     *,
@@ -225,18 +236,32 @@ def get_engine(
     compute_type: str = "int8",
     model_cache_dir: str = "/data/models",
 ) -> TranscriptionEngine:
-    """Create the appropriate transcription engine."""
+    """Create (or return cached) the appropriate transcription engine."""
     if engine_type == "mlx":
-        return MLXWhisperEngine(model=whisper_model, detect_model=whisper_detect_model)
+        key = ("mlx", whisper_model, whisper_detect_model)
     elif engine_type == "faster-whisper":
-        return FasterWhisperEngine(
+        key = ("faster-whisper", model_size, device, compute_type, model_cache_dir)
+    else:
+        raise ValueError(f"Unknown transcription engine: {engine_type}")
+
+    cached = _engine_cache.get(key)
+    if cached is not None:
+        return cached
+
+    if engine_type == "mlx":
+        engine: TranscriptionEngine = MLXWhisperEngine(
+            model=whisper_model, detect_model=whisper_detect_model
+        )
+    else:
+        engine = FasterWhisperEngine(
             model_size=model_size,
             device=device,
             compute_type=compute_type,
             model_cache_dir=model_cache_dir,
         )
-    else:
-        raise ValueError(f"Unknown transcription engine: {engine_type}")
+
+    _engine_cache[key] = engine
+    return engine
 
 
 # ---------------------------------------------------------------------------

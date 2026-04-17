@@ -7,12 +7,18 @@ Chunked processing for long transcripts.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import anthropic
 import structlog
 import tiktoken
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = structlog.get_logger()
+
+# Concurrency cap for LLM cleanup chunks. Haiku rate limits are generous,
+# and _call_anthropic_with_retry already backs off on 429, so 4 is conservative.
+MAX_CONCURRENT_CHUNKS = 4
 
 
 @retry(
@@ -124,20 +130,28 @@ def _chunked_cleanup(
     model: str,
     enc,
 ) -> str:
-    """Process transcript in chunks with overlap."""
+    """Process transcript in chunks with overlap, running chunks in parallel."""
     chunks = _build_chunks(lines, enc)
 
-    logger.info("chunked_cleanup", chunks=len(chunks))
+    logger.info("chunked_cleanup", chunks=len(chunks), max_concurrency=MAX_CONCURRENT_CHUNKS)
 
-    cleaned_parts = []
-    for i, chunk in enumerate(chunks):
-        logger.info("cleaning_chunk", chunk=i + 1, total=len(chunks))
-        cleaned = _call_llm("\n".join(chunk), api_key, model)
-        cleaned_parts.append(cleaned)
+    workers = min(MAX_CONCURRENT_CHUNKS, max(len(chunks), 1))
+
+    def _clean_one(idx_chunk: tuple[int, list[str]]) -> tuple[int, str]:
+        idx, chunk = idx_chunk
+        logger.info("cleaning_chunk", chunk=idx + 1, total=len(chunks))
+        return idx, _call_llm("\n".join(chunk), api_key, model)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(_clean_one, enumerate(chunks)))
+
+    # Restore original chunk order; pool.map preserves order but we sort defensively
+    # in case the implementation ever changes.
+    results.sort(key=lambda r: r[0])
 
     # Simple concatenation — overlap ensures context continuity
     # but we don't deduplicate overlap since the LLM may rephrase slightly
-    return "\n".join(cleaned_parts)
+    return "\n".join(part for _, part in results)
 
 
 def _build_chunks(lines: list[str], enc) -> list[list[str]]:

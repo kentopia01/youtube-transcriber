@@ -1,11 +1,14 @@
 """Tests for the LLM transcript cleanup service."""
 
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.services.transcript_cleanup import (
     _build_chunks,
+    _chunked_cleanup,
     _map_cleaned_to_segments,
     clean_transcript,
 )
@@ -115,3 +118,79 @@ class TestCleanTranscript:
         assert "[SPEAKER_00]" in call_text
         # Result should have the label stripped
         assert result[0]["text"] == "Hello there"
+
+
+class TestChunkedCleanupParallel:
+    """The chunked cleanup path should run chunks concurrently and preserve order."""
+
+    def test_preserves_order(self, monkeypatch):
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+
+        # Build lines long enough to force multiple chunks.
+        lines = [f"Line number {i} with a moderate amount of tokens in it." for i in range(400)]
+
+        def fake_call_llm(text, api_key, model):
+            # Echo back the first line of the chunk so we can verify ordering
+            first_line = text.splitlines()[0]
+            return first_line
+
+        monkeypatch.setattr(
+            "app.services.transcript_cleanup._call_llm", fake_call_llm
+        )
+
+        result = _chunked_cleanup(lines, api_key="k", model="m", enc=enc)
+        parts = result.split("\n")
+
+        # All parts should exist and be in the original line order across chunks.
+        # Each chunk's first line is an earlier line than the next chunk's first line.
+        numbers = [int(part.split(" ")[2]) for part in parts]
+        assert numbers == sorted(numbers), f"order broken: {numbers}"
+
+    def test_runs_concurrently(self, monkeypatch):
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        lines = [f"Long synthetic line {i} " * 20 for i in range(400)]
+
+        # Determine chunk count using _build_chunks
+        chunks = _build_chunks(lines, enc)
+        assert len(chunks) >= 2, "test requires >=2 chunks"
+
+        in_flight = {"max": 0, "now": 0}
+        lock = threading.Lock()
+
+        def fake_call_llm(text, api_key, model):
+            with lock:
+                in_flight["now"] += 1
+                in_flight["max"] = max(in_flight["max"], in_flight["now"])
+            time.sleep(0.05)
+            with lock:
+                in_flight["now"] -= 1
+            return "ok"
+
+        monkeypatch.setattr(
+            "app.services.transcript_cleanup._call_llm", fake_call_llm
+        )
+
+        _chunked_cleanup(lines, api_key="k", model="m", enc=enc)
+
+        # At least 2 concurrent chunks must have been observed.
+        assert in_flight["max"] >= 2, (
+            f"expected parallel execution, observed max_concurrent={in_flight['max']}"
+        )
+
+    def test_single_chunk_still_works(self, monkeypatch):
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        lines = ["Just a few lines", "Nothing fancy"]
+
+        monkeypatch.setattr(
+            "app.services.transcript_cleanup._call_llm",
+            lambda text, k, m: "cleaned",
+        )
+
+        result = _chunked_cleanup(lines, api_key="k", model="m", enc=enc)
+        assert result == "cleaned"

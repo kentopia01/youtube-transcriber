@@ -4,6 +4,7 @@ from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.embedding_chunk import EmbeddingChunk
 from app.models.job import Job
+from app.models.persona import Persona
 from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
@@ -16,6 +17,7 @@ __all__ = [
     "ChatSession",
     "EmbeddingChunk",
     "Job",
+    "Persona",
     "Summary",
     "Transcription",
     "TranscriptionSegment",

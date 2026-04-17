@@ -43,6 +43,112 @@
     </div>
 </div>
 
+<!-- Persona status -->
+<div class="surface mb-6">
+    <div class="surface-body">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+                <h2 class="section-title" style="margin-bottom:0.25rem">
+                    <i class="iconoir-sparks" style="font-size:1rem; color: var(--accent);"></i>
+                    Channel persona
+                </h2>
+                {% if persona %}
+                    <p class="text-sm text-muted">
+                        <strong>{{ persona.display_name }}</strong> &middot;
+                        confidence {{ "%.2f"|format(persona.confidence) }} &middot;
+                        built from {{ persona.source_chunk_count }} chunks across
+                        {{ persona.videos_at_generation }} videos
+                        {% if persona.generated_at %} &middot; {{ persona.generated_at.strftime('%b %d, %Y') }}{% endif %}
+                    </p>
+                {% elif completed_videos >= persona_min_videos %}
+                    <p class="text-sm text-muted">Ready to generate — click below to build.</p>
+                {% else %}
+                    <p class="text-sm text-muted">
+                        Build starts automatically once the channel has
+                        {{ persona_min_videos }} completed videos.
+                        Currently {{ completed_videos }}/{{ persona_min_videos }}.
+                    </p>
+                {% endif %}
+            </div>
+            <div class="flex gap-2">
+                {% if persona %}
+                    <a href="/channels/{{ channel.id }}/chat" class="btn btn-primary btn-sm">
+                        <i class="iconoir-chat-bubble" style="font-size:0.85rem"></i>
+                        Talk to {{ persona.display_name }}
+                    </a>
+                    <button class="btn btn-outline btn-sm"
+                            onclick="triggerPersona('{{ channel.id }}', this)">
+                        <i class="iconoir-refresh" style="font-size:0.8rem"></i>
+                        Refresh persona
+                    </button>
+                {% elif completed_videos >= persona_min_videos %}
+                    <button class="btn btn-primary btn-sm"
+                            onclick="triggerPersona('{{ channel.id }}', this)">
+                        <i class="iconoir-sparks" style="font-size:0.85rem"></i>
+                        Build persona now
+                    </button>
+                {% else %}
+                    <button class="btn btn-outline btn-sm" disabled>
+                        {{ completed_videos }}/{{ persona_min_videos }} videos needed
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+        {% if persona and persona.style_notes %}
+        <details class="mt-4">
+            <summary class="text-sm text-muted" style="cursor:pointer">View style notes</summary>
+            <dl class="mt-2 text-sm" style="color: var(--text-secondary);">
+                {% if persona.style_notes.tone %}
+                <dt class="font-medium mt-2">Tone</dt>
+                <dd>{{ persona.style_notes.tone }}</dd>
+                {% endif %}
+                {% if persona.style_notes.rhythm %}
+                <dt class="font-medium mt-2">Rhythm</dt>
+                <dd>{{ persona.style_notes.rhythm }}</dd>
+                {% endif %}
+                {% if persona.style_notes.vocab_tells %}
+                <dt class="font-medium mt-2">Vocab tells</dt>
+                <dd>{{ persona.style_notes.vocab_tells|join(", ") }}</dd>
+                {% endif %}
+                {% if persona.style_notes.frameworks %}
+                <dt class="font-medium mt-2">Frameworks</dt>
+                <dd>{{ persona.style_notes.frameworks|join("; ") }}</dd>
+                {% endif %}
+                {% if persona.style_notes.topics %}
+                <dt class="font-medium mt-2">Topics</dt>
+                <dd>{{ persona.style_notes.topics|join(", ") }}</dd>
+                {% endif %}
+            </dl>
+        </details>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function triggerPersona(channelId, button) {
+    if (!button) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = 'Queuing…';
+    try {
+        const resp = await fetch('/api/channels/' + channelId + '/generate-persona', {method: 'POST'});
+        if (resp.ok) {
+            button.innerHTML = 'Queued — persona will refresh shortly';
+            setTimeout(() => location.reload(), 4000);
+        } else {
+            const body = await resp.json().catch(() => ({detail: 'Failed to enqueue.'}));
+            button.innerHTML = original;
+            button.disabled = false;
+            alert(body.detail || 'Failed to enqueue persona generation.');
+        }
+    } catch (e) {
+        button.innerHTML = original;
+        button.disabled = false;
+        alert('Network error: ' + e);
+    }
+}
+</script>
+
 <!-- Meta Stats -->
 <div class="meta-grid">
     <div class="meta-card">

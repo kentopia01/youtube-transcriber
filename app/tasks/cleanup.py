@@ -44,6 +44,7 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
             db,
             payload,
             expected_stage=PIPELINE_STAGE_CLEANUP,
+            require_transcription=True,
         )
         vid = video.id
 

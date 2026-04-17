@@ -248,6 +248,13 @@ async def channel_list(request: Request, db: AsyncSession = Depends(get_db)):
 async def channel_detail(
     request: Request, channel_id: uuid.UUID, db: AsyncSession = Depends(get_db)
 ):
+    from app.config import settings as _s
+    from app.services.persona import (
+        SCOPE_CHANNEL,
+        count_completed_videos,
+        get_persona,
+    )
+
     result = await db.execute(select(Channel).where(Channel.id == channel_id))
     channel = result.scalar_one_or_none()
     if not channel:
@@ -263,10 +270,53 @@ async def channel_detail(
     )
     videos = videos_result.scalars().all()
 
+    persona = await get_persona(db, SCOPE_CHANNEL, str(channel_id))
+    completed_videos = await count_completed_videos(db, channel_id)
+
     return request.app.state.templates.TemplateResponse(
         request,
         "channel_detail.html",
-        {"request": request, "channel": channel, "videos": videos},
+        {
+            "request": request,
+            "channel": channel,
+            "videos": videos,
+            "persona": persona,
+            "completed_videos": completed_videos,
+            "persona_min_videos": _s.persona_min_videos,
+        },
+    )
+
+
+@router.get("/channels/{channel_id}/chat")
+async def channel_chat_page(
+    request: Request, channel_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    from app.services.persona import SCOPE_CHANNEL, get_persona
+
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+    if not channel:
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "error.html", {"request": request, "message": "Channel not found"}, status_code=404
+        )
+
+    persona = await get_persona(db, SCOPE_CHANNEL, str(channel_id))
+    if persona is None:
+        return request.app.state.templates.TemplateResponse(
+            request,
+            "error.html",
+            {
+                "request": request,
+                "message": f"{channel.name} does not have a persona yet. Wait for ingestion to complete or trigger generation from the channel page.",
+            },
+            status_code=409,
+        )
+
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "channel_chat.html",
+        {"request": request, "channel": channel, "persona": persona},
     )
 
 

@@ -60,7 +60,7 @@ def test_cleanup_task_uses_service_contract_and_updates_models(monkeypatch):
     monkeypatch.setattr(
         cleanup,
         "get_pipeline_job_context",
-        lambda _db, _payload, expected_stage: (payload, video, job),
+        lambda _db, _payload, expected_stage, **_kwargs: (payload, video, job),
     )
     monkeypatch.setattr(cleanup, "update_pipeline_job", lambda *_args, **_kwargs: None)
 
@@ -122,7 +122,7 @@ def test_cleanup_task_records_failure_and_raises(monkeypatch):
     monkeypatch.setattr(
         cleanup,
         "get_pipeline_job_context",
-        lambda _db, _payload, expected_stage: (payload, video, job),
+        lambda _db, _payload, expected_stage, **_kwargs: (payload, video, job),
     )
     monkeypatch.setattr(cleanup, "update_pipeline_job", lambda *_args, **_kwargs: None)
 

@@ -73,6 +73,20 @@ async def submit_channel(
 
     await db.commit()
 
+    try:
+        from app.services.telegram_notify import notify as _tg_notify
+
+        _tg_notify(
+            "channel.queued",
+            {
+                "channel_id": str(channel.id),
+                "channel_name": channel.name,
+                "video_count": len(result.get("videos", [])),
+            },
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
         "channel_id": str(channel.id),
         "channel_name": channel.name,
@@ -177,6 +191,90 @@ async def process_selected_videos(
         "total_batches": total_batches,
         "jobs_created": len(created_jobs),
         "dispatched_job_ids": dispatched_job_ids,
+    }
+
+
+@router.get("/{channel_id}/persona")
+async def get_channel_persona(
+    channel_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the channel's persona (if generated) and readiness status."""
+    from app.services.persona import (
+        SCOPE_CHANNEL,
+        channel_needs_persona,
+        count_completed_videos,
+        get_persona,
+    )
+
+    channel = await db.get(Channel, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    completed = await count_completed_videos(db, channel_id)
+    persona = await get_persona(db, SCOPE_CHANNEL, str(channel_id))
+    should_generate, reason = await channel_needs_persona(db, channel_id)
+
+    from app.config import settings as _s
+
+    return {
+        "channel_id": str(channel.id),
+        "channel_name": channel.name,
+        "completed_videos": completed,
+        "min_videos": _s.persona_min_videos,
+        "persona": (
+            None
+            if persona is None
+            else {
+                "id": str(persona.id),
+                "display_name": persona.display_name,
+                "persona_prompt": persona.persona_prompt,
+                "style_notes": persona.style_notes,
+                "confidence": persona.confidence,
+                "source_chunk_count": persona.source_chunk_count,
+                "videos_at_generation": persona.videos_at_generation,
+                "generated_at": persona.generated_at.isoformat() if persona.generated_at else None,
+                "generated_by_model": persona.generated_by_model,
+                "is_stale": should_generate and persona is not None,
+            }
+        ),
+        "ready": persona is not None,
+        "should_generate": should_generate,
+        "reason": reason,
+    }
+
+
+@router.post("/{channel_id}/generate-persona")
+async def trigger_channel_persona(
+    channel_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger (or re-trigger) channel persona generation.
+
+    Enqueues the Celery task on the `post` queue. Non-blocking — check status
+    via ``GET /api/channels/{id}/persona``.
+    """
+    from app.services.persona import count_completed_videos
+    from app.tasks.generate_persona import enqueue_channel_persona
+
+    channel = await db.get(Channel, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    from app.config import settings as _s
+
+    completed = await count_completed_videos(db, channel_id)
+    if completed < _s.persona_min_videos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Channel has {completed}/{_s.persona_min_videos} completed videos; persona generation needs at least {_s.persona_min_videos}.",
+        )
+
+    enqueue_channel_persona(str(channel_id), forced=True)
+    return {
+        "channel_id": str(channel.id),
+        "status": "enqueued",
+        "completed_videos": completed,
     }
 
 

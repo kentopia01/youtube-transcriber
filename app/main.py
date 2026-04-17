@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
@@ -7,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.routers import channels, chat, jobs, pages, search, transcriptions, videos
+from app.routers import agents, channels, chat, jobs, pages, search, transcriptions, videos
 from app.routers import llm_usage
 
 structlog.configure(
@@ -18,6 +19,28 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
+
+
+def _warm_embedding_model() -> None:
+    """Preload the shared sentence-transformers model so the first search
+    doesn't pay a multi-second cold-start. Best-effort: if the optional
+    dependency is missing we log and continue.
+    """
+    try:
+        from app.services.embedding import _get_embedding_model
+
+        _get_embedding_model(settings.model_cache_dir)
+        logger.info("embedding_model_warm", model=settings.embedding_model)
+    except ImportError as exc:
+        logger.warning("embedding_model_warm_skipped", reason=str(exc))
+    except Exception as exc:  # noqa: BLE001 — best-effort warm; never block boot
+        logger.warning("embedding_model_warm_failed", error=str(exc))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _warm_embedding_model()
+    yield
 
 # Paths that skip API key auth
 _AUTH_SKIP_PREFIXES = ("/health", "/static/", "/")
@@ -34,7 +57,7 @@ def _auth_required(path: str) -> bool:
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="YouTube Transcriber", version="0.1.0")
+    application = FastAPI(title="YouTube Transcriber", version="0.1.0", lifespan=lifespan)
 
     # API key middleware
     @application.middleware("http")
@@ -71,6 +94,7 @@ def create_app() -> FastAPI:
     application.include_router(jobs.router)
     application.include_router(transcriptions.router)
     application.include_router(chat.router)
+    application.include_router(agents.router)
     application.include_router(llm_usage.router)
 
     return application

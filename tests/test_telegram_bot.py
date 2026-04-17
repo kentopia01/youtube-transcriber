@@ -551,8 +551,9 @@ class TestCreateBotApplication:
         with patch("app.telegram_bot.settings") as mock_settings:
             mock_settings.telegram_bot_token = "fake-token:12345"
             app = create_bot_application()
-            # Should have 6 handlers (5 commands + 1 message handler)
-            assert len(app.handlers[0]) == 10  # 9 commands + 1 message handler (4 new RAG commands added)
+            # Expected: 19 commands + 1 callback_query + 1 message handler.
+            # See _build_command_manifest() in app/telegram_bot.py.
+            assert len(app.handlers[0]) == 21
 
 
 class TestBotLock:

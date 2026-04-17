@@ -1,5 +1,6 @@
 """Shared helpers for pipeline task files."""
 
+import os
 import uuid
 from typing import Any
 
@@ -7,15 +8,57 @@ from celery.exceptions import Ignore
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.models.transcription import Transcription
 from app.models.video import Video
 from app.services.pipeline_observability import get_task_worker_identity
-from app.services.pipeline_routing import PIPELINE_STAGE_RANK
 from app.services.pipeline_state import (
     PIPELINE_ATTEMPT_ACTIVE_STATUSES,
+    PIPELINE_STAGE_CLEANUP,
+    PIPELINE_STAGE_DIARIZE,
+    PIPELINE_STAGE_DOWNLOAD,
+    PIPELINE_STAGE_EMBED,
+    PIPELINE_STAGE_QUEUED,
+    PIPELINE_STAGE_SUMMARIZE,
+    PIPELINE_STAGE_TRANSCRIBE,
     set_pipeline_job_state,
 )
 
 _SENTINEL = object()
+
+ALLOWED_STAGE_OWNERSHIP: dict[str, set[str]] = {
+    PIPELINE_STAGE_DOWNLOAD: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_DOWNLOAD,
+    },
+    PIPELINE_STAGE_TRANSCRIBE: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_DOWNLOAD,
+        PIPELINE_STAGE_TRANSCRIBE,
+    },
+    PIPELINE_STAGE_DIARIZE: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_TRANSCRIBE,
+        PIPELINE_STAGE_DIARIZE,
+    },
+    PIPELINE_STAGE_CLEANUP: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_TRANSCRIBE,
+        PIPELINE_STAGE_DIARIZE,
+        PIPELINE_STAGE_CLEANUP,
+    },
+    PIPELINE_STAGE_SUMMARIZE: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_TRANSCRIBE,
+        PIPELINE_STAGE_DIARIZE,
+        PIPELINE_STAGE_CLEANUP,
+        PIPELINE_STAGE_SUMMARIZE,
+    },
+    PIPELINE_STAGE_EMBED: {
+        PIPELINE_STAGE_QUEUED,
+        PIPELINE_STAGE_SUMMARIZE,
+        PIPELINE_STAGE_EMBED,
+    },
+}
 
 
 def build_pipeline_task_payload(video_id: uuid.UUID | str, job_id: uuid.UUID | str) -> dict[str, str]:
@@ -43,6 +86,8 @@ def get_pipeline_job_context(
     payload: dict[str, str] | str,
     *,
     expected_stage: str,
+    require_audio: bool = False,
+    require_transcription: bool = False,
 ) -> tuple[dict[str, str], Video, Job]:
     video_id, job_id = parse_pipeline_task_payload(payload)
     normalized_payload = build_pipeline_task_payload(video_id, job_id or "") if job_id else {"video_id": str(video_id)}
@@ -75,12 +120,28 @@ def get_pipeline_job_context(
     if job.status not in PIPELINE_ATTEMPT_ACTIVE_STATUSES:
         raise Ignore()
 
-    if getattr(job, "hidden_reason", None) == "superseded":
+    if getattr(job, "hidden_reason", None) == "superseded" or getattr(job, "superseded_by_job_id", None):
         raise Ignore()
 
-    current_stage = getattr(job, "current_stage", None) or "queued"
-    if PIPELINE_STAGE_RANK.get(current_stage, 0) > PIPELINE_STAGE_RANK.get(expected_stage, 0):
+    current_stage = getattr(job, "current_stage", None) or PIPELINE_STAGE_QUEUED
+    allowed_stages = ALLOWED_STAGE_OWNERSHIP.get(expected_stage)
+    if allowed_stages is None or current_stage not in allowed_stages:
         raise Ignore()
+
+    if require_audio:
+        audio_path = (video.audio_file_path or "").strip()
+        if not audio_path or not os.path.exists(audio_path):
+            raise Ignore()
+
+    if require_transcription:
+        has_transcription = (
+            db.query(Transcription.id)
+            .filter(Transcription.video_id == video_id)
+            .first()
+            is not None
+        )
+        if not has_transcription:
+            raise Ignore()
 
     normalized_payload["job_id"] = str(job.id)
     return normalized_payload, video, job

@@ -95,9 +95,20 @@ def check_budget() -> None:
     if settings.daily_llm_budget_usd <= 0:
         return  # Budget enforcement disabled
 
+    cap = settings.daily_llm_budget_usd
     today_cost = get_today_cost()
-    if today_cost >= settings.daily_llm_budget_usd:
+
+    try:
+        from app.services.telegram_notify import notify as _tg_notify
+
+        if today_cost >= cap:
+            _tg_notify("cost.threshold_100", {"spent": today_cost, "cap": cap})
+        elif today_cost >= cap * 0.8:
+            _tg_notify("cost.threshold_80", {"spent": today_cost, "cap": cap})
+    except Exception:  # noqa: BLE001
+        pass
+
+    if today_cost >= cap:
         raise BudgetExceededError(
-            f"Daily LLM budget of ${settings.daily_llm_budget_usd:.2f} exceeded "
-            f"(today's spend: ${today_cost:.4f})"
+            f"Daily LLM budget of ${cap:.2f} exceeded (today's spend: ${today_cost:.4f})"
         )

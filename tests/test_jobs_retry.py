@@ -8,8 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from app.models.job import Job
 from app.models.video import Video
 from app.routers import jobs as jobs_router
-from app.services.pipeline_observability import ATTEMPT_REASON_USER_RETRY
-from app.services.pipeline_recovery import MANUAL_REVIEW_RECOVERY_STATUS
+from app.services.pipeline_observability import ATTEMPT_REASON_STALE_RECOVERY, ATTEMPT_REASON_USER_RETRY
+from app.services.pipeline_recovery import MANUAL_REVIEW_RECOVERY_STATUS, STALE_REAP_RECOVERY_STATUS
 
 
 class _FakeScalars:
@@ -129,6 +129,40 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
         assert superseded.hidden_reason == "superseded"
         assert superseded.hidden_at is not None
         assert superseded.superseded_by_job_id == retried_job.id
+
+
+@pytest.mark.asyncio
+async def test_retry_job_from_stale_reaped_attempt_sets_stale_recovery_reason(monkeypatch):
+    job = Job(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        channel_id=uuid.uuid4(),
+        job_type="pipeline",
+        status="failed",
+        attempt_number=4,
+        recovery_status=STALE_REAP_RECOVERY_STATUS,
+    )
+    video = Video(
+        id=job.video_id,
+        youtube_video_id="dQw4w9WgXcQ",
+        title="Test",
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        status="failed",
+        error_message="failed",
+    )
+    db = _FakeDB([job, video, None, job, None, None, None, [job]])
+
+    monkeypatch.setattr(
+        jobs_router,
+        "run_pipeline_from",
+        lambda video_id, start_from, job_id=None: "celery-stale",
+    )
+
+    response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
+
+    assert response["status"] == "queued"
+    retried_job = db.added[0]
+    assert retried_job.attempt_creation_reason == ATTEMPT_REASON_STALE_RECOVERY
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ def generate_embeddings_task(self, payload: dict[str, str] | str) -> dict[str, s
             db,
             payload,
             expected_stage=PIPELINE_STAGE_EMBED,
+            require_transcription=True,
         )
         vid = video.id
 
@@ -107,6 +108,35 @@ def generate_embeddings_task(self, payload: dict[str, str] | str) -> dict[str, s
                 update_batch_progress_and_maybe_advance(db, job.batch_id)
 
             db.commit()
+
+            if video.channel_id:
+                from app.tasks.generate_persona import enqueue_channel_persona
+
+                enqueue_channel_persona(str(video.channel_id))
+
+            try:
+                from app.services.telegram_notify import notify as _tg_notify
+
+                speakers_count = None
+                if transcription and getattr(transcription, "speakers", None):
+                    try:
+                        speakers_count = len(transcription.speakers)
+                    except TypeError:
+                        speakers_count = None
+
+                _tg_notify(
+                    "video.completed",
+                    {
+                        "video_id": str(video.id),
+                        "channel_id": str(video.channel_id) if video.channel_id else None,
+                        "title": video.title,
+                        "duration": video.duration_seconds,
+                        "speakers": speakers_count,
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
             return payload
 
         except Exception as exc:

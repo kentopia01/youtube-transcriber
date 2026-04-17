@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.services import transcription as transcription_module
 from app.services.transcription import (
     FasterWhisperEngine,
     MLXWhisperEngine,
@@ -11,6 +12,13 @@ from app.services.transcription import (
     get_engine,
     transcribe_audio,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_engine_cache():
+    transcription_module._reset_caches()
+    yield
+    transcription_module._reset_caches()
 
 
 class TestTranscriptResult:
@@ -40,6 +48,26 @@ class TestGetEngine:
     def test_unknown_engine_raises(self):
         with pytest.raises(ValueError, match="Unknown transcription engine"):
             get_engine("nonexistent")
+
+    def test_faster_whisper_engine_cached_on_same_args(self):
+        a = get_engine("faster-whisper", model_size="base", device="cpu", compute_type="int8")
+        b = get_engine("faster-whisper", model_size="base", device="cpu", compute_type="int8")
+        assert a is b
+
+    def test_faster_whisper_engine_new_instance_on_diff_args(self):
+        a = get_engine("faster-whisper", model_size="base", device="cpu", compute_type="int8")
+        b = get_engine("faster-whisper", model_size="small", device="cpu", compute_type="int8")
+        assert a is not b
+
+    def test_mlx_engine_cached_on_same_args(self):
+        a = get_engine("mlx", whisper_model="mlx-community/whisper-large-v3-turbo")
+        b = get_engine("mlx", whisper_model="mlx-community/whisper-large-v3-turbo")
+        assert a is b
+
+    def test_mlx_engine_new_instance_on_diff_model(self):
+        a = get_engine("mlx", whisper_model="mlx-community/whisper-large-v3-turbo")
+        b = get_engine("mlx", whisper_model="mlx-community/whisper-tiny")
+        assert a is not b
 
 
 class TestMLXWhisperEngineInit:

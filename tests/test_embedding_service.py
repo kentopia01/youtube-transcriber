@@ -4,12 +4,20 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from app.services import embedding as embedding_service
 from app.services.embedding import (
     _build_speaker_chunks,
     _count_tokens,
     _split_at_sentence_boundaries,
     chunk_and_embed,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_embedding_cache():
+    embedding_service._reset_caches()
+    yield
+    embedding_service._reset_caches()
 
 
 class TestSentenceBoundarySplitting:
@@ -302,3 +310,44 @@ class TestChunkAndEmbed:
         assert results[0]["speaker"] == "SPEAKER_00"
         assert results[1]["speaker"] == "SPEAKER_01"
         assert results[2]["speaker"] == "SPEAKER_02"
+
+
+class TestEmbeddingModelLoader:
+    """Verify device selection and caching of the sentence-transformers model."""
+
+    def test_forwards_device_kwarg(self, monkeypatch):
+        captured = {}
+
+        class FakeST:
+            def __init__(self, model_name, **kwargs):
+                captured["model_name"] = model_name
+                captured["kwargs"] = kwargs
+
+        fake_module = MagicMock()
+        fake_module.SentenceTransformer = FakeST
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embedding_service, "get_torch_device", lambda: "mps")
+
+        embedding_service._get_embedding_model("/tmp/models")
+
+        assert captured["kwargs"]["device"] == "mps"
+        assert captured["kwargs"]["cache_folder"] == "/tmp/models"
+        assert captured["kwargs"]["trust_remote_code"] is True
+
+    def test_model_cached_after_first_load(self, monkeypatch):
+        load_counter = {"n": 0}
+
+        class FakeST:
+            def __init__(self, *args, **kwargs):
+                load_counter["n"] += 1
+
+        fake_module = MagicMock()
+        fake_module.SentenceTransformer = FakeST
+        monkeypatch.setitem(__import__("sys").modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embedding_service, "get_torch_device", lambda: "cpu")
+
+        embedding_service._get_embedding_model("/tmp/models")
+        embedding_service._get_embedding_model("/tmp/models")
+        embedding_service._get_embedding_model("/tmp/models")
+
+        assert load_counter["n"] == 1

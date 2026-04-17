@@ -36,6 +36,16 @@ def test_is_pipeline_job_stale_respects_stage_specific_timeout():
     assert is_pipeline_job_stale(job, now=now) is True
 
 
+def test_is_pipeline_job_stale_prefers_recent_activity_over_old_stage_timestamp():
+    now = datetime.now(UTC)
+    job = Job(job_type="pipeline", status="running")
+    job.current_stage = "transcribe"
+    job.stage_updated_at = now - timedelta(minutes=get_stage_stale_timeout_minutes("transcribe") + 120)
+    job.last_activity_at = now - timedelta(minutes=5)
+
+    assert is_pipeline_job_stale(job, now=now) is False
+
+
 def test_get_retry_block_reason_only_blocks_manual_review_jobs():
     job = Job(job_type="pipeline", status="failed")
     assert get_retry_block_reason(job) is None

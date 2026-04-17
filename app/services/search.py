@@ -8,27 +8,20 @@ from app.config import settings
 
 logger = structlog.get_logger()
 
-_search_model_cache: dict = {}
-
-
 def encode_query(query: str, model_cache_dir: str | None = None) -> list[float]:
     """Encode a search query into an embedding vector.
 
     Uses nomic-embed-text-v1.5 with search_query: prefix for asymmetric retrieval.
+    Shares the same cached model as the ingestion path via
+    :func:`app.services.embedding._get_embedding_model`, so the model is loaded
+    once per worker process regardless of which entrypoint runs first.
     """
     if model_cache_dir is None:
         model_cache_dir = settings.model_cache_dir
 
-    if "model" not in _search_model_cache:
-        from sentence_transformers import SentenceTransformer
+    from app.services.embedding import _get_embedding_model
 
-        _search_model_cache["model"] = SentenceTransformer(
-            settings.embedding_model,
-            cache_folder=model_cache_dir,
-            trust_remote_code=True,
-        )
-
-    model = _search_model_cache["model"]
+    model = _get_embedding_model(model_cache_dir)
     prefixed_query = f"search_query: {query}"
     embedding = model.encode([prefixed_query], normalize_embeddings=True)
     return embedding[0].tolist()
