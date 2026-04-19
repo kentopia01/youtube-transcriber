@@ -241,4 +241,6 @@ class TestSystemPromptComposition:
         out = compose_persona_system_prompt(persona)
         assert out.startswith("You are Fake Voice.")
         assert "cite" in out.lower()
-        assert "[Summary]" in out
+        # Perplexity-style prompt lives here; verify format markers present.
+        assert "[1]" in out
+        assert "Related:" in out

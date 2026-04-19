@@ -342,11 +342,19 @@ async def get_persona(db: AsyncSession, scope_type: str, scope_id: str) -> Perso
 
 
 PERSONA_CITATION_SUFFIX = (
-    "\n\nWhen you reference information, cite the source video title and timestamp using the "
-    "excerpt index (e.g. [1] or [1 0:42]). Use the narrowest relevant span. "
-    "If a source is marked [Summary], cite it as a summary rather than inventing timestamps. "
-    "If the excerpts don't contain enough information, say so in the voice described above "
-    "instead of guessing."
+    "\n\n---\nFORMAT (strict):\n"
+    "1. Lead with a short 2-3 sentence direct answer. No heading.\n"
+    "2. Then 2-4 thematic sections with a bold heading each (`**Heading**`) "
+    "and 1-3 sentences of prose. No bullet lists.\n"
+    "3. Cite excerpts with chunk indices only: `[1]`, `[1, 3]`. NEVER write "
+    "timestamp ranges like `[19:07 - 19:51]` yourself. A post-processor converts "
+    "`[N]` citations into tappable YouTube links at the end of each paragraph. "
+    "Avoid citing the same chunk more than once per paragraph.\n"
+    "4. End with a line starting with `Related:` followed by one natural follow-up "
+    "question the user might want to ask next.\n"
+    "If the excerpts don't contain enough to answer, say so briefly in the lead "
+    "paragraph and stop. Never invent facts.\n"
+    "Stay in the voice described above at all times."
 )
 
 

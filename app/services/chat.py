@@ -33,11 +33,23 @@ def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
     return client.messages.create(**kwargs)
 
 
-SYSTEM_PROMPT = """You are a helpful assistant that answers questions based on video transcript content. \
-Ground your answers in the provided context. When referencing specific information, cite the source video and timestamp. \
-Use the narrowest relevant citation span available, not broad whole-video ranges unless the evidence truly spans the whole video. \
-If a source is marked [Summary], cite it as a summary rather than inventing timestamps. \
-If the context doesn't contain enough information to answer, say so."""
+SYSTEM_PROMPT = """You answer questions using the provided video transcript excerpts.
+
+**Format your response exactly like this:**
+
+1. **Lead with the answer.** Open with one short paragraph (2-3 sentences) that directly answers the question. No heading above this paragraph.
+
+2. **Then 2-4 thematic sections.** Each section has a short bold heading on its own line (e.g., ``**Why it matters**``). Under each heading write 1-3 sentences of grounded prose — NOT bullet lists.
+
+3. **Cite sources with chunk indices only.** Use ``[1]``, ``[2]``, ``[1, 3]``. Do NOT write timestamp ranges like ``[19:07 - 19:51]`` manually — just cite the chunk number. A post-processor converts your ``[N]`` citations into tappable YouTube timestamp links at the end of each paragraph, so don't repeat the same citation multiple times per paragraph.
+
+4. **End with ``Related:``** followed by one natural follow-up question the user might want to ask next.
+
+**Rules:**
+- If the excerpts lack evidence, say so briefly in the lead paragraph and stop. Don't invent facts.
+- Never dump raw chunk text verbatim — summarize and cite.
+- Never use numbered or bulleted lists. Prose only.
+- If a source is marked [Summary], cite its chunk number as normal — the post-processor handles it."""
 
 
 def _is_summary_chunk(chunk: dict) -> bool:
@@ -177,6 +189,7 @@ async def chat_with_context(
     sources = [
         {
             "video_id": str(chunk["video_id"]),
+            "youtube_video_id": chunk.get("youtube_video_id"),
             "video_title": chunk["video_title"],
             "chunk_text": chunk["chunk_text"],
             "start_time": chunk.get("start_time"),
@@ -226,8 +239,12 @@ async def chat_with_context(
             "completion_tokens": 0,
         }
 
+    from app.services.response_formatter import format_response
+
+    formatted = format_response(llm_result["content"], sources)
+
     return {
-        "content": llm_result["content"],
+        "content": formatted,
         "sources": sources,
         "model": llm_result["model"],
         "prompt_tokens": llm_result["prompt_tokens"],

@@ -1422,8 +1422,10 @@ class TestQAClawRound5:
         """System prompt should ground the assistant in video transcript content."""
         from app.services.chat import SYSTEM_PROMPT
 
-        assert "video transcript" in SYSTEM_PROMPT.lower()
-        assert "context" in SYSTEM_PROMPT.lower()
+        # Accept either phrasing — the Perplexity-style prompt says "transcript excerpts".
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert "transcript" in prompt_lower
+        assert "excerpt" in prompt_lower or "context" in prompt_lower
 
     def test_system_prompt_instructs_citation(self):
         """System prompt should instruct the model to cite sources."""
@@ -1769,7 +1771,9 @@ class TestQAClawRound7:
             "similarity",
             "source_type",
         }
-        assert set(source.keys()) == required_keys
+        # ``youtube_video_id`` is also threaded through now; assert required
+        # keys are a subset rather than exact match.
+        assert required_keys.issubset(set(source.keys()))
         assert source["similarity"] == 0.88
         assert source["start_time"] == 5.0
         assert source["end_time"] == 15.0
