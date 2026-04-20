@@ -412,10 +412,11 @@ async def count_completed_videos(db: AsyncSession, channel_id: uuid.UUID) -> int
 async def channel_needs_persona(db: AsyncSession, channel_id: uuid.UUID) -> tuple[bool, str]:
     """Return (should_generate, reason).
 
-    Generates when:
-      - No persona yet and channel has >= persona_min_videos completed videos.
-      - Or persona exists and (completed_videos - videos_at_generation) >=
-        persona.refresh_after_videos.
+    Scope narrowed to *first-time generation only*. Refreshes of existing
+    personas are handled by the daily ``refresh_stale_personas`` sweep, which
+    queues a rebuild whenever new completed videos have been added since the
+    last generation. Here we only answer: "should this channel get its
+    first-ever persona now?"
     """
     completed = await count_completed_videos(db, channel_id)
     min_videos = settings.persona_min_videos
@@ -426,8 +427,5 @@ async def channel_needs_persona(db: AsyncSession, channel_id: uuid.UUID) -> tupl
     if persona is None:
         return True, f"no persona yet, channel has {completed} videos"
 
-    since = completed - persona.videos_at_generation
-    if since >= persona.refresh_after_videos:
-        return True, f"{since} new videos since last persona (threshold {persona.refresh_after_videos})"
-
-    return False, f"persona current ({since}/{persona.refresh_after_videos} new videos)"
+    # Already has a persona — refresh is the sweep's job, not the embed-hook's.
+    return False, "persona exists; refreshes handled by daily sweep"

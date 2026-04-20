@@ -96,6 +96,9 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
 
     video.status = "pending"
     video.error_message = None
+    # Retrying a dismissed video = user actually cares about it again.
+    video.dismissed_at = None
+    video.dismissed_reason = None
 
     # One-active-attempt guard.
     existing_attempt = await get_active_pipeline_attempt(db, video.id)

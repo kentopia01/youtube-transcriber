@@ -31,6 +31,11 @@ class Video(Base):
     # Drives the compression sweep (stale videos get their WAV removed).
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     compressed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Dismissal: user-marked ignore. Queue/failed listings filter these out.
+    # ``dismissed_at IS NULL`` means "live". Retrying a dismissed video
+    # auto-un-dismisses it (see app.routers.jobs retry handler).
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

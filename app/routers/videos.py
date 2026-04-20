@@ -198,6 +198,47 @@ async def get_video(video_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     return video
 
 
+@router.post("/{video_id}/dismiss")
+async def dismiss_video(
+    video_id: uuid.UUID,
+    data: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Hide this video from queue/failed ops views. Reversible via undismiss
+    or via a retry (which auto-un-dismisses)."""
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalar_one_or_none()
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    from datetime import UTC, datetime as _dt
+
+    video.dismissed_at = _dt.now(UTC)
+    if data and data.get("reason"):
+        video.dismissed_reason = str(data["reason"])[:500]
+    await db.commit()
+    return {
+        "video_id": str(video.id),
+        "dismissed_at": video.dismissed_at.isoformat(),
+        "dismissed_reason": video.dismissed_reason,
+    }
+
+
+@router.post("/{video_id}/undismiss")
+async def undismiss_video(
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear the dismiss marker so the video reappears in ops views."""
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalar_one_or_none()
+    if video is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+    video.dismissed_at = None
+    video.dismissed_reason = None
+    await db.commit()
+    return {"video_id": str(video.id), "dismissed_at": None}
+
+
 @router.patch("/{video_id}/chat-toggle")
 async def toggle_video_chat(
     video_id: uuid.UUID,

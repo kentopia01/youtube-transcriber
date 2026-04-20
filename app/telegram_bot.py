@@ -754,7 +754,11 @@ async def queue_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await db.execute(
                 select(Job, Video)
                 .join(Video, Video.id == Job.video_id, isouter=True)
-                .where(Job.status == "failed", Job.manual_review_required.is_(True))
+                .where(
+                    Job.status == "failed",
+                    Job.manual_review_required.is_(True),
+                    Video.dismissed_at.is_(None),
+                )
                 .order_by(Job.created_at.desc())
                 .limit(5)
             )
@@ -1065,6 +1069,52 @@ NOTIFY_EVENTS_ALL = [
 ]
 
 
+async def dismiss_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/dismiss <keyword> — mass-hide failed videos whose title contains keyword."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    args = context.args or []
+    if not args:
+        await update.message.reply_text("Usage: /dismiss <keyword-from-video-title>")
+        return
+    keyword = " ".join(args).strip()
+
+    db = await _get_db()
+    try:
+        from datetime import UTC, datetime as _dt
+
+        result = await db.execute(
+            select(Video).where(
+                Video.status == "failed",
+                Video.dismissed_at.is_(None),
+                sa_func.lower(Video.title).contains(keyword.lower()),
+            )
+        )
+        matched = result.scalars().all()
+        if not matched:
+            await update.message.reply_text(
+                f"No failed, non-dismissed videos match '{keyword}'."
+            )
+            return
+
+        now = _dt.now(UTC)
+        reason = f"dismissed via Telegram: matched '{keyword}'"
+        for v in matched:
+            v.dismissed_at = now
+            v.dismissed_reason = reason
+        await db.commit()
+
+        lines = [f"🔕 Dismissed {len(matched)} failed video(s) matching '{keyword}':"]
+        for v in matched[:10]:
+            lines.append(f"  · {v.title[:70]}")
+        if len(matched) > 10:
+            lines.append(f"  … and {len(matched) - 10} more")
+        await update.message.reply_text("\n".join(lines))
+    finally:
+        await db.close()
+
+
 async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Subscribe to a channel for nightly auto-ingest."""
     if not _is_user_allowed(update.effective_user.id):
@@ -1276,6 +1326,7 @@ def _build_command_manifest() -> list[BotCmd]:
         _cmd("disable", "Library", "Disable RAG for videos", disable_command, args="[keyword]"),
         _cmd("toggle", "Library", "Flip RAG state", toggle_command, args="[keyword]"),
 
+        _cmd("dismiss", "Content", "Hide failed videos matching a keyword", dismiss_command, args="<keyword>"),
         _cmd("subscribe", "Content", "Subscribe to a channel for nightly auto-ingest", subscribe_command, args="<channel_url>"),
         _cmd("unsubscribe", "Content", "Stop auto-ingesting from a channel", unsubscribe_command, args="<channel>"),
         _cmd("subscriptions", "Content", "List active subscriptions", subscriptions_command),
