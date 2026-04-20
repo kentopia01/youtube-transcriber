@@ -87,7 +87,11 @@ class Settings(BaseSettings):
 
     # Phase 3 recovery guardrails
     pipeline_manual_review_after_failures: int = 2
-    pipeline_stale_timeout_queued_minutes: int = 30
+    # Queued-stall tolerance: how long a job can wait in the queue before
+    # the reaper kills it. Default raised from 30 → 240 minutes because
+    # autonomous backfills routinely queue 20+ videos and a serial audio
+    # pipeline chews them at ~6/hr.
+    pipeline_stale_timeout_queued_minutes: int = 240
     pipeline_stale_timeout_download_minutes: int = 90
     pipeline_stale_timeout_transcribe_minutes: int = 360
     pipeline_stale_timeout_diarize_minutes: int = 360

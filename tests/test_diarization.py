@@ -264,6 +264,13 @@ class TestDiarizeService:
         _patch_pyannote(monkeypatch, FakePipeline)
         monkeypatch.setattr(diarization_service, "get_torch_device", lambda: "mps")
 
+        # Stub torch for environments (like CI) that don't install it.
+        # We only need torch.device(...) to be callable and return something
+        # that str() can render.
+        fake_torch = types.ModuleType("torch")
+        fake_torch.device = lambda name: name
+        monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
         diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
 
         assert to_calls == ["mps"]
@@ -282,6 +289,10 @@ class TestDiarizeService:
 
         _patch_pyannote(monkeypatch, FakePipeline)
         monkeypatch.setattr(diarization_service, "get_torch_device", lambda: "mps")
+
+        fake_torch = types.ModuleType("torch")
+        fake_torch.device = lambda name: name
+        monkeypatch.setitem(sys.modules, "torch", fake_torch)
 
         # Should not raise — .to() failure is caught and logged
         segments = diarization_service.diarize("/tmp/a.wav", hf_token="hf_test")
