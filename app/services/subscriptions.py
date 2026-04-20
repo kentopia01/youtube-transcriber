@@ -52,19 +52,85 @@ class SubscriptionError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-async def fetch_channel_feed(youtube_channel_id: str, *, timeout: float = 15.0) -> list[FeedEntry]:
-    """Return the most recent ~15 entries from a channel's public RSS feed."""
+async def fetch_channel_feed(
+    youtube_channel_id: str,
+    *,
+    timeout: float = 15.0,
+    limit: int = 15,
+) -> list[FeedEntry]:
+    """Return the most recent entries uploaded by a channel.
+
+    Prefers YouTube's public RSS endpoint (fast, free) but transparently falls
+    back to ``yt-dlp``-based channel listing when RSS returns a non-200. This
+    resilience matters because YouTube has, at times, silently 404'd the RSS
+    endpoint for all channels — an outage we observed 2026-04-20.
+    """
     params = {"channel_id": youtube_channel_id}
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.get(RSS_BASE, params=params)
         except httpx.HTTPError as exc:
-            raise SubscriptionError(f"RSS fetch failed: {exc}") from exc
-    if resp.status_code != 200:
-        raise SubscriptionError(
-            f"RSS responded {resp.status_code} for channel {youtube_channel_id}"
-        )
-    return parse_feed(resp.text)
+            logger.info(
+                "rss_fetch_network_error_fallback_yt_dlp",
+                channel_id=youtube_channel_id,
+                error=str(exc),
+            )
+            return await _yt_dlp_channel_videos(youtube_channel_id, limit=limit)
+
+    if resp.status_code == 200:
+        return parse_feed(resp.text)
+
+    logger.info(
+        "rss_fetch_http_error_fallback_yt_dlp",
+        channel_id=youtube_channel_id,
+        status=resp.status_code,
+    )
+    return await _yt_dlp_channel_videos(youtube_channel_id, limit=limit)
+
+
+async def _yt_dlp_channel_videos(
+    youtube_channel_id: str, *, limit: int = 15
+) -> list[FeedEntry]:
+    """Fallback: list the channel's most-recent uploads via yt-dlp.
+
+    yt-dlp returns a flat playlist for a ``/channel/<id>/videos`` URL, with
+    ids + titles + webpage_urls. Runs in a thread pool to avoid blocking
+    the event loop on network I/O.
+    """
+    import asyncio
+    import yt_dlp
+
+    def _extract() -> list[FeedEntry]:
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "playlistend": limit,
+            "skip_download": True,
+        }
+        url = f"https://www.youtube.com/channel/{youtube_channel_id}/videos"
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as exc:  # noqa: BLE001
+            raise SubscriptionError(f"yt-dlp channel lookup failed: {exc}") from exc
+        entries = info.get("entries") or []
+        out: list[FeedEntry] = []
+        for e in entries:
+            vid = e.get("id")
+            if not vid:
+                continue
+            out.append(
+                FeedEntry(
+                    video_id=vid,
+                    title=(e.get("title") or "").strip(),
+                    url=e.get("webpage_url") or f"https://www.youtube.com/watch?v={vid}",
+                    published_at=None,  # yt-dlp flat listing omits this
+                )
+            )
+        return out
+
+    return await asyncio.to_thread(_extract)
 
 
 def parse_feed(xml_text: str) -> list[FeedEntry]:
@@ -199,7 +265,10 @@ def is_due_for_poll(sub: ChannelSubscription, now: datetime | None = None) -> bo
         return True
     now = now or datetime.now(timezone.utc)
     delta_hours = (now - sub.last_polled_at).total_seconds() / 3600
-    return delta_hours >= sub.poll_frequency_hours
+    # 30-minute tolerance absorbs cron-scheduler jitter: a daily cron that
+    # fires at exactly 02:00 can arrive 0-60s before the 24h boundary and
+    # would otherwise silently skip an entire day's poll.
+    return delta_hours >= sub.poll_frequency_hours - 0.5
 
 
 def reset_daily_counter_if_needed(sub: ChannelSubscription) -> None:

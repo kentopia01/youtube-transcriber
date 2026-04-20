@@ -129,6 +129,17 @@ class TestIsDue:
         sub = _sub(last_polled_at=datetime.now(UTC) - timedelta(hours=25))
         assert is_due_for_poll(sub)
 
+    def test_cron_jitter_tolerance_treats_just_under_as_due(self):
+        """Daily cron that fires at the exact same wall-clock time each day
+        can arrive a few seconds short of the 24h boundary. The tolerance
+        must treat that as due so we don't silently skip a day."""
+        sub = _sub(last_polled_at=datetime.now(UTC) - timedelta(hours=23, minutes=45))
+        assert is_due_for_poll(sub)
+
+    def test_well_inside_window_still_not_due(self):
+        sub = _sub(last_polled_at=datetime.now(UTC) - timedelta(hours=22))
+        assert not is_due_for_poll(sub)
+
 
 class TestDailyCounterReset:
     def test_resets_on_new_day(self):
@@ -189,6 +200,69 @@ class _FakeDb:
 
     async def execute(self, stmt):
         return _FakeScalars(self._channels)
+
+
+class TestFetchChannelFeedFallback:
+    """When RSS 404s, fall back to yt-dlp without raising."""
+
+    @pytest.mark.asyncio
+    async def test_rss_non_200_falls_back_to_yt_dlp(self, monkeypatch):
+        fake_entries = [
+            FeedEntry("abc123", "Video A", "https://youtube.com/watch?v=abc123", None),
+            FeedEntry("def456", "Video B", "https://youtube.com/watch?v=def456", None),
+        ]
+
+        async def fake_ytdlp(cid, *, limit=15):
+            return fake_entries
+
+        monkeypatch.setattr(
+            subs_svc, "_yt_dlp_channel_videos", fake_ytdlp
+        )
+
+        # Monkeypatch httpx to return a 404
+        import httpx
+        class _FakeClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, *a, **kw):
+                class _Resp:
+                    status_code = 404
+                    text = "not found"
+                return _Resp()
+
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
+
+        entries = await subs_svc.fetch_channel_feed("UC-fake")
+        assert [e.video_id for e in entries] == ["abc123", "def456"]
+
+    @pytest.mark.asyncio
+    async def test_rss_network_error_falls_back_to_yt_dlp(self, monkeypatch):
+        fake_entries = [FeedEntry("xyz789", "V", "u", None)]
+
+        async def fake_ytdlp(cid, *, limit=15):
+            return fake_entries
+
+        monkeypatch.setattr(subs_svc, "_yt_dlp_channel_videos", fake_ytdlp)
+
+        import httpx
+        class _FailingClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, *a, **kw):
+                raise httpx.ReadTimeout("boom")
+
+        monkeypatch.setattr(httpx, "AsyncClient", _FailingClient)
+
+        entries = await subs_svc.fetch_channel_feed("UC-fake")
+        assert [e.video_id for e in entries] == ["xyz789"]
 
 
 class TestResolveChannel:
