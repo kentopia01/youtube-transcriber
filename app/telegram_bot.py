@@ -657,10 +657,15 @@ async def ask_channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             exemplar_chunks=exemplars,
         )
 
-        header = f"💬 {persona.display_name}\n\n"
-        body = chat_result["content"]
-        for chunk in split_message(header + body):
-            await update.message.reply_text(chunk)
+        from app.services.telegram_markdown import markdown_to_telegram_html
+
+        header = f"<b>💬 {persona.display_name}</b>\n\n"
+        body_html = markdown_to_telegram_html(chat_result["content"])
+        full = header + body_html
+        for chunk in split_message(full):
+            await update.message.reply_text(
+                chunk, parse_mode="HTML", disable_web_page_preview=True
+            )
     finally:
         await db.close()
 
@@ -915,9 +920,20 @@ async def ask_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.anthropic_chat_model),
         )
 
-        header = f"🎬 {match.title[:80]}\n\n"
-        for chunk in split_message(header + result["content"]):
-            await update.message.reply_text(chunk)
+        from app.services.response_formatter import format_response
+        from app.services.telegram_markdown import markdown_to_telegram_html
+
+        # Build source rows with the fields the formatter needs — match.id is
+        # our internal UUID, but ``chunks`` already carry youtube_video_id
+        # and titles from the search service.
+        formatted = format_response(result["content"], chunks)
+
+        header = f"<b>🎬 {match.title[:80]}</b>\n\n"
+        body_html = markdown_to_telegram_html(formatted)
+        for chunk_part in split_message(header + body_html):
+            await update.message.reply_text(
+                chunk_part, parse_mode="HTML", disable_web_page_preview=True
+            )
     finally:
         await db.close()
 
