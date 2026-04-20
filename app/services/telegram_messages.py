@@ -167,6 +167,24 @@ def _render_digest_weekly(payload: dict) -> dict:
     }
 
 
+def _render_digest_morning(payload: dict) -> dict:
+    """Chief-of-Staff morning brief. Body is already formatter-ready Markdown
+    (bold + plain links). We convert to Telegram-safe HTML at send time."""
+    text = payload.get("text")
+    if not text:
+        raise UnknownEvent("digest.morning rendered empty")
+    from app.services.telegram_markdown import markdown_to_telegram_html
+
+    header = "<b>🌅 Morning brief</b>\n\n"
+    body_html = markdown_to_telegram_html(text)
+    return {
+        "text": header + body_html,
+        "reply_markup": None,
+        "parse_mode": "HTML",
+        "dedupe_key": str(payload.get("window_start", "morning")),
+    }
+
+
 EVENT_RENDERERS: dict[str, Any] = {
     "video.completed": _render_video_completed,
     "video.failed": _render_video_failed,
@@ -176,4 +194,5 @@ EVENT_RENDERERS: dict[str, Any] = {
     "cost.threshold_80": _render_cost_threshold_80,
     "cost.threshold_100": _render_cost_threshold_100,
     "digest.weekly": _render_digest_weekly,
+    "digest.morning": _render_digest_morning,
 }

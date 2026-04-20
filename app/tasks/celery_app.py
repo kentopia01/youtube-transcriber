@@ -35,6 +35,7 @@ celery.conf.update(
         "app.tasks.compress_stale_videos",
         "app.tasks.reconcile_video_status",
         "app.tasks.refresh_stale_personas",
+        "app.tasks.morning_digest",
     ],
     task_routes={
         task_name: {"queue": get_queue_for_task(task_name)}

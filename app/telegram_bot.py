@@ -1066,6 +1066,7 @@ NOTIFY_EVENTS_ALL = [
     "cost.threshold_80",
     "cost.threshold_100",
     "digest.weekly",
+    "digest.morning",
 ]
 
 
