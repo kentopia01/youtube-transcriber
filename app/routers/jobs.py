@@ -1,4 +1,3 @@
-import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -7,12 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.dependencies import get_db
-from app.models.embedding_chunk import EmbeddingChunk
 from app.models.job import Job
-from app.models.summary import Summary
-from app.models.transcription import Transcription
 from app.models.video import Video
 from app.schemas.video import JobResponse
 from app.services.job_visibility import hide_superseded_failed_jobs
@@ -29,9 +24,9 @@ from app.services.pipeline_attempts import (
 from app.services.pipeline_observability import (
     ATTEMPT_REASON_STALE_RECOVERY,
     ATTEMPT_REASON_USER_RETRY,
-    build_artifact_check_result,
 )
 from app.services.pipeline_recovery import STALE_REAP_RECOVERY_STATUS, get_retry_block_reason
+from app.services.pipeline_resume import detect_resume_point_async, select_resume_stage
 from app.tasks.pipeline import run_pipeline_from
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -189,42 +184,7 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
 
 async def _detect_resume_point(db: AsyncSession, video: Video) -> tuple[str, dict]:
     """Choose the safest pipeline stage to resume from based on available artifacts."""
-    video_id = video.id
-
-    emb_result = await db.execute(
-        select(EmbeddingChunk.id).where(EmbeddingChunk.video_id == video_id).limit(1)
-    )
-    has_embeddings = emb_result.scalar_one_or_none() is not None
-
-    sum_result = await db.execute(select(Summary.id).where(Summary.video_id == video_id).limit(1))
-    has_summary = sum_result.scalar_one_or_none() is not None
-
-    tx_result = await db.execute(
-        select(Transcription.id).where(Transcription.video_id == video_id).limit(1)
-    )
-    has_transcription = tx_result.scalar_one_or_none() is not None
-
-    audio_path = (video.audio_file_path or "").strip()
-    has_audio = bool(audio_path and os.path.exists(audio_path))
-
-    diarization_requires_audio = settings.diarization_enabled and bool(settings.hf_token)
-    selected_stage = _select_resume_stage(
-        has_embeddings=has_embeddings,
-        has_summary=has_summary,
-        has_transcription=has_transcription,
-        has_audio=has_audio,
-        diarization_requires_audio=diarization_requires_audio,
-    )
-    artifact_check_result = build_artifact_check_result(
-        has_embeddings=has_embeddings,
-        has_summary=has_summary,
-        has_transcription=has_transcription,
-        has_audio=has_audio,
-        diarization_requires_audio=diarization_requires_audio,
-        selected_resume_stage=selected_stage,
-    )
-
-    return selected_stage, artifact_check_result
+    return await detect_resume_point_async(db, video)
 
 
 def _select_resume_stage(
@@ -235,21 +195,11 @@ def _select_resume_stage(
     has_audio: bool,
     diarization_requires_audio: bool,
 ) -> str:
-    """Pick a resume stage only when that stage's required artifacts exist."""
-    if has_embeddings and has_transcription:
-        return "tasks.generate_embeddings"
-
-    if has_summary and has_transcription:
-        return "tasks.generate_embeddings"
-
-    if has_transcription:
-        if diarization_requires_audio:
-            if has_audio:
-                return "tasks.diarize_and_align"
-            return "tasks.download_audio"
-        return "tasks.cleanup_transcript"
-
-    if has_audio:
-        return "tasks.transcribe_audio"
-
-    return "tasks.download_audio"
+    """Backward-compatible wrapper for tests/imports around shared resume logic."""
+    return select_resume_stage(
+        has_embeddings=has_embeddings,
+        has_summary=has_summary,
+        has_transcription=has_transcription,
+        has_audio=has_audio,
+        diarization_requires_audio=diarization_requires_audio,
+    )

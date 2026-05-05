@@ -9,6 +9,7 @@ ATTEMPT_REASON_BATCH_ADVANCE = "batch_advance"
 ATTEMPT_REASON_MANUAL_RESUBMIT = "manual_resubmit"
 ATTEMPT_REASON_USER_RETRY = "user_retry"
 ATTEMPT_REASON_STALE_RECOVERY = "stale_recovery"
+ATTEMPT_REASON_TRANSIENT_AUTO_RETRY = "transient_auto_retry"
 ATTEMPT_REASON_OPERATOR_ACTION = "operator_action"
 # Backward-compatible alias for initial/manual direct submission flows.
 ATTEMPT_REASON_VIDEO_SUBMIT = ATTEMPT_REASON_OPERATOR_ACTION

@@ -9,6 +9,7 @@ from app.models.transcription import Transcription
 from app.models.video import Video
 from app.services.pipeline_recovery import get_stage_retry_limit, record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_SUMMARIZE
+from app.services.provider_retry import is_retryable_provider_error
 from app.services.summarization import summarize_text
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
@@ -94,16 +95,16 @@ def summarize_transcription_task(self, payload: dict[str, str] | str) -> dict[st
             return payload
 
         except Exception as exc:
-            if self.request.retries < self.max_retries:
+            if is_retryable_provider_error(exc) and self.request.retries < self.max_retries:
                 backoff = 10 * (2 ** self.request.retries)  # 10s, 20s
                 video.status = "summarizing"
-                video.error_message = f"Retrying summarization after error: {exc}"
+                video.error_message = f"Retrying summarization after provider error: {exc}"
                 update_pipeline_job(
                     job,
                     task=self,
                     lifecycle_status="running",
                     current_stage=PIPELINE_STAGE_SUMMARIZE,
-                    progress_message=f"Retrying summary ({self.request.retries + 1}/{self.max_retries})",
+                    progress_message=f"Retrying summary provider call ({self.request.retries + 1}/{self.max_retries})",
                     error_message=None,
                     completed_at=None,
                 )

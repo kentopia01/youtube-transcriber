@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Check if the native Celery worker topology is healthy.
-# Returns 0 if required queues are covered, or if work is actively progressing on a long stage.
+# Returns 0 if required queues are covered, or if work is actively progressing on a long/post stage.
 # Returns 1 if unhealthy.
 set -euo pipefail
 
@@ -10,6 +10,7 @@ QUIET=0
 RESTART=0
 REQUIRED_QUEUES="${REQUIRED_QUEUES:-audio,diarize,post,celery}"
 SERVICES=("com.sentryclaw.yt-worker" "com.sentryclaw.yt-worker-audio" "com.sentryclaw.yt-worker-diarize")
+POST_WORKER_LOG="${POST_WORKER_LOG:-/tmp/yt-worker/yt-worker-post.log}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,6 +33,19 @@ log() {
   if [[ "$QUIET" -eq 0 ]]; then
     echo "$@"
   fi
+}
+
+launch_service_summary() {
+  local loaded=()
+  local missing=()
+  for service in "${SERVICES[@]}"; do
+    if launchctl print "gui/$(id -u)/$service" >/dev/null 2>&1; then
+      loaded+=("$service")
+    else
+      missing+=("$service")
+    fi
+  done
+  echo "launch_loaded=${loaded[*]:-none}; launch_missing=${missing[*]:-none}"
 }
 
 check_queue_coverage() {
@@ -63,6 +77,7 @@ source .env.native
 set +a
 source .venv-native/bin/activate
 export REQUIRED_QUEUES
+export POST_WORKER_LOG
 
 if check_queue_coverage >/dev/null 2>&1; then
   log "HEALTH_OK: Required queues are covered by live Celery workers"
@@ -77,15 +92,17 @@ from app.config import settings
 from app.models.job import Job
 from app.services.worker_health import any_busy_healthy_jobs
 
+import os
+
 engine = create_engine(settings.database_url_sync)
 with Session(engine) as db:
     jobs = db.execute(
         select(Job).where(Job.job_type == 'pipeline', Job.status.in_(['pending', 'queued', 'running']))
     ).scalars().all()
-    raise SystemExit(0 if any_busy_healthy_jobs(jobs) else 1)
+    raise SystemExit(0 if any_busy_healthy_jobs(jobs, post_log_path=os.environ.get('POST_WORKER_LOG')) else 1)
 PY
 then
-  log "HEALTH_OK: Worker topology appears busy but healthy on a long-running active stage"
+  log "HEALTH_DEGRADED_BUSY: Celery inspect queue coverage is incomplete, but active pipeline work shows recent progress"
   exit 0
 fi
 
@@ -106,5 +123,5 @@ if [[ "$RESTART" -eq 1 ]]; then
   fi
 fi
 
-log "HEALTH_FAIL: Required queues are not covered and no busy-but-healthy active jobs were detected"
+log "HEALTH_FAIL: Required queues are not covered and no busy-but-healthy active jobs were detected ($(launch_service_summary))"
 exit 1

@@ -1,17 +1,13 @@
 import anthropic
 import structlog
 import tiktoken
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+from app.services.provider_retry import provider_api_retry
 
 logger = structlog.get_logger()
 
 
-@retry(
-    retry=retry_if_exception_type(anthropic.RateLimitError),
-    wait=wait_exponential(multiplier=1, min=4, max=60),
-    stop=stop_after_attempt(3),
-    reraise=True,
-)
+@provider_api_retry()
 def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
     return client.messages.create(**kwargs)
 

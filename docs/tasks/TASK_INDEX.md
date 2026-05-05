@@ -16,6 +16,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T010 | Queue routing contract and stage gates | done | BuildClaw / QAClaw | Explicit queue routing, payload identity, and attempt-safe stage execution implemented |
 | T011 | Channel backlog dispatcher and fairness | done | BuildClaw / QAClaw | Durable DB-backed channel backlog and dispatcher-based release path implemented and validated |
 | T012 | Worker topology rollout and throughput validation | done | BuildClaw / QAClaw | Split native worker topology, queue coverage, health checks, and practical overlap validation completed |
+| T013 | Provider resilience, worker health v2, and transient auto-retry | done | SentryClaw / BuildClaw | Provider retry taxonomy, worker health v2 degraded-busy signal, and dry-run auto-retry sweep implemented |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

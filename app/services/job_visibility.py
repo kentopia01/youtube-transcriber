@@ -3,8 +3,25 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.job import Job
+
+
+def _hide_superseded_failed_job_models(
+    superseded_jobs: list[Job], *, superseded_by_job_id: uuid.UUID
+) -> int:
+    if not superseded_jobs:
+        return 0
+
+    hidden_at = datetime.now(timezone.utc)
+    for superseded in superseded_jobs:
+        superseded.hidden_from_queue = True
+        superseded.hidden_reason = "superseded"
+        superseded.hidden_at = hidden_at
+        superseded.superseded_by_job_id = superseded_by_job_id
+
+    return len(superseded_jobs)
 
 
 async def hide_superseded_failed_jobs(
@@ -24,14 +41,31 @@ async def hide_superseded_failed_jobs(
         )
     )
     superseded_jobs = result.scalars().all()
-    if not superseded_jobs:
-        return 0
+    return _hide_superseded_failed_job_models(
+        superseded_jobs,
+        superseded_by_job_id=superseded_by_job_id,
+    )
 
-    hidden_at = datetime.now(timezone.utc)
-    for superseded in superseded_jobs:
-        superseded.hidden_from_queue = True
-        superseded.hidden_reason = "superseded"
-        superseded.hidden_at = hidden_at
-        superseded.superseded_by_job_id = superseded_by_job_id
 
-    return len(superseded_jobs)
+def hide_superseded_failed_jobs_sync(
+    db: Session,
+    *,
+    video_id: uuid.UUID,
+    superseded_by_job_id: uuid.UUID,
+) -> int:
+    """Synchronous equivalent used by recovery scripts."""
+    superseded_jobs = (
+        db.query(Job)
+        .filter(
+            Job.video_id == video_id,
+            Job.job_type == "pipeline",
+            Job.status == "failed",
+            Job.hidden_from_queue.is_(False),
+            Job.id != superseded_by_job_id,
+        )
+        .all()
+    )
+    return _hide_superseded_failed_job_models(
+        superseded_jobs,
+        superseded_by_job_id=superseded_by_job_id,
+    )
