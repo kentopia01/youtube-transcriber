@@ -33,6 +33,9 @@ def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
         not inputs.videos_completed
         and not inputs.videos_failed
         and not inputs.personas_touched
+        and not inputs.pending_jobs
+        and not inputs.retrying_jobs
+        and not inputs.manual_review_jobs
     ):
         # Still render — the system prompt tells the LLM to produce a minimal
         # brief when there's nothing. This costs ~$0.005 and keeps the
@@ -59,6 +62,9 @@ def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
         "morning_digest_sent",
         videos_completed=len(inputs.videos_completed),
         videos_failed=len(inputs.videos_failed),
+        pending_jobs=len(inputs.pending_jobs),
+        retrying_jobs=len(inputs.retrying_jobs),
+        manual_review_jobs=len(inputs.manual_review_jobs),
         prompt_tokens=result["prompt_tokens"],
         completion_tokens=result["completion_tokens"],
     )
@@ -66,6 +72,9 @@ def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
         "videos_completed": len(inputs.videos_completed),
         "videos_failed": len(inputs.videos_failed),
         "personas_touched": len(inputs.personas_touched),
+        "pending_jobs": len(inputs.pending_jobs),
+        "retrying_jobs": len(inputs.retrying_jobs),
+        "manual_review_jobs": len(inputs.manual_review_jobs),
         "cost_auto_ingest_usd": inputs.cost_auto_ingest_usd,
         "cost_manual_usd": inputs.cost_manual_usd,
         "prompt_tokens": result["prompt_tokens"],

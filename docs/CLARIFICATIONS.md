@@ -63,3 +63,11 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Manual jobs should retain a protected path to progress even while channel backlog exists.
 - Queue routing must be explicit and attempt-safe; tasks should not guess ownership from "latest job for video" behavior.
 - Prefer conservative heavy-stage concurrency on current hardware: start with one active `audio`, one active `diarize`, and one active `post` lane.
+
+### T014 report-delivery clarifications
+- Telegram push delivery should send finished intelligence directly, not primarily redirect users into chat/channel views.
+- Per-video completion messages should be concise and should not include Chat/Channel buttons by default.
+- The styled HTML report is the MVP delivery artifact; PDF export is explicitly later.
+- Report generation and document delivery are post-processing concerns. They must not cause a successfully transcribed/summarized/embedded video to become a failed transcription pipeline job.
+- The daily morning brief should include overnight activity plus operational status: queued/pending work, retries, failed/manual-review items, worker/system health, and LLM spend.
+- Existing manual bot commands for chat/channel navigation should remain available; only pushed delivery notifications are simplified.

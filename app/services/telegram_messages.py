@@ -15,6 +15,8 @@ Keep messages *short*. Telegram truncates; users scan.
 
 from __future__ import annotations
 
+from html import escape
+from pathlib import Path
 from typing import Any
 
 
@@ -71,6 +73,35 @@ def _render_video_completed(payload: dict) -> dict:
         "reply_markup": _keyboard([buttons]) if buttons else None,
         "parse_mode": "Markdown",
         "dedupe_key": f"video_completed:{video_id}",
+    }
+
+
+def _render_video_report_ready(payload: dict) -> dict:
+    title = (payload.get("title") or "Untitled")[:120]
+    duration = _fmt_duration(payload.get("duration"))
+    channel_name = (payload.get("channel_name") or "").strip()[:80]
+    video_id = payload.get("video_id")
+    report_path = payload.get("report_path")
+    if not report_path:
+        raise UnknownEvent("video.report_ready missing report_path")
+
+    meta_parts = [p for p in [channel_name, duration] if p]
+    meta = " · ".join(meta_parts)
+    meta_line = f"\n{escape(meta)}" if meta else ""
+    filename = payload.get("filename") or f"{Path(str(report_path)).stem}.html"
+
+    return {
+        "text": (
+            "<b>✅ Report ready</b>\n\n"
+            f"{escape(title)}{meta_line}\n\n"
+            "Attached: summary report"
+        ),
+        "reply_markup": None,
+        "parse_mode": "HTML",
+        "document_path": str(report_path),
+        "document_filename": str(filename),
+        "document_mime_type": "text/html",
+        "dedupe_key": f"video_report_ready:{video_id or report_path}",
     }
 
 
@@ -187,6 +218,7 @@ def _render_digest_morning(payload: dict) -> dict:
 
 EVENT_RENDERERS: dict[str, Any] = {
     "video.completed": _render_video_completed,
+    "video.report_ready": _render_video_report_ready,
     "video.failed": _render_video_failed,
     "persona.generated": _render_persona_generated,
     "persona.refreshed": _render_persona_generated,  # same shape

@@ -17,6 +17,11 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T011 | Channel backlog dispatcher and fairness | done | BuildClaw / QAClaw | Durable DB-backed channel backlog and dispatcher-based release path implemented and validated |
 | T012 | Worker topology rollout and throughput validation | done | BuildClaw / QAClaw | Split native worker topology, queue coverage, health checks, and practical overlap validation completed |
 | T013 | Provider resilience, worker health v2, and transient auto-retry | done | SentryClaw / BuildClaw | Provider retry taxonomy, worker health v2 degraded-busy signal, and dry-run auto-retry sweep implemented |
+| T014 | Styled report delivery and overnight operations brief | done | SentryClaw / QAClaw | Parent epic split into T014A-C; report artifacts, Telegram document delivery, and overnight operations brief implemented locally |
+| T014A | Report artifact MVP | done | SentryClaw | Persisted styled HTML report artifacts from existing transcript + summary data; focused tests pass |
+| T014B | Telegram report document delivery | done | SentryClaw | Sends generated reports as Telegram documents with simplified buttonless completion messages; fallback preserved |
+| T014C | Overnight brief operations status | done | SentryClaw | Morning brief now includes pending/retry/failure/manual-review/report-delivery/health/spend status |
+| T014D | Summary-only report format | done | SentryClaw | Removed transcript appendix from delivered HTML reports by default and moved source into a top callout |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

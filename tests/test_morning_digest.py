@@ -40,8 +40,87 @@ class TestDigestInputPromptBlock:
         text = d.to_prompt_block()
         assert "Window:" in text
         assert "auto-ingest=$0.00" in text
+        assert "active_pipeline_jobs=0" in text
+        assert "Health: not captured" in text
         assert "20VC" in text
         assert "Videos completed" not in text  # skipped when empty
+
+    def test_with_pipeline_ops_status_includes_retries_manual_review_and_health(self):
+        start, end = _window()
+        d = digest_svc.DigestInput(
+            window_start=start,
+            window_end=end,
+            videos_completed=[
+                {
+                    "id": str(uuid.uuid4()),
+                    "title": "AI Agents Brief",
+                    "duration_seconds": 1800,
+                    "channel_name": "Latent Space",
+                    "summary_excerpt": "Agents are shifting from demos to operations.",
+                    "report_delivery_status": "sent",
+                }
+            ],
+            videos_failed=[
+                {"title": "Broken upload", "channel_name": "Ops", "error_message": "diarization failed"},
+            ],
+            personas_touched=[],
+            cost_auto_ingest_usd=2.50,
+            cost_manual_usd=0.75,
+            subscription_names=["Latent Space"],
+            pipeline_status_counts={"pending": 2, "running": 1},
+            pending_jobs=[
+                {
+                    "title": "Queued video",
+                    "channel_name": "Queue Channel",
+                    "status": "pending",
+                    "current_stage": "audio",
+                    "progress_pct": 0.0,
+                }
+            ],
+            retrying_jobs=[
+                {
+                    "title": "Retry video",
+                    "channel_name": "Retry Channel",
+                    "status": "running",
+                    "current_stage": "diarize",
+                    "progress_pct": 55.0,
+                    "attempt_number": 2,
+                    "attempt_creation_reason": "transient_auto_retry",
+                    "failure_signature_count": 1,
+                }
+            ],
+            manual_review_jobs=[
+                {
+                    "title": "Manual video",
+                    "channel_name": "Review Channel",
+                    "status": "failed",
+                    "current_stage": "cleanup",
+                    "progress_pct": 80.0,
+                    "attempt_number": 3,
+                    "failure_signature_count": 2,
+                    "error_message": "same failure repeated",
+                }
+            ],
+            report_delivery_counts={"sent": 1, "failed": 1},
+            health_summary={
+                "active_jobs": 3,
+                "active_workers": 1,
+                "manual_review": 1,
+                "failed_undismissed": 2,
+                "last_activity_at": "2026-05-09T01:00:00+00:00",
+            },
+        )
+        text = d.to_prompt_block()
+        assert "Activity totals" in text
+        assert "status_counts=pending=2, running=1" in text
+        assert "report_delivery_counts=failed=1, sent=1" in text
+        assert "report_delivery=sent" in text
+        assert "Queued/pending/running pipeline jobs (1)" in text
+        assert "Retrying pipeline jobs (1)" in text
+        assert "retry_reason=transient_auto_retry" in text
+        assert "Manual-review items (1)" in text
+        assert "same failure repeated" in text
+        assert "Health: active_jobs=3, active_workers=1, manual_review=1, failed_undismissed=2" in text
 
     def test_with_completions_includes_summaries(self):
         start, end = _window()
@@ -107,9 +186,10 @@ class TestRenderDigest:
         assert "Opener" in result["text"]
         assert result["prompt_tokens"] == 123
         assert result["completion_tokens"] == 45
-        # Verify system prompt passes Chief-of-staff framing
+        # Verify system prompt passes Chief-of-staff operations framing
         call_kwargs = fake_client.messages.create.call_args.kwargs
         assert "Chief of Staff" in call_kwargs["system"]
+        assert "operations" in call_kwargs["system"]
 
 
 # ---------------------------------------------------------------------------

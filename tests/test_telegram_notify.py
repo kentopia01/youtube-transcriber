@@ -51,6 +51,28 @@ class TestRenderers:
         kb = out["reply_markup"]["inline_keyboard"]
         assert any("video:chat:v1" == b["callback_data"] for row in kb for b in row)
 
+    def test_video_report_ready_is_buttonless_document_event(self, tmp_path):
+        report = tmp_path / "report.html"
+        report.write_text("<html>report</html>")
+        out = telegram_messages._render_video_report_ready({
+            "video_id": "v1",
+            "title": "Ep <12>",
+            "channel_name": "20VC",
+            "duration": 3600,
+            "report_path": str(report),
+        })
+        assert "Report ready" in out["text"]
+        assert "Attached: summary report" in out["text"]
+        assert "Ep &lt;12&gt;" in out["text"]
+        assert "20VC · 1h 0m" in out["text"]
+        assert out["reply_markup"] is None
+        assert out["document_path"] == str(report)
+        assert out["document_mime_type"] == "text/html"
+
+    def test_video_report_ready_requires_path(self):
+        with pytest.raises(telegram_messages.UnknownEvent):
+            telegram_messages._render_video_report_ready({"video_id": "v1", "title": "Ep"})
+
     def test_video_failed(self):
         out = telegram_messages._render_video_failed({
             "title": "Ep 12", "stage": "diarize", "error_message": "MPS blew up",
@@ -113,6 +135,48 @@ class TestNotifyDispatch:
         assert captured["data"]["chat_id"] == 999
         assert "Ep" in captured["data"]["text"]
 
+    def test_sends_document_for_video_report_ready(self, monkeypatch, tmp_path):
+        report = tmp_path / "report.html"
+        report.write_text("<html>report</html>")
+        captured = {}
+
+        def fake_post(url, data=None, files=None, timeout=None):
+            captured["url"] = url
+            captured["data"] = data
+            captured["timeout"] = timeout
+            doc = files["document"]
+            captured["filename"] = doc[0]
+            captured["mime"] = doc[2]
+            captured["content"] = doc[1].read()
+            return MagicMock(ok=True)
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        ok = telegram_notify.notify("video.report_ready", {
+            "video_id": "vid-1",
+            "title": "Ep",
+            "channel_name": "20VC",
+            "duration": 60,
+            "report_path": str(report),
+        })
+
+        assert ok is True
+        assert "sendDocument" in captured["url"]
+        assert captured["data"]["chat_id"] == 999
+        assert "Report ready" in captured["data"]["caption"]
+        assert captured["data"]["parse_mode"] == "HTML"
+        assert captured["filename"] == "report.html"
+        assert captured["mime"] == "text/html"
+        assert captured["content"] == b"<html>report</html>"
+
+    def test_report_ready_missing_file_returns_false(self, tmp_path):
+        ok = telegram_notify.notify("video.report_ready", {
+            "video_id": "vid-1",
+            "title": "Ep",
+            "report_path": str(tmp_path / "missing.html"),
+        })
+        assert ok is False
+
     def test_mute_prevents_send(self, monkeypatch, tmp_path):
         from app.config import settings
         state = {"enabled": True, "muted_events": ["video.completed"]}
@@ -122,7 +186,8 @@ class TestNotifyDispatch:
         sent = []
         monkeypatch.setattr("requests.post", lambda *a, **kw: sent.append(a) or MagicMock())
 
-        telegram_notify.notify("video.completed", {"video_id": "v", "title": "t"})
+        ok = telegram_notify.notify("video.completed", {"video_id": "v", "title": "t"})
+        assert ok is False
         assert sent == []
 
     def test_global_disable_prevents_send(self, monkeypatch, tmp_path):
@@ -134,7 +199,8 @@ class TestNotifyDispatch:
         sent = []
         monkeypatch.setattr("requests.post", lambda *a, **kw: sent.append(a) or MagicMock())
 
-        telegram_notify.notify("video.completed", {"video_id": "v", "title": "t"})
+        ok = telegram_notify.notify("video.completed", {"video_id": "v", "title": "t"})
+        assert ok is False
         assert sent == []
 
     def test_dedupes_repeats_within_window(self, monkeypatch):

@@ -18,7 +18,7 @@ Completed:
 - T011: channel backlog dispatcher and fairness
 - T012: worker topology rollout and throughput validation
 
-The current development arc is complete through T012.
+The stabilization/throughput arc is complete through T013. T014 is now the active product-delivery chunk: styled per-video report artifacts, simplified Telegram completion delivery, and a richer overnight morning brief with pending/retry status.
 
 ## Current verified reality
 
@@ -114,3 +114,16 @@ All serious implementation should use:
 - the specific task file for the current chunk
 
 For future chunks, use the specific follow-on task file as the source of truth.
+
+## Active follow-on: T014 report delivery
+
+Goal: turn completed transcripts into finished, styled intelligence artifacts delivered directly in Telegram.
+
+Implementation posture:
+- reuse existing transcript, summary, segment, job, and LLM usage data from Postgres
+- add report artifacts and document delivery without destabilizing the core pipeline
+- keep pushed Telegram messages concise and remove chat/channel redirect buttons by default
+- make the morning brief explain overnight activity, pending/retrying work, failures/manual-review items, health, and spend
+- keep HTML as the MVP artifact format; defer PDF export
+
+Source of truth: `docs/tasks/T014_styled-report-delivery-and-overnight-brief.md`.

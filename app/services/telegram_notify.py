@@ -1,9 +1,10 @@
 """Source-agnostic push notifier for the Telegram bot.
 
 A single owner consumes events from any part of the system (web routers,
-Celery tasks, cron jobs). This module is a thin wrapper around the
-``sendMessage`` HTTP endpoint — no dependence on the ``python-telegram-bot``
-framework so Celery workers can call it without an event loop.
+Celery tasks, cron jobs). This module is a thin wrapper around Telegram's
+``sendMessage`` / ``sendDocument`` HTTP endpoints — no dependence on the
+``python-telegram-bot`` framework so Celery workers can call it without an
+event loop.
 
 Fire-and-forget semantics: every failure is caught and logged. Nothing
 raises from ``notify`` into caller code.
@@ -86,14 +87,14 @@ def _send(
     text: str,
     reply_markup: dict | None = None,
     parse_mode: str | None = "Markdown",
-) -> None:
+) -> bool:
     """POST sendMessage. Short timeout, all failures swallowed."""
     import requests  # local import so tests can import this module without the dep
 
     token = settings.telegram_bot_token
     if not token:
         logger.debug("telegram_notify_no_token")
-        return
+        return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload: dict[str, Any] = {
@@ -107,51 +108,129 @@ def _send(
         payload["reply_markup"] = json.dumps(reply_markup)
 
     try:
-        requests.post(url, data=payload, timeout=2.5)
+        resp = requests.post(url, data=payload, timeout=2.5)
+        if getattr(resp, "ok", True) is False:
+            logger.warning(
+                "telegram_notify_send_failed",
+                status_code=getattr(resp, "status_code", None),
+                text=getattr(resp, "text", "")[:200],
+            )
+            return False
+        return True
     except Exception as exc:  # noqa: BLE001 — fire-and-forget
         logger.warning("telegram_notify_send_failed", error=str(exc))
+        return False
 
 
-def notify(event_type: str, payload: dict | None = None) -> None:
+def _send_document(
+    chat_id: int,
+    text: str,
+    document_path: str,
+    *,
+    filename: str | None = None,
+    mime_type: str | None = None,
+    reply_markup: dict | None = None,
+    parse_mode: str | None = "Markdown",
+) -> bool:
+    """POST sendDocument with a local file attachment."""
+    import requests  # local import so tests can import this module without the dep
+
+    token = settings.telegram_bot_token
+    if not token:
+        logger.debug("telegram_notify_no_token")
+        return False
+
+    path = Path(document_path)
+    if not path.exists() or not path.is_file():
+        logger.warning("telegram_notify_document_missing", path=str(path))
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    payload: dict[str, Any] = {
+        "chat_id": chat_id,
+        "caption": text,
+        "disable_content_type_detection": False,
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+
+    try:
+        with path.open("rb") as fh:
+            files = {
+                "document": (
+                    filename or path.name,
+                    fh,
+                    mime_type or "application/octet-stream",
+                )
+            }
+            resp = requests.post(url, data=payload, files=files, timeout=10.0)
+        if getattr(resp, "ok", True) is False:
+            logger.warning(
+                "telegram_notify_document_send_failed",
+                status_code=getattr(resp, "status_code", None),
+                text=getattr(resp, "text", "")[:200],
+            )
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001 — fire-and-forget
+        logger.warning("telegram_notify_document_send_failed", error=str(exc), path=str(path))
+        return False
+
+
+def notify(event_type: str, payload: dict | None = None) -> bool:
     """Fire-and-forget push notification.
 
     Never raises. Silent no-op when the event is muted, the bot isn't
     configured, the allowlist is empty, or dedupe kicks in. Safe to call
-    from any context (sync Celery task, async router, cron).
+    from any context (sync Celery task, async router, cron). Returns True
+    when a send was attempted successfully, otherwise False.
     """
     payload = dict(payload or {})
     try:
         if not _should_send(event_type):
-            return
+            return False
 
         renderer = EVENT_RENDERERS.get(event_type)
         if renderer is None:
             logger.warning("telegram_notify_unknown_event", event_type=event_type)
-            return
+            return False
 
         try:
             rendered = renderer(payload)
         except UnknownEvent:
-            return
+            return False
         except Exception as exc:  # noqa: BLE001 — never crash the caller
             logger.warning(
                 "telegram_notify_render_failed",
                 event_type=event_type,
                 error=str(exc),
             )
-            return
+            return False
 
         dedupe_key = rendered.get("dedupe_key") or event_type
         if not _dedupe_allow(event_type, str(dedupe_key)):
             logger.debug("telegram_notify_deduped", event_type=event_type, key=dedupe_key)
-            return
+            return False
 
         chat_id = _primary_chat_id()
         if chat_id is None:
             logger.debug("telegram_notify_no_user")
-            return
+            return False
 
-        _send(
+        if rendered.get("document_path"):
+            return _send_document(
+                chat_id,
+                rendered["text"],
+                rendered["document_path"],
+                filename=rendered.get("document_filename"),
+                mime_type=rendered.get("document_mime_type"),
+                reply_markup=rendered.get("reply_markup"),
+                parse_mode=rendered.get("parse_mode", "Markdown"),
+            )
+
+        return _send(
             chat_id,
             rendered["text"],
             reply_markup=rendered.get("reply_markup"),
@@ -159,3 +238,4 @@ def notify(event_type: str, payload: dict | None = None) -> None:
         )
     except Exception as exc:  # noqa: BLE001 — absolute safety net
         logger.warning("telegram_notify_failed", event_type=event_type, error=str(exc))
+        return False

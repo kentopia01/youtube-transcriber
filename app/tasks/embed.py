@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.channel import Channel
 from app.models.embedding_chunk import EmbeddingChunk
 from app.models.summary import Summary
 from app.models.transcription import Transcription
@@ -16,6 +17,74 @@ from app.tasks.celery_app import celery
 from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
+
+
+def _speakers_count(transcription: Transcription | None) -> int | None:
+    if transcription and getattr(transcription, "speakers", None):
+        try:
+            return len(transcription.speakers)
+        except TypeError:
+            return None
+    return None
+
+
+def _completion_payload(db: Session, video: Video, transcription: Transcription | None) -> dict[str, str | int | float | None]:
+    channel_name = None
+    if video.channel_id:
+        channel = db.get(Channel, video.channel_id)
+        channel_name = channel.name if channel else None
+    return {
+        "video_id": str(video.id),
+        "channel_id": str(video.channel_id) if video.channel_id else None,
+        "channel_name": channel_name,
+        "title": video.title,
+        "duration": video.duration_seconds,
+        "speakers": _speakers_count(transcription),
+    }
+
+
+def _notify_completion(db: Session, video: Video, transcription: Transcription | None) -> None:
+    """Send the best available completion notification.
+
+    Report generation/delivery is intentionally non-fatal. If it is disabled or
+    fails, the original short completion notification remains the fallback.
+    """
+    from app.services.telegram_notify import notify as _tg_notify
+
+    payload = _completion_payload(db, video, transcription)
+
+    if settings.report_generation_enabled and settings.report_delivery_enabled:
+        try:
+            from app.services.reporting import generate_video_report
+
+            report = generate_video_report(db, video.id)
+            sent = _tg_notify(
+                "video.report_ready",
+                {
+                    **payload,
+                    "report_path": report.artifact_path,
+                    "filename": report.artifact_path.rsplit("/", 1)[-1],
+                },
+            )
+            report.delivery_status = "sent" if sent else "failed"
+            if not sent:
+                report.delivery_error = "telegram_notify_returned_false"
+            db.commit()
+            if sent:
+                return
+        except Exception as exc:  # noqa: BLE001 — report delivery must not fail pipeline completion
+            try:
+                from app.models.video_report import VideoReport
+
+                report = db.query(VideoReport).filter(VideoReport.video_id == video.id).first()
+                if report:
+                    report.delivery_status = "failed"
+                    report.delivery_error = str(exc)[:1000]
+                    db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+
+    _tg_notify("video.completed", payload)
 
 
 @celery.task(
@@ -115,25 +184,7 @@ def generate_embeddings_task(self, payload: dict[str, str] | str) -> dict[str, s
                 enqueue_channel_persona(str(video.channel_id))
 
             try:
-                from app.services.telegram_notify import notify as _tg_notify
-
-                speakers_count = None
-                if transcription and getattr(transcription, "speakers", None):
-                    try:
-                        speakers_count = len(transcription.speakers)
-                    except TypeError:
-                        speakers_count = None
-
-                _tg_notify(
-                    "video.completed",
-                    {
-                        "video_id": str(video.id),
-                        "channel_id": str(video.channel_id) if video.channel_id else None,
-                        "title": video.title,
-                        "duration": video.duration_seconds,
-                        "speakers": speakers_count,
-                    },
-                )
+                _notify_completion(db, video, transcription)
             except Exception:  # noqa: BLE001
                 pass
 

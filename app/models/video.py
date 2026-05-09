@@ -43,4 +43,5 @@ class Video(Base):
     channel = relationship("Channel", back_populates="videos")
     transcription = relationship("Transcription", back_populates="video", uselist=False)
     summary = relationship("Summary", back_populates="video", uselist=False)
+    report = relationship("VideoReport", back_populates="video", uselist=False)
     jobs = relationship("Job", back_populates="video")

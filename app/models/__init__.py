@@ -10,6 +10,7 @@ from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
+from app.models.video_report import VideoReport
 
 __all__ = [
     "Batch",
@@ -24,4 +25,5 @@ __all__ = [
     "Transcription",
     "TranscriptionSegment",
     "Video",
+    "VideoReport",
 ]
