@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from app.models.channel import Channel
 from app.models.summary import Summary
 from app.models.transcription import Transcription
-from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
 from app.models.video_report import VideoReport
 from app.services.reporting import (
@@ -60,17 +59,6 @@ def _transcription(video_id):
     )
 
 
-def _segment(transcription_id, index=0, text="Hello world", speaker="SPEAKER_00"):
-    return SimpleNamespace(
-        transcription_id=transcription_id,
-        segment_index=index,
-        start_time=65.0 + index,
-        end_time=70.0 + index,
-        text=text,
-        speaker=speaker,
-    )
-
-
 class _Query:
     def __init__(self, items):
         self.items = items
@@ -89,12 +77,11 @@ class _Query:
 
 
 class _FakeSession:
-    def __init__(self, *, video, channel, summary, transcription, segments):
+    def __init__(self, *, video, channel, summary, transcription):
         self.video = video
         self.channel = channel
         self.summary = summary
         self.transcription = transcription
-        self.segments = segments
         self.reports = []
         self.commits = 0
 
@@ -102,16 +89,14 @@ class _FakeSession:
         if model is Video:
             return self.video if self.video.id == item_id else None
         if model is Channel:
-            return self.channel if self.channel.id == item_id else None
+            return self.channel if self.channel and self.channel.id == item_id else None
         return None
 
     def query(self, model):
         if model is Transcription:
-            return _Query([self.transcription])
+            return _Query([self.transcription] if self.transcription else [])
         if model is Summary:
             return _Query([self.summary] if self.summary else [])
-        if model is TranscriptionSegment:
-            return _Query(self.segments)
         if model is VideoReport:
             return _Query(self.reports)
         raise AssertionError(f"unexpected model query: {model}")
@@ -130,8 +115,7 @@ class _FakeSession:
         pass
 
 
-def test_build_report_render_data_defaults_to_summary_only(monkeypatch):
-    monkeypatch.setattr("app.services.reporting.settings.report_include_full_transcript", False)
+def test_build_report_render_data_is_summary_first():
     video = _video()
     transcription = _transcription(video.id)
     data = build_report_render_data(
@@ -139,34 +123,29 @@ def test_build_report_render_data_defaults_to_summary_only(monkeypatch):
         channel=_channel(video.channel_id),
         summary=_summary(video.id),
         transcription=transcription,
-        segments=[_segment(transcription.id, text="Segment one")],
     )
 
     assert data.title == "The AI Sales Stack"
     assert data.channel_name == "20VC"
     assert data.duration == "1h 1m"
+    assert data.word_count == 320
     assert any("AI increases SDR throughput" in point for point in data.key_points)
-    assert data.transcript_paragraphs == []
 
 
-def test_build_report_render_data_can_include_transcript_when_enabled(monkeypatch):
-    monkeypatch.setattr("app.services.reporting.settings.report_include_full_transcript", True)
+def test_build_report_render_data_allows_missing_transcription():
     video = _video()
-    transcription = _transcription(video.id)
     data = build_report_render_data(
         video=video,
         channel=_channel(video.channel_id),
         summary=_summary(video.id),
-        transcription=transcription,
-        segments=[_segment(transcription.id, text="Segment one")],
+        transcription=None,
     )
 
-    assert data.transcript_paragraphs[0]["time"] == "01:05"
-    assert data.transcript_paragraphs[0]["text"] == "Segment one"
+    assert data.word_count is None
+    assert "AI increases SDR throughput" in data.executive_summary_html
 
 
-def test_render_video_report_html_is_self_contained(monkeypatch):
-    monkeypatch.setattr("app.services.reporting.settings.report_include_full_transcript", False)
+def test_render_video_report_html_is_self_contained():
     video = _video()
     transcription = _transcription(video.id)
     data = build_report_render_data(
@@ -174,7 +153,6 @@ def test_render_video_report_html_is_self_contained(monkeypatch):
         channel=_channel(video.channel_id),
         summary=_summary(video.id),
         transcription=transcription,
-        segments=[_segment(transcription.id, text="Transcript segment")],
     )
 
     html = render_video_report_html(data)
@@ -188,29 +166,27 @@ def test_render_video_report_html_is_self_contained(monkeypatch):
     assert html.index("Source") < html.index("30-second scan")
     assert "Key takeaways" in html
     assert "Transcript Appendix" not in html
-    assert "Transcript segment" not in html
+    assert "Full transcript text here" not in html
 
 
-def test_generate_video_report_writes_artifact_and_upserts(tmp_path, monkeypatch):
+def test_generate_video_report_writes_summary_report_artifact_and_upserts(tmp_path, monkeypatch):
     monkeypatch.setattr("app.services.reporting.settings.report_artifact_dir", str(tmp_path))
-    monkeypatch.setattr("app.services.reporting.settings.report_include_full_transcript", False)
     video = _video()
     channel = _channel(video.channel_id)
     summary = _summary(video.id)
     transcription = _transcription(video.id)
-    segments = [_segment(transcription.id, text="Stored transcript segment")]
     db = _FakeSession(
         video=video,
         channel=channel,
         summary=summary,
         transcription=transcription,
-        segments=segments,
     )
 
     report = generate_video_report(db, video.id)
 
     assert db.commits == 1
     assert report in db.reports
+    assert report.report_type == "summary_report"
     assert report.delivery_status == "pending"
     assert report.model == summary.model
     assert report.artifact_path.endswith("_report.html")
@@ -221,7 +197,7 @@ def test_generate_video_report_writes_artifact_and_upserts(tmp_path, monkeypatch
     assert "The AI Sales Stack" in text
     assert "Source" in text
     assert "Open original YouTube video" in text
-    assert "Stored transcript segment" not in text
+    assert "Full transcript text here" not in text
     assert "Transcript Appendix" not in text
 
     report.html_content = "old"
@@ -229,4 +205,24 @@ def test_generate_video_report_writes_artifact_and_upserts(tmp_path, monkeypatch
     assert report2 is report
     assert len(db.reports) == 1
     assert "The AI Sales Stack" in report.html_content
-    assert "Stored transcript segment" not in report.markdown_content
+    assert "Full transcript text here" not in report.markdown_content
+
+
+def test_generate_video_report_can_use_video_and_summary_without_transcription(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.reporting.settings.report_artifact_dir", str(tmp_path))
+    video = _video()
+    summary = _summary(video.id)
+    db = _FakeSession(
+        video=video,
+        channel=_channel(video.channel_id),
+        summary=summary,
+        transcription=None,
+    )
+
+    report = generate_video_report(db, video.id)
+
+    assert report.report_type == "summary_report"
+    assert report.model == summary.model
+    assert Path(report.artifact_path).exists()
+    assert "AI increases SDR throughput" in report.html_content
+    assert "words" not in report.html_content

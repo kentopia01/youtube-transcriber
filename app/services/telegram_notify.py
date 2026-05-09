@@ -26,8 +26,11 @@ from app.services.telegram_messages import EVENT_RENDERERS, UnknownEvent
 logger = structlog.get_logger()
 
 
-# In-process dedupe: (event_type, dedupe_key) -> last-sent unix ts
+# In-process dedupe: (event_type, dedupe_key) -> last-successful-send unix ts.
+# Failed sends must not poison dedupe, so in-flight events are reserved
+# separately and only committed after Telegram accepts the send.
 _DEDUPE: dict[tuple[str, str], float] = {}
+_DEDUPE_PENDING: set[tuple[str, str]] = set()
 _DEDUPE_LOCK = threading.Lock()
 _DEDUPE_WINDOW_SECONDS = 60.0
 
@@ -64,22 +67,39 @@ def _primary_chat_id() -> int | None:
     return int(users[0])
 
 
-def _dedupe_allow(event_type: str, dedupe_key: str) -> bool:
-    """Return True if this event hasn't been sent within the dedupe window."""
+def _dedupe_cleanup_locked(now: float) -> None:
+    if len(_DEDUPE) <= 500:
+        return
+    cutoff = now - _DEDUPE_WINDOW_SECONDS * 2
+    for k, ts in list(_DEDUPE.items()):
+        if ts < cutoff:
+            _DEDUPE.pop(k, None)
+
+
+def _dedupe_reserve(event_type: str, dedupe_key: str) -> bool:
+    """Reserve an event if it is not recently sent or already in-flight."""
     now = time.time()
     key = (event_type, dedupe_key)
     with _DEDUPE_LOCK:
         last = _DEDUPE.get(key)
         if last is not None and now - last < _DEDUPE_WINDOW_SECONDS:
             return False
-        _DEDUPE[key] = now
-        # Opportunistic cleanup
-        if len(_DEDUPE) > 500:
-            cutoff = now - _DEDUPE_WINDOW_SECONDS * 2
-            for k, ts in list(_DEDUPE.items()):
-                if ts < cutoff:
-                    _DEDUPE.pop(k, None)
+        if key in _DEDUPE_PENDING:
+            return False
+        _DEDUPE_PENDING.add(key)
+        _dedupe_cleanup_locked(now)
     return True
+
+
+def _dedupe_finish(event_type: str, dedupe_key: str, *, sent: bool) -> None:
+    """Release an in-flight dedupe reservation, committing only successes."""
+    now = time.time()
+    key = (event_type, dedupe_key)
+    with _DEDUPE_LOCK:
+        _DEDUPE_PENDING.discard(key)
+        if sent:
+            _DEDUPE[key] = now
+            _dedupe_cleanup_locked(now)
 
 
 def _send(
@@ -209,33 +229,39 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
             )
             return False
 
-        dedupe_key = rendered.get("dedupe_key") or event_type
-        if not _dedupe_allow(event_type, str(dedupe_key)):
+        dedupe_key = str(rendered.get("dedupe_key") or event_type)
+        if not _dedupe_reserve(event_type, dedupe_key):
             logger.debug("telegram_notify_deduped", event_type=event_type, key=dedupe_key)
             return False
 
-        chat_id = _primary_chat_id()
-        if chat_id is None:
-            logger.debug("telegram_notify_no_user")
-            return False
+        sent = False
+        try:
+            chat_id = _primary_chat_id()
+            if chat_id is None:
+                logger.debug("telegram_notify_no_user")
+                return False
 
-        if rendered.get("document_path"):
-            return _send_document(
+            if rendered.get("document_path"):
+                sent = _send_document(
+                    chat_id,
+                    rendered["text"],
+                    rendered["document_path"],
+                    filename=rendered.get("document_filename"),
+                    mime_type=rendered.get("document_mime_type"),
+                    reply_markup=rendered.get("reply_markup"),
+                    parse_mode=rendered.get("parse_mode", "Markdown"),
+                )
+                return sent
+
+            sent = _send(
                 chat_id,
                 rendered["text"],
-                rendered["document_path"],
-                filename=rendered.get("document_filename"),
-                mime_type=rendered.get("document_mime_type"),
                 reply_markup=rendered.get("reply_markup"),
                 parse_mode=rendered.get("parse_mode", "Markdown"),
             )
-
-        return _send(
-            chat_id,
-            rendered["text"],
-            reply_markup=rendered.get("reply_markup"),
-            parse_mode=rendered.get("parse_mode", "Markdown"),
-        )
+            return sent
+        finally:
+            _dedupe_finish(event_type, dedupe_key, sent=sent)
     except Exception as exc:  # noqa: BLE001 — absolute safety net
         logger.warning("telegram_notify_failed", event_type=event_type, error=str(exc))
         return False

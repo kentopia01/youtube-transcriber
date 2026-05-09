@@ -24,7 +24,6 @@ from app.config import settings
 from app.models.channel import Channel
 from app.models.summary import Summary
 from app.models.transcription import Transcription
-from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
 from app.models.video_report import VideoReport
 
@@ -40,7 +39,6 @@ class ReportRenderData:
     duration: str | None
     executive_summary_html: str
     key_points: list[str]
-    transcript_paragraphs: list[dict[str, str | None]]
     generated_at: str
     word_count: int | None = None
     model: str | None = None
@@ -67,17 +65,6 @@ def _fmt_duration(seconds: float | None) -> str | None:
     if m:
         return f"{m}m {sec}s"
     return f"{sec}s"
-
-
-def _fmt_timestamp(seconds: float | None) -> str | None:
-    if seconds is None:
-        return None
-    s = int(seconds)
-    h, rem = divmod(s, 3600)
-    m, sec = divmod(rem, 60)
-    if h:
-        return f"{h:02d}:{m:02d}:{sec:02d}"
-    return f"{m:02d}:{sec:02d}"
 
 
 def _slugify(value: str) -> str:
@@ -167,34 +154,12 @@ def _key_points_from_summary(summary: str | None, *, limit: int = 6) -> list[str
     return [s for s in sentences if s][:limit]
 
 
-def _transcript_paragraphs(
-    transcription: Transcription,
-    segments: list[TranscriptionSegment],
-    *,
-    include_full_transcript: bool,
-) -> list[dict[str, str | None]]:
-    if not include_full_transcript:
-        return []
-    if segments:
-        return [
-            {
-                "time": _fmt_timestamp(seg.start_time),
-                "speaker": seg.speaker,
-                "text": seg.text,
-            }
-            for seg in segments
-            if seg.text
-        ]
-    return [{"time": None, "speaker": None, "text": transcription.full_text}]
-
-
 def build_report_render_data(
     *,
     video: Video,
     channel: Channel | None,
     summary: Summary | None,
-    transcription: Transcription,
-    segments: list[TranscriptionSegment] | None = None,
+    transcription: Transcription | None = None,
 ) -> ReportRenderData:
     summary_text = summary.content if summary else None
     published = None
@@ -209,13 +174,8 @@ def build_report_render_data(
         duration=_fmt_duration(video.duration_seconds),
         executive_summary_html=_markdownish_to_html(summary_text),
         key_points=_key_points_from_summary(summary_text),
-        transcript_paragraphs=_transcript_paragraphs(
-            transcription,
-            list(segments or []),
-            include_full_transcript=settings.report_include_full_transcript,
-        ),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
-        word_count=transcription.word_count,
+        word_count=transcription.word_count if transcription else None,
         model=summary.model if summary else None,
     )
 
@@ -251,24 +211,14 @@ def generate_video_report(
         raise ValueError(f"Video not found: {video_id}")
 
     transcription = db.query(Transcription).filter(Transcription.video_id == video_uuid).first()
-    if not transcription:
-        raise ValueError(f"No transcription found for video {video_id}")
-
     summary = db.query(Summary).filter(Summary.video_id == video_uuid).first()
     channel = db.get(Channel, video.channel_id) if video.channel_id else None
-    segments = (
-        db.query(TranscriptionSegment)
-        .filter(TranscriptionSegment.transcription_id == transcription.id)
-        .order_by(TranscriptionSegment.segment_index)
-        .all()
-    )
 
     data = build_report_render_data(
         video=video,
         channel=channel,
         summary=summary,
         transcription=transcription,
-        segments=segments,
     )
     html = render_video_report_html(data)
     markdown = render_video_report_markdown(data)
@@ -284,7 +234,7 @@ def generate_video_report(
     if report is None:
         report = VideoReport(video_id=video_uuid, title=video.title, html_content=html, artifact_path=str(artifact_path))
         db.add(report)
-    report.report_type = "summary_transcript"
+    report.report_type = "summary_report"
     report.title = video.title
     report.html_content = html
     report.markdown_content = markdown

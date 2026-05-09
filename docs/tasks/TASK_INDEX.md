@@ -22,6 +22,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T014B | Telegram report document delivery | done | SentryClaw | Sends generated reports as Telegram documents with simplified buttonless completion messages; fallback preserved |
 | T014C | Overnight brief operations status | done | SentryClaw | Morning brief now includes pending/retry/failure/manual-review/report-delivery/health/spend status |
 | T014D | Summary-only report format | done | SentryClaw | Removed transcript appendix from delivered HTML reports by default and moved source into a top callout |
+| T014E | Report cleanup and delivery path validation | done | BuildClaw | Removed dead transcript report plumbing, renamed summary report type, fixed failed-send dedupe, and validated real Telegram document delivery |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

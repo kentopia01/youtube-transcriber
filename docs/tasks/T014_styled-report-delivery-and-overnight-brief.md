@@ -50,6 +50,7 @@ Ken wants the YouTube Transcriber Telegram bot to deliver finished intelligence 
 - T014C overnight brief operations status complete and focused tests pass.
 - Relevant local validation passed: `tests/test_reporting.py`, `tests/test_telegram_notify.py`, `tests/test_embed_report_notification.py`, and `tests/test_morning_digest.py`.
 - T014D summary-only report format complete: source callout moved to top and transcript appendix removed by default.
+- T014E cleanup complete: redundant transcript report plumbing removed, report type renamed to `summary_report`, failed-send dedupe fixed, and a real Telegram `sendDocument` delivery-path test to Ken returned success.
 - Runtime rollout validation completed: DB upgraded to Alembic `017`, web served HTTP 200, worker health passed, and an automatic-path smoke video produced a report artifact with delivery status `sent`.
 
 ## Notes

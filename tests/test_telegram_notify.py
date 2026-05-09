@@ -14,8 +14,10 @@ from app.services import telegram_messages, telegram_notify
 @pytest.fixture(autouse=True)
 def _reset_dedupe():
     telegram_notify._DEDUPE.clear()
+    telegram_notify._DEDUPE_PENDING.clear()
     yield
     telegram_notify._DEDUPE.clear()
+    telegram_notify._DEDUPE_PENDING.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -242,6 +244,28 @@ class TestNotifyDispatch:
         telegram_notify.notify("video.completed", {
             "video_id": "v", "title": "t", "duration": 1, "speakers": 1,
         })
+
+    def test_failed_send_does_not_poison_dedupe(self, monkeypatch):
+        calls = {"n": 0}
+
+        def flaky_post(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("network fell over")
+            return MagicMock(ok=True)
+
+        monkeypatch.setattr("requests.post", flaky_post)
+
+        first = telegram_notify.notify("video.completed", {
+            "video_id": "same-id", "title": "same", "duration": 1, "speakers": 1,
+        })
+        second = telegram_notify.notify("video.completed", {
+            "video_id": "same-id", "title": "same", "duration": 1, "speakers": 1,
+        })
+
+        assert first is False
+        assert second is True
+        assert calls["n"] == 2
 
 
 class TestSourceAgnosticEmits:

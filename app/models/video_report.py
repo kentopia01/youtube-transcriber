@@ -15,7 +15,7 @@ class VideoReport(Base):
     video_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("videos.id"), unique=True, nullable=False
     )
-    report_type: Mapped[str] = mapped_column(String(64), default="summary_transcript", nullable=False)
+    report_type: Mapped[str] = mapped_column(String(64), default="summary_report", nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     html_content: Mapped[str] = mapped_column(Text, nullable=False)
     markdown_content: Mapped[str | None] = mapped_column(Text, nullable=True)

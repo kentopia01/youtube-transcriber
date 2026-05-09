@@ -66,7 +66,6 @@ class Settings(BaseSettings):
     report_generation_enabled: bool = True
     report_delivery_enabled: bool = True
     report_artifact_dir: str = "data/reports"
-    report_include_full_transcript: bool = False
 
     # Shared base URL the bot uses to call the web API (same host in practice)
     internal_web_base_url: str = "http://localhost:8000"
