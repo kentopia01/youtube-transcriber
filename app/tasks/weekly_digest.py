@@ -29,6 +29,9 @@ from app.tasks.celery_app import celery
 
 logger = structlog.get_logger()
 
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_EXPECTED_EXTERNAL = "expected_external_failure"
+
 
 def _window_bounds(window_days: int = 7) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
@@ -141,9 +144,27 @@ def weekly_telegram_digest() -> dict:
     try:
         from app.services.telegram_notify import notify as _tg_notify
 
-        _tg_notify("digest.weekly", payload)
+        sent = _tg_notify("digest.weekly", payload)
+        if not sent:
+            logger.warning(
+                "weekly_digest_notify_not_sent",
+                boundary="weekly_digest.notify",
+                category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                event_type="digest.weekly",
+                exception_type=None,
+                error_message="telegram_notify_returned_false",
+                outcome="caller_continued",
+            )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("weekly_digest_notify_failed", error=str(exc))
+        logger.warning(
+            "weekly_digest_notify_failed",
+            boundary="weekly_digest.notify",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type="digest.weekly",
+            exception_type=exc.__class__.__name__,
+            error_message=str(exc)[:500],
+            outcome="caller_continued",
+        )
 
     logger.info("weekly_digest_sent", **payload["stats"])
     return payload["stats"]

@@ -81,7 +81,7 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
             cleaned_segments = clean_transcript(
                 segment_payload,
                 api_key=settings.anthropic_api_key,
-                model=settings.anthropic_cleanup_model,
+                model=settings.cleanup_model,
             )
 
             for segment_model, cleaned in zip(transcription.segments, cleaned_segments):

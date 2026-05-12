@@ -49,6 +49,7 @@ class _FakeDB:
         self.commit_calls = 0
         self.rollback_calls = 0
         self.flush_error = flush_error
+        self.events = []
 
     async def execute(self, statement):
         return _FakeResult(self.execute_results.pop(0))
@@ -67,6 +68,7 @@ class _FakeDB:
 
     async def commit(self):
         self.commit_calls += 1
+        self.events.append("commit")
 
     async def rollback(self):
         self.rollback_calls += 1
@@ -123,7 +125,13 @@ async def test_resubmit_failed_video_hides_prior_failed_jobs(monkeypatch):
         },
     )
     monkeypatch.setattr(videos_router, "get_or_create_channel", _fake_get_or_create_channel)
-    monkeypatch.setattr(videos_router, "run_pipeline", lambda _, job_id=None: "celery-123")
+
+    def _publish(_video_id, job_id=None):
+        assert db.events == ["commit"]
+        db.events.append("publish")
+        return "celery-123"
+
+    monkeypatch.setattr(videos_router, "run_pipeline", _publish)
 
     result = await videos_router.submit_video(
         SimpleNamespace(),
@@ -145,6 +153,7 @@ async def test_resubmit_failed_video_hides_prior_failed_jobs(monkeypatch):
     assert replacement_job.attempt_number == 3
     assert replacement_job.supersedes_job_id == older_failed_2.id
     assert replacement_job.attempt_creation_reason == ATTEMPT_REASON_MANUAL_RESUBMIT
+    assert db.events == ["commit", "publish", "commit"]
 
     for superseded in (older_failed_1, older_failed_2):
         assert superseded.hidden_from_queue is True
@@ -362,7 +371,13 @@ async def test_submit_new_video_sets_operator_action_attempt_reason(monkeypatch)
         },
     )
     monkeypatch.setattr(videos_router, "get_or_create_channel", _fake_get_or_create_channel)
-    monkeypatch.setattr(videos_router, "run_pipeline", lambda _video_id, job_id=None: "celery-new")
+
+    def _publish(_video_id, job_id=None):
+        assert db.events == ["commit"]
+        db.events.append("publish")
+        return "celery-new"
+
+    monkeypatch.setattr(videos_router, "run_pipeline", _publish)
 
     result = await videos_router.submit_video(
         SimpleNamespace(),
@@ -375,6 +390,7 @@ async def test_submit_new_video_sets_operator_action_attempt_reason(monkeypatch)
     new_job = next(obj for obj in db.added if isinstance(obj, Job))
     assert new_job.attempt_creation_reason == ATTEMPT_REASON_VIDEO_SUBMIT
     assert new_job.celery_task_id == "celery-new"
+    assert db.events == ["commit", "publish", "commit"]
 
 
 @pytest.mark.asyncio

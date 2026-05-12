@@ -1,6 +1,7 @@
 import re
 from datetime import UTC, datetime, timedelta
 
+import structlog
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,11 @@ from app.models.job import Job
 from app.models.video import Video
 from app.services.pipeline_observability import get_task_worker_identity
 from app.services.pipeline_state import set_pipeline_job_state
+
+logger = structlog.get_logger()
+
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_EXPECTED_EXTERNAL = "expected_external_failure"
 
 MANUAL_REVIEW_RECOVERY_STATUS = "manual_review"
 STALE_REAP_RECOVERY_STATUS = "stale_reaped"
@@ -158,16 +164,41 @@ def record_pipeline_failure(
     try:
         from app.services.telegram_notify import notify as _tg_notify
 
-        _tg_notify(
+        sent = _tg_notify(
             "video.failed",
             {
                 "job_id": str(job.id) if job else None,
+                "video_id": str(video.id) if video and getattr(video, "id", None) else None,
                 "title": getattr(video, "title", None),
                 "stage": stage,
                 "error_message": final_message,
             },
         )
-    except Exception:  # noqa: BLE001 — never let notifier affect caller
-        pass
+        if not sent:
+            logger.warning(
+                "pipeline_failure_notify_not_sent",
+                boundary="pipeline_recovery.notify_failure",
+                category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                event_type="video.failed",
+                job_id=str(job.id) if job else None,
+                video_id=str(video.id) if video and getattr(video, "id", None) else None,
+                stage=stage,
+                exception_type=None,
+                error_message="telegram_notify_returned_false",
+                outcome="caller_continued",
+            )
+    except Exception as exc:  # noqa: BLE001 — never let notifier affect caller
+        logger.warning(
+            "pipeline_failure_notify_failed",
+            boundary="pipeline_recovery.notify_failure",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type="video.failed",
+            job_id=str(job.id) if job else None,
+            video_id=str(video.id) if video and getattr(video, "id", None) else None,
+            stage=stage,
+            exception_type=exc.__class__.__name__,
+            error_message=str(exc)[:500],
+            outcome="caller_continued",
+        )
 
     return final_message

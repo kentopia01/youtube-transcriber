@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from app.models.job import Job
 from app.services import pipeline_recovery
@@ -76,3 +77,42 @@ def test_record_pipeline_failure_sets_manual_review_after_repeated_identical_fai
     assert job.manual_review_required is True
     assert "Manual review required" in message
     assert "Manual review required" in video.error_message
+
+def test_record_pipeline_failure_logs_notify_failure_and_continues(monkeypatch):
+    job = SimpleNamespace(
+        id="job-1",
+        video_id="video-1",
+        failure_signature=None,
+        failure_signature_count=0,
+        recovery_status=None,
+        recovery_reason=None,
+    )
+    video = SimpleNamespace(id="video-1", title="Broken video", status="running", error_message=None)
+
+    monkeypatch.setattr(pipeline_recovery, "count_prior_identical_failures", lambda db, job, signature: 0)
+    monkeypatch.setattr(pipeline_recovery, "set_pipeline_job_state", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "app.services.telegram_notify.notify",
+        lambda event, payload=None: (_ for _ in ()).throw(RuntimeError("telegram down")),
+    )
+    logs = []
+    monkeypatch.setattr(pipeline_recovery.logger, "warning", lambda event, **fields: logs.append((event, fields)))
+
+    message = record_pipeline_failure(
+        db=object(),
+        job=job,
+        video=video,
+        stage="transcribe",
+        error=RuntimeError("decoder failed"),
+        default_message="Transcription failed: decoder failed",
+    )
+
+    assert message == "Transcription failed: decoder failed"
+    assert video.status == "failed"
+    assert logs[0][0] == "pipeline_failure_notify_failed"
+    assert logs[0][1]["boundary"] == "pipeline_recovery.notify_failure"
+    assert logs[0][1]["category"] == "best_effort_side_effect"
+    assert logs[0][1]["job_id"] == "job-1"
+    assert logs[0][1]["video_id"] == "video-1"
+    assert logs[0][1]["exception_type"] == "RuntimeError"
+    assert logs[0][1]["outcome"] == "caller_continued"

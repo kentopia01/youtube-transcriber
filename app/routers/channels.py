@@ -18,6 +18,16 @@ from app.services.channel_sync import (
     sync_discovered_videos,
 )
 from app.services.channel_dispatcher import dispatch_channel_backlog
+from app.services.job_visibility import hide_superseded_failed_jobs
+from app.services.pipeline_attempts import (
+    ATTEMPT_RESULT_ALREADY_ACTIVE,
+    ATTEMPT_RESULT_BLOCKED,
+    ATTEMPT_RESULT_CREATED,
+    PipelineAttemptAllocation,
+    allocate_pipeline_attempt_async,
+    create_pipeline_attempt_from_allocation_async,
+)
+from app.services.pipeline_enqueue import PipelineEnqueueError
 from app.services.pipeline_observability import ATTEMPT_REASON_CHANNEL_PROCESS
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
 from app.services.youtube import discover_channel_videos, is_channel_url
@@ -119,71 +129,176 @@ async def process_selected_videos(
     if not video_ids:
         raise HTTPException(status_code=400, detail="No videos selected")
 
-    total_batches = math.ceil(len(video_ids) / BATCH_SIZE)
-    created_jobs = []
+    video_results: list[dict[str, object]] = []
+    eligible: list[tuple[str, Video, PipelineAttemptAllocation, dict[str, object]]] = []
+    seen_youtube_ids: set[str] = set()
 
+    for yt_video_id in video_ids:
+        result_entry: dict[str, object] = {"youtube_video_id": yt_video_id}
+        video_results.append(result_entry)
+
+        if yt_video_id in seen_youtube_ids:
+            result_entry.update(
+                {
+                    "status": "skipped",
+                    "reason": "duplicate_selected",
+                }
+            )
+            continue
+        seen_youtube_ids.add(yt_video_id)
+
+        v_result = await db.execute(select(Video).where(Video.youtube_video_id == yt_video_id))
+        video = v_result.scalar_one_or_none()
+
+        if not video:
+            video = Video(
+                youtube_video_id=yt_video_id,
+                channel_id=channel.id,
+                title="Pending...",
+                url=f"https://www.youtube.com/watch?v={yt_video_id}",
+                status="pending",
+            )
+            db.add(video)
+            await db.flush()
+        else:
+            video.channel_id = channel.id
+
+        allocation = await allocate_pipeline_attempt_async(db, video.id)
+        if allocation.status == ATTEMPT_RESULT_ALREADY_ACTIVE:
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "already_active",
+                    "active_job_id": str(allocation.active_job.id) if allocation.active_job else None,
+                    "reason": allocation.reason or "active_attempt_exists",
+                }
+            )
+            continue
+
+        if allocation.status == ATTEMPT_RESULT_BLOCKED:
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "blocked",
+                    "reason": allocation.reason or "Pipeline attempt is blocked",
+                }
+            )
+            continue
+
+        if not allocation.ready:
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "error",
+                    "reason": allocation.reason or "attempt_allocation_failed",
+                }
+            )
+            continue
+
+        eligible.append((yt_video_id, video, allocation, result_entry))
+
+    created_jobs: list[str] = []
+    created_attempts: list[Job] = []
+
+    for _yt_video_id, video, allocation, result_entry in eligible:
+        if video.status in {"discovered", "failed", "cancelled"}:
+            video.status = "pending"
+            video.error_message = None
+
+        attempt = await create_pipeline_attempt_from_allocation_async(
+            db,
+            allocation,
+            status="pending",
+            current_stage=PIPELINE_STAGE_QUEUED,
+            progress_message="Waiting for channel dispatcher",
+            channel_id=channel.id,
+            batch_id=None,
+            attempt_creation_reason=ATTEMPT_REASON_CHANNEL_PROCESS,
+        )
+
+        if attempt.status == ATTEMPT_RESULT_CREATED and attempt.job is not None:
+            created_jobs.append(str(attempt.job.id))
+            created_attempts.append(attempt.job)
+            await hide_superseded_failed_jobs(
+                db,
+                video_id=video.id,
+                superseded_by_job_id=attempt.job.id,
+            )
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "created",
+                    "job_id": str(attempt.job.id),
+                    "attempt_number": attempt.attempt_number,
+                }
+            )
+            continue
+
+        if attempt.status == ATTEMPT_RESULT_ALREADY_ACTIVE:
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "already_active",
+                    "active_job_id": str(attempt.active_job.id) if attempt.active_job else None,
+                    "reason": attempt.reason or "active_attempt_exists",
+                }
+            )
+            continue
+
+        if attempt.status == ATTEMPT_RESULT_BLOCKED:
+            result_entry.update(
+                {
+                    "video_id": str(video.id),
+                    "status": "blocked",
+                    "reason": attempt.reason or "Pipeline attempt is blocked",
+                }
+            )
+            continue
+
+        result_entry.update(
+            {
+                "video_id": str(video.id),
+                "status": "error",
+                "reason": attempt.reason or "attempt_create_error",
+            }
+        )
+
+    total_batches = math.ceil(len(created_attempts) / BATCH_SIZE) if created_attempts else 0
     for batch_num in range(total_batches):
-        batch_video_ids = video_ids[batch_num * BATCH_SIZE : (batch_num + 1) * BATCH_SIZE]
-
+        batch_jobs = created_attempts[batch_num * BATCH_SIZE : (batch_num + 1) * BATCH_SIZE]
         batch = Batch(
             channel_id=channel.id,
             batch_number=batch_num + 1,
             total_batches=total_batches,
-            total_videos=len(batch_video_ids),
+            total_videos=len(batch_jobs),
             status="pending" if batch_num > 0 else "running",
         )
         db.add(batch)
         await db.flush()
 
-        for yt_video_id in batch_video_ids:
-            # Get or create video record
-            v_result = await db.execute(
-                select(Video).where(Video.youtube_video_id == yt_video_id)
-            )
-            video = v_result.scalar_one_or_none()
-
-            if not video:
-                video = Video(
-                    youtube_video_id=yt_video_id,
-                    channel_id=channel.id,
-                    title="Pending...",
-                    url=f"https://www.youtube.com/watch?v={yt_video_id}",
-                    status="pending",
-                )
-                db.add(video)
-                await db.flush()
-            else:
-                video.channel_id = channel.id
-
-            if video.status in {"discovered", "failed", "cancelled"}:
-                video.status = "pending"
-                video.error_message = None
-
-            job = Job(
-                video_id=video.id,
-                channel_id=channel.id,
-                batch_id=batch.id,
-                job_type="pipeline",
-                status="pending",
-                attempt_creation_reason=ATTEMPT_REASON_CHANNEL_PROCESS,
-            )
+        progress_message = (
+            "Waiting for channel dispatcher"
+            if batch_num == 0
+            else f"Waiting for batch {batch_num + 1}"
+        )
+        for job in batch_jobs:
+            job.batch_id = batch.id
             set_pipeline_job_state(
                 job,
                 lifecycle_status="pending",
                 current_stage=PIPELINE_STAGE_QUEUED,
-                progress_pct=0.0,
-                progress_message="Waiting for channel dispatcher" if batch_num == 0 else f"Waiting for batch {batch_num}",
-                error_message=None,
-                started_at=None,
-                completed_at=None,
+                progress_message=progress_message,
             )
-            db.add(job)
-            await db.flush()
-            created_jobs.append(str(job.id))
-
-    dispatched_job_ids = await db.run_sync(lambda sync_db: dispatch_channel_backlog(sync_db, max_jobs=1))
 
     await db.commit()
+    dispatched_job_ids: list[str] = []
+    if created_jobs:
+        try:
+            dispatched_job_ids = await db.run_sync(
+                lambda sync_db: dispatch_channel_backlog(sync_db, max_jobs=1)
+            )
+        except PipelineEnqueueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return {
         "channel_id": str(channel.id),
@@ -191,6 +306,7 @@ async def process_selected_videos(
         "total_batches": total_batches,
         "jobs_created": len(created_jobs),
         "dispatched_job_ids": dispatched_job_ids,
+        "video_results": video_results,
     }
 
 

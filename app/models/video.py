@@ -43,5 +43,6 @@ class Video(Base):
     channel = relationship("Channel", back_populates="videos")
     transcription = relationship("Transcription", back_populates="video", uselist=False)
     summary = relationship("Summary", back_populates="video", uselist=False)
+    # One current summary report per video; report_type is a label, not a relationship dimension.
     report = relationship("VideoReport", back_populates="video", uselist=False)
     jobs = relationship("Job", back_populates="video")

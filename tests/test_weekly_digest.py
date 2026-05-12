@@ -85,13 +85,43 @@ class TestWeeklyTelegramDigestTask:
         sent = []
         monkeypatch.setattr(
             "app.services.telegram_notify.notify",
-            lambda event, payload=None: sent.append((event, payload)),
+            lambda event, payload=None: sent.append((event, payload)) or True,
         )
 
         result = mod.weekly_telegram_digest()
 
         assert ("digest.weekly", fake_payload) in sent
         assert result == fake_payload["stats"]
+
+    def test_notify_failure_logs_and_task_still_returns(self, monkeypatch):
+        from app.tasks import weekly_digest as mod
+
+        fake_payload = {
+            "text": "📊 Weekly digest ...",
+            "window_start": "a",
+            "window_end": "b",
+            "stats": {"videos_ingested": 1},
+        }
+
+        monkeypatch.setattr(mod, "create_engine", lambda *a, **kw: MagicMock(dispose=lambda: None))
+        monkeypatch.setattr(mod, "Session", lambda engine: _CtxStub())
+        monkeypatch.setattr(mod, "build_digest_text", lambda db: fake_payload)
+        monkeypatch.setattr(
+            "app.services.telegram_notify.notify",
+            lambda event, payload=None: (_ for _ in ()).throw(RuntimeError("telegram down")),
+        )
+        logs = []
+        monkeypatch.setattr(mod.logger, "warning", lambda event, **fields: logs.append((event, fields)))
+
+        result = mod.weekly_telegram_digest()
+
+        assert result == fake_payload["stats"]
+        assert logs[0][0] == "weekly_digest_notify_failed"
+        assert logs[0][1]["boundary"] == "weekly_digest.notify"
+        assert logs[0][1]["category"] == "best_effort_side_effect"
+        assert logs[0][1]["event_type"] == "digest.weekly"
+        assert logs[0][1]["exception_type"] == "RuntimeError"
+        assert logs[0][1]["outcome"] == "caller_continued"
 
 
 class _CtxStub:

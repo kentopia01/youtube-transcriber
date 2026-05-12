@@ -42,6 +42,7 @@ class _FakeDB:
         self.committed = False
         self.rolled_back = False
         self.flush_error = flush_error
+        self.events = []
 
     async def execute(self, statement):
         return _FakeResult(self.results.pop(0))
@@ -60,6 +61,7 @@ class _FakeDB:
 
     async def commit(self):
         self.committed = True
+        self.events.append("commit")
 
     async def rollback(self):
         self.rolled_back = True
@@ -97,11 +99,12 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
     # then 3x None for artifact checks, then failed jobs to supersede.
     db = _FakeDB([job, video, None, job, None, None, None, [job, older_failed]])
 
-    monkeypatch.setattr(
-        jobs_router,
-        "run_pipeline_from",
-        lambda video_id, start_from, job_id=None: "celery-123",
-    )
+    def _publish(video_id, start_from, job_id=None):
+        assert db.events == ["commit"]
+        db.events.append("publish")
+        return "celery-123"
+
+    monkeypatch.setattr(jobs_router, "run_pipeline_from", _publish)
 
     response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
 
@@ -123,12 +126,52 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
     assert retried_job.supersedes_job_id == job.id
     assert retried_job.attempt_creation_reason == ATTEMPT_REASON_USER_RETRY
     assert retried_job.last_artifact_check_result["selected_resume_stage"] == "tasks.download_audio"
+    assert db.events == ["commit", "publish", "commit"]
 
     for superseded in (job, older_failed):
         assert superseded.hidden_from_queue is True
         assert superseded.hidden_reason == "superseded"
         assert superseded.hidden_at is not None
         assert superseded.superseded_by_job_id == retried_job.id
+
+
+@pytest.mark.asyncio
+async def test_retry_job_publish_failure_marks_retry_failed(monkeypatch):
+    job = Job(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        channel_id=uuid.uuid4(),
+        job_type="pipeline",
+        status="failed",
+        attempt_number=1,
+    )
+    video = Video(
+        id=job.video_id,
+        youtube_video_id="dQw4w9WgXcQ",
+        title="Test",
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        status="failed",
+        error_message="failed",
+    )
+    db = _FakeDB([job, video, None, job, None, None, None, [job]])
+
+    def _publish(*args, **kwargs):
+        assert db.events == ["commit"]
+        db.events.append("publish")
+        raise RuntimeError("broker offline")
+
+    monkeypatch.setattr(jobs_router, "run_pipeline_from", _publish)
+
+    with pytest.raises(HTTPException) as exc:
+        await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
+
+    assert exc.value.status_code == 503
+    retried_job = db.added[0]
+    assert retried_job.status == "failed"
+    assert retried_job.current_stage == "queued"
+    assert retried_job.celery_task_id is None
+    assert "broker offline" in retried_job.error_message
+    assert db.events == ["commit", "publish", "commit"]
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,10 @@ This module intentionally renders deterministic HTML from already-persisted
 transcript and summary data. The report is a delivery artifact, not a new
 pipeline truth source; failures here should never make a completed transcript
 look failed.
+
+Report persistence is intentionally one current summary report per video.
+Regeneration updates that row; ``report_type`` is a canonical label, not a
+variant dimension.
 """
 
 from __future__ import annotations
@@ -25,7 +29,12 @@ from app.models.channel import Channel
 from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
-from app.models.video_report import VideoReport
+from app.models.video_report import SUMMARY_REPORT_TYPE, VideoReport
+from app.services.summary_markdown import (
+    bullet_points_from_markdown,
+    extract_markdown_section,
+    first_content_block,
+)
 
 logger = structlog.get_logger()
 
@@ -38,6 +47,7 @@ class ReportRenderData:
     video_url: str | None
     duration: str | None
     executive_summary_html: str
+    scan_html: str
     key_points: list[str]
     generated_at: str
     word_count: int | None = None
@@ -136,22 +146,67 @@ def _inline_markdown(text: str) -> str:
     return escaped
 
 
+def _scan_from_summary(summary: str | None) -> str | None:
+    return (
+        extract_markdown_section(
+            summary,
+            [
+                "30-second take",
+                "30 second take",
+                "30-second scan",
+                "executive summary",
+                "bottom line",
+                "summary",
+            ],
+        )
+        or first_content_block(summary)
+    )
+
+
 def _key_points_from_summary(summary: str | None, *, limit: int = 6) -> list[str]:
     if not summary:
         return []
-    points: list[str] = []
-    for raw in summary.splitlines():
-        line = raw.strip()
-        if line.startswith(("- ", "* ")):
-            points.append(re.sub(r"^[-*]\s+", "", line))
-        elif re.match(r"^\d+\.\s+", line):
-            points.append(re.sub(r"^\d+\.\s+", "", line))
-        if len(points) >= limit:
-            break
+
+    for section_names in (
+        ["Key takes", "Key takeaways"],
+        ["Takeaways", "Action items"],
+        ["Key points", "Useful details"],
+    ):
+        points = bullet_points_from_markdown(
+            extract_markdown_section(summary, section_names),
+            limit=limit,
+        )
+        if points:
+            return points
+
+    points = bullet_points_from_markdown(summary, limit=limit)
     if points:
         return points
+
     sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
     return [s for s in sentences if s][:limit]
+
+
+def build_report_caption(summary: str | None, *, max_chars: int = 700) -> str | None:
+    """Build a short useful Telegram caption from a summary/report markdown."""
+    scan = _scan_from_summary(summary)
+    key_takes = _key_points_from_summary(summary, limit=2)
+
+    parts: list[str] = []
+    if scan:
+        scan_text = re.sub(r"\s+", " ", re.sub(r"[#>*_`]", "", scan)).strip()
+        if scan_text:
+            parts.append(scan_text)
+    if key_takes:
+        for point in key_takes:
+            parts.append("• " + re.sub(r"\s+", " ", point).strip())
+
+    text = "\n".join(parts).strip()
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
 
 
 def build_report_render_data(
@@ -173,6 +228,7 @@ def build_report_render_data(
         video_url=video.url,
         duration=_fmt_duration(video.duration_seconds),
         executive_summary_html=_markdownish_to_html(summary_text),
+        scan_html=_markdownish_to_html(_scan_from_summary(summary_text)),
         key_points=_key_points_from_summary(summary_text),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         word_count=transcription.word_count if transcription else None,
@@ -190,12 +246,14 @@ def render_video_report_markdown(data: ReportRenderData) -> str:
     if data.channel_name or data.duration:
         lines.append(" · ".join(p for p in [data.channel_name, data.duration] if p))
         lines.append("")
-    lines.append("## Executive Summary")
+    lines.append("## 30-second take")
+    lines.append(re.sub(r"<[^>]+>", "", data.scan_html))
+    if data.key_points:
+        lines.extend(["", "## Key takes"])
+        lines.extend(f"- {p}" for p in data.key_points)
+    lines.extend(["", "## Full intelligence brief"])
     # Keep markdown artifact simple/plain; HTML is the canonical styled artifact.
     lines.append(re.sub(r"<[^>]+>", "", data.executive_summary_html))
-    if data.key_points:
-        lines.extend(["", "## Key Points"])
-        lines.extend(f"- {p}" for p in data.key_points)
     return "\n".join(lines).strip() + "\n"
 
 
@@ -230,11 +288,19 @@ def generate_video_report(
     artifact_path = artifact_dir / f"{safe_name}_report.html"
     artifact_path.write_text(html, encoding="utf-8")
 
+    # Intentionally upsert by video_id only: there is one current summary
+    # report per video, not separate rows per report_type variant.
     report = db.query(VideoReport).filter(VideoReport.video_id == video_uuid).first()
     if report is None:
-        report = VideoReport(video_id=video_uuid, title=video.title, html_content=html, artifact_path=str(artifact_path))
+        report = VideoReport(
+            video_id=video_uuid,
+            report_type=SUMMARY_REPORT_TYPE,
+            title=video.title,
+            html_content=html,
+            artifact_path=str(artifact_path),
+        )
         db.add(report)
-    report.report_type = "summary_report"
+    report.report_type = SUMMARY_REPORT_TYPE
     report.title = video.title
     report.html_content = html
     report.markdown_content = markdown
@@ -257,6 +323,7 @@ def generate_video_report(
 
 __all__ = [
     "ReportRenderData",
+    "build_report_caption",
     "build_report_render_data",
     "generate_video_report",
     "render_video_report_html",

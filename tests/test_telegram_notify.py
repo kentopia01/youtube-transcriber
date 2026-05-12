@@ -64,12 +64,33 @@ class TestRenderers:
             "report_path": str(report),
         })
         assert "Report ready" in out["text"]
-        assert "Attached: summary report" in out["text"]
+        assert "Attached: summary report" not in out["text"]
         assert "Ep &lt;12&gt;" in out["text"]
         assert "20VC · 1h 0m" in out["text"]
         assert out["reply_markup"] is None
         assert out["document_path"] == str(report)
         assert out["document_mime_type"] == "text/html"
+
+    def test_video_report_ready_uses_summary_as_caption(self, tmp_path):
+        report = tmp_path / "report.html"
+        report.write_text("<html>report</html>")
+        out = telegram_messages._render_video_report_ready({
+            "video_id": "v1",
+            "title": "Ep",
+            "report_path": str(report),
+            "summary": """
+## 30-second take
+The speaker argues GPT-5.5 is best used as an execution model when another model writes the plan.
+
+## Key takes
+- It performs much better on coding benchmarks with a detailed Opus-written plan.
+- It is faster than Opus but weaker for sharp judgment.
+""",
+        })
+
+        assert "execution model" in out["text"]
+        assert "coding benchmarks" in out["text"]
+        assert "Attached:" not in out["text"]
 
     def test_video_report_ready_requires_path(self):
         with pytest.raises(telegram_messages.UnknownEvent):
@@ -166,18 +187,35 @@ class TestNotifyDispatch:
         assert "sendDocument" in captured["url"]
         assert captured["data"]["chat_id"] == 999
         assert "Report ready" in captured["data"]["caption"]
+        assert "Attached:" not in captured["data"]["caption"]
         assert captured["data"]["parse_mode"] == "HTML"
         assert captured["filename"] == "report.html"
         assert captured["mime"] == "text/html"
         assert captured["content"] == b"<html>report</html>"
 
-    def test_report_ready_missing_file_returns_false(self, tmp_path):
+    def test_report_ready_missing_file_returns_false(self, monkeypatch, tmp_path):
+        logs = []
+        monkeypatch.setattr(
+            telegram_notify.logger,
+            "warning",
+            lambda event, **fields: logs.append((event, fields)),
+        )
+
         ok = telegram_notify.notify("video.report_ready", {
             "video_id": "vid-1",
             "title": "Ep",
             "report_path": str(tmp_path / "missing.html"),
         })
+
         assert ok is False
+        event, fields = logs[0]
+        assert event == "telegram_notify_document_missing"
+        assert fields["boundary"] == "telegram_notify.send_document"
+        assert fields["category"] == "expected_external_failure"
+        assert fields["event_type"] == "video.report_ready"
+        assert fields["video_id"] == "vid-1"
+        assert fields["report_path"].endswith("missing.html")
+        assert fields["outcome"] == "suppressed"
 
     def test_mute_prevents_send(self, monkeypatch, tmp_path):
         from app.config import settings
@@ -207,6 +245,12 @@ class TestNotifyDispatch:
 
     def test_dedupes_repeats_within_window(self, monkeypatch):
         counter = {"n": 0}
+        debug_logs = []
+        monkeypatch.setattr(
+            telegram_notify.logger,
+            "debug",
+            lambda event, **fields: debug_logs.append((event, fields)),
+        )
         monkeypatch.setattr(
             "requests.post",
             lambda *a, **kw: counter.__setitem__("n", counter["n"] + 1) or MagicMock(),
@@ -218,6 +262,12 @@ class TestNotifyDispatch:
             })
 
         assert counter["n"] == 1
+        deduped = [fields for event, fields in debug_logs if event == "telegram_notify_deduped"]
+        assert deduped
+        assert deduped[0]["boundary"] == "telegram_notify.dedupe"
+        assert deduped[0]["category"] == "best_effort_side_effect"
+        assert deduped[0]["video_id"] == "same-id"
+        assert deduped[0]["outcome"] == "suppressed"
 
     def test_unknown_event_is_noop(self, monkeypatch):
         sent = []
@@ -236,6 +286,13 @@ class TestNotifyDispatch:
         assert sent == []
 
     def test_network_failure_never_raises(self, monkeypatch):
+        logs = []
+        monkeypatch.setattr(
+            telegram_notify.logger,
+            "warning",
+            lambda event, **fields: logs.append((event, fields)),
+        )
+
         def boom(*a, **kw):
             raise RuntimeError("network fell over")
 
@@ -244,6 +301,15 @@ class TestNotifyDispatch:
         telegram_notify.notify("video.completed", {
             "video_id": "v", "title": "t", "duration": 1, "speakers": 1,
         })
+
+        event, fields = logs[0]
+        assert event == "telegram_notify_send_failed"
+        assert fields["boundary"] == "telegram_notify.send_message"
+        assert fields["category"] == "expected_external_failure"
+        assert fields["event_type"] == "video.completed"
+        assert fields["video_id"] == "v"
+        assert fields["exception_type"] == "RuntimeError"
+        assert fields["outcome"] == "suppressed"
 
     def test_failed_send_does_not_poison_dedupe(self, monkeypatch):
         calls = {"n": 0}

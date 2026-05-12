@@ -253,7 +253,7 @@ def derive_persona(
     if not chunks:
         raise ValueError("derive_persona: empty corpus")
 
-    model = model or settings.anthropic_persona_model
+    model = model or settings.persona_model
     api_key = api_key or settings.anthropic_api_key
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")

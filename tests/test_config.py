@@ -4,7 +4,14 @@ import os
 
 import pytest
 
-from app.config import Settings
+from app.config import (
+    DEFAULT_CHAT_MODEL,
+    DEFAULT_CLEANUP_MODEL,
+    DEFAULT_DIGEST_MODEL,
+    DEFAULT_PERSONA_MODEL,
+    DEFAULT_SUMMARY_MODEL,
+    Settings,
+)
 
 
 class TestConfigDefaults:
@@ -40,7 +47,7 @@ class TestConfigDefaults:
 
     def test_cleanup_model_default(self):
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")
-        assert s.cleanup_model == "claude-haiku-4-5-20251001"
+        assert s.cleanup_model == DEFAULT_CLEANUP_MODEL
 
     def test_hf_token_default_empty(self, monkeypatch):
         monkeypatch.delenv("HF_TOKEN", raising=False)
@@ -92,6 +99,100 @@ class TestConfigDefaults:
         assert s.embedding_dimensions == 512
         assert s.chunk_target_tokens == 200
         assert s.chunk_max_tokens == 300
+
+
+class TestCanonicalModelSettings:
+    """Config contract for canonical LLM model settings and deprecated aliases."""
+
+    MODEL_ENV_VARS = (
+        "CLEANUP_MODEL",
+        "SUMMARY_MODEL",
+        "CHAT_MODEL",
+        "PERSONA_MODEL",
+        "DIGEST_MODEL",
+        "ANTHROPIC_CLEANUP_MODEL",
+        "ANTHROPIC_SUMMARY_MODEL",
+        "ANTHROPIC_CHAT_MODEL",
+        "ANTHROPIC_PERSONA_MODEL",
+    )
+
+    def _clear_model_env(self, monkeypatch):
+        for name in self.MODEL_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+
+    def _settings(self):
+        return Settings(database_url="x", database_url_sync="x", redis_url="x", _env_file=None)
+
+    def test_model_defaults_are_canonical_per_use_case(self, monkeypatch):
+        self._clear_model_env(monkeypatch)
+
+        s = self._settings()
+
+        assert s.cleanup_model == DEFAULT_CLEANUP_MODEL
+        assert s.summary_model == DEFAULT_SUMMARY_MODEL
+        assert s.chat_model == DEFAULT_CHAT_MODEL
+        assert s.persona_model == DEFAULT_PERSONA_MODEL
+        assert s.digest_model == DEFAULT_DIGEST_MODEL
+        assert s.anthropic_cleanup_model == DEFAULT_CLEANUP_MODEL
+        assert s.anthropic_summary_model == DEFAULT_SUMMARY_MODEL
+        assert s.anthropic_chat_model == DEFAULT_CHAT_MODEL
+        assert s.anthropic_persona_model == DEFAULT_PERSONA_MODEL
+
+    def test_canonical_model_env_vars_override_defaults(self, monkeypatch):
+        self._clear_model_env(monkeypatch)
+        monkeypatch.setenv("CLEANUP_MODEL", "cleanup-canonical")
+        monkeypatch.setenv("SUMMARY_MODEL", "summary-canonical")
+        monkeypatch.setenv("CHAT_MODEL", "chat-canonical")
+        monkeypatch.setenv("PERSONA_MODEL", "persona-canonical")
+        monkeypatch.setenv("DIGEST_MODEL", "digest-canonical")
+
+        s = self._settings()
+
+        assert s.cleanup_model == "cleanup-canonical"
+        assert s.summary_model == "summary-canonical"
+        assert s.chat_model == "chat-canonical"
+        assert s.persona_model == "persona-canonical"
+        assert s.digest_model == "digest-canonical"
+
+    def test_deprecated_anthropic_model_env_aliases_remain_supported(self, monkeypatch):
+        self._clear_model_env(monkeypatch)
+        monkeypatch.setenv("ANTHROPIC_CLEANUP_MODEL", "cleanup-legacy")
+        monkeypatch.setenv("ANTHROPIC_SUMMARY_MODEL", "summary-legacy")
+        monkeypatch.setenv("ANTHROPIC_CHAT_MODEL", "chat-legacy")
+        monkeypatch.setenv("ANTHROPIC_PERSONA_MODEL", "persona-legacy")
+
+        s = self._settings()
+
+        assert s.cleanup_model == "cleanup-legacy"
+        assert s.summary_model == "summary-legacy"
+        assert s.digest_model == "summary-legacy"
+        assert s.chat_model == "chat-legacy"
+        assert s.persona_model == "persona-legacy"
+
+    def test_canonical_model_env_vars_win_over_deprecated_aliases(self, monkeypatch):
+        self._clear_model_env(monkeypatch)
+        monkeypatch.setenv("SUMMARY_MODEL", "summary-canonical")
+        monkeypatch.setenv("DIGEST_MODEL", "digest-canonical")
+        monkeypatch.setenv("ANTHROPIC_SUMMARY_MODEL", "summary-legacy")
+
+        s = self._settings()
+
+        assert s.summary_model == "summary-canonical"
+        assert s.digest_model == "digest-canonical"
+
+    def test_deprecated_compatibility_properties_are_mutable_aliases(self, monkeypatch):
+        self._clear_model_env(monkeypatch)
+        s = self._settings()
+
+        s.anthropic_cleanup_model = "cleanup-setter"
+        s.anthropic_summary_model = "summary-setter"
+        s.anthropic_chat_model = "chat-setter"
+        s.anthropic_persona_model = "persona-setter"
+
+        assert s.cleanup_model == "cleanup-setter"
+        assert s.summary_model == "summary-setter"
+        assert s.chat_model == "chat-setter"
+        assert s.persona_model == "persona-setter"
 
 
 class TestNativeVsDockerConfig:

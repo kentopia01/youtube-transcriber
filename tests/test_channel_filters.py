@@ -5,9 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import get_db
 from app.main import create_app
+from app.services.pipeline_enqueue import PipelineEnqueueError
 from app.services.youtube import discover_channel_videos
 
 
@@ -147,11 +149,33 @@ class _FakeResult:
         return self._value
 
 
+class _AsyncSavepoint:
+    def __init__(self, db):
+        self.db = db
+        self._added_len = 0
+
+    async def __aenter__(self):
+        self._added_len = len(self.db.added)
+        self.db.events.append("savepoint_begin")
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if exc_type:
+            del self.db.added[self._added_len :]
+        self.db.events.append("savepoint_rollback" if exc_type else "savepoint_commit")
+        return False
+
+
 class StubDB:
-    def __init__(self, execute_results=None):
+    def __init__(self, execute_results=None, *, flush_error=None, fail_job_flush_number=None):
         self._results = list(execute_results or [])
         self.added = []
         self.committed = False
+        self.rollback_calls = 0
+        self.events = []
+        self.flush_error = flush_error
+        self.fail_job_flush_number = fail_job_flush_number
+        self.job_flush_calls = 0
         self._exec_idx = 0
 
     async def execute(self, *args, **kwargs):
@@ -168,12 +192,30 @@ class StubDB:
         self.added.append(obj)
 
     async def flush(self):
+        new_job_pending = any(
+            obj.__class__.__name__ == "Job" and hasattr(obj, "id") and obj.id is None
+            for obj in self.added
+        )
+        if new_job_pending:
+            self.job_flush_calls += 1
+            if self.fail_job_flush_number == self.job_flush_calls and self.flush_error is not None:
+                flush_error, self.flush_error = self.flush_error, None
+                raise flush_error
+
         for obj in self.added:
             if hasattr(obj, "id") and obj.id is None:
                 obj.id = uuid.uuid4()
 
     async def commit(self):
         self.committed = True
+        self.events.append("commit")
+
+    async def rollback(self):
+        self.rollback_calls += 1
+        self.events.append("session_rollback")
+
+    def begin_nested(self):
+        return _AsyncSavepoint(self)
 
     async def run_sync(self, fn):
         return fn(self)
@@ -388,6 +430,232 @@ class TestProcessLatest:
         assert resp.status_code == 200
         assert existing_video.status == "pending"
         assert existing_video.error_message is None
+
+    def test_process_reports_active_attempt_without_creating_job(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        existing_video = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid1",
+            channel_id=fake_channel.id,
+            status="failed",
+            error_message="old error",
+        )
+        active_job = SimpleNamespace(
+            id=uuid.uuid4(),
+            video_id=existing_video.id,
+            job_type="pipeline",
+            status="queued",
+            attempt_number=3,
+        )
+        db = StubDB(execute_results=[fake_channel, existing_video, active_job])
+        client = _build_client(db)
+
+        with patch("app.routers.channels.dispatch_channel_backlog") as dispatch:
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1"]},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["jobs_created"] == 0
+        assert payload["total_batches"] == 0
+        assert payload["video_results"] == [
+            {
+                "youtube_video_id": "vid1",
+                "video_id": str(existing_video.id),
+                "status": "already_active",
+                "active_job_id": str(active_job.id),
+                "reason": "active_attempt_exists",
+            }
+        ]
+        dispatch.assert_not_called()
+
+    def test_process_reports_manual_review_block_without_creating_job(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        existing_video = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid1",
+            channel_id=fake_channel.id,
+            status="failed",
+            error_message="old error",
+        )
+        latest_attempt = SimpleNamespace(
+            id=uuid.uuid4(),
+            video_id=existing_video.id,
+            job_type="pipeline",
+            status="failed",
+            attempt_number=4,
+            recovery_status="manual_review",
+            recovery_reason="Manual review required after repeated failures.",
+        )
+        db = StubDB(execute_results=[fake_channel, existing_video, None, latest_attempt])
+        client = _build_client(db)
+
+        with patch("app.routers.channels.dispatch_channel_backlog") as dispatch:
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1"]},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["jobs_created"] == 0
+        assert payload["total_batches"] == 0
+        assert payload["video_results"][0]["status"] == "blocked"
+        assert "Manual review required" in payload["video_results"][0]["reason"]
+        assert existing_video.status == "failed"
+        dispatch.assert_not_called()
+
+    def test_process_failed_video_allocates_next_attempt_number(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        existing_video = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid1",
+            channel_id=fake_channel.id,
+            status="failed",
+            error_message="old error",
+        )
+        latest_failed = SimpleNamespace(
+            id=uuid.uuid4(),
+            video_id=existing_video.id,
+            job_type="pipeline",
+            status="failed",
+            attempt_number=4,
+            hidden_from_queue=False,
+        )
+        db = StubDB(execute_results=[fake_channel, existing_video, None, latest_failed, [latest_failed]])
+        client = _build_client(db)
+
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1"]},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["jobs_created"] == 1
+        assert payload["video_results"][0]["status"] == "created"
+        assert payload["video_results"][0]["attempt_number"] == 5
+        created_job = next(obj for obj in db.added if obj.__class__.__name__ == "Job")
+        assert created_job.attempt_number == 5
+        assert created_job.supersedes_job_id == latest_failed.id
+        assert existing_video.status == "pending"
+        assert latest_failed.hidden_from_queue is True
+        assert latest_failed.hidden_reason == "superseded"
+        assert latest_failed.superseded_by_job_id == created_job.id
+
+    def test_process_duplicate_selected_video_is_skipped_without_crashing(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        db = StubDB(execute_results=[fake_channel, None, None, None])
+        client = _build_client(db)
+
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1", "vid1"]},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["total_videos"] == 2
+        assert payload["jobs_created"] == 1
+        assert [result["status"] for result in payload["video_results"]] == ["created", "skipped"]
+        assert payload["video_results"][1]["reason"] == "duplicate_selected"
+
+    def test_process_late_active_conflict_does_not_rollback_prior_created_job(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        video_one = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid1",
+            channel_id=fake_channel.id,
+            status="pending",
+            error_message=None,
+        )
+        video_two = SimpleNamespace(
+            id=uuid.uuid4(),
+            youtube_video_id="vid2",
+            channel_id=fake_channel.id,
+            status="pending",
+            error_message=None,
+        )
+        active_two = SimpleNamespace(
+            id=uuid.uuid4(),
+            video_id=video_two.id,
+            job_type="pipeline",
+            status="queued",
+            attempt_number=9,
+        )
+        db = StubDB(
+            execute_results=[
+                fake_channel,
+                video_one,
+                None,
+                None,
+                video_two,
+                None,
+                None,
+                [],
+                active_two,
+            ],
+            flush_error=IntegrityError(
+                "INSERT INTO jobs ...",
+                {},
+                Exception(
+                    'duplicate key value violates unique constraint "uq_jobs_pipeline_one_active_attempt"'
+                ),
+            ),
+            fail_job_flush_number=2,
+        )
+        client = _build_client(db)
+
+        with patch("app.routers.channels.dispatch_channel_backlog", return_value=["job-1"]):
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1", "vid2"]},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["jobs_created"] == 1
+        assert payload["total_batches"] == 1
+        assert [result["status"] for result in payload["video_results"]] == [
+            "created",
+            "already_active",
+        ]
+        assert payload["video_results"][1]["active_job_id"] == str(active_two.id)
+        batches = [obj for obj in db.added if obj.__class__.__name__ == "Batch"]
+        jobs = [obj for obj in db.added if obj.__class__.__name__ == "Job"]
+        assert len(batches) == 1
+        assert batches[0].total_videos == 1
+        assert batches[0].total_batches == 1
+        assert len(jobs) == 1
+        assert jobs[0].batch_id == batches[0].id
+        assert db.committed is True
+        assert db.rollback_calls == 0
+        assert db.events.count("savepoint_rollback") == 1
+        assert "session_rollback" not in db.events
+
+    def test_process_dispatch_enqueue_failure_returns_503(self):
+        fake_channel = SimpleNamespace(id=uuid.uuid4(), name="TestChannel")
+        db = StubDB(execute_results=[
+            fake_channel,
+            None,
+        ])
+        client = _build_client(db)
+
+        with patch(
+            "app.routers.channels.dispatch_channel_backlog",
+            side_effect=PipelineEnqueueError("job-1", RuntimeError("broker offline")),
+        ):
+            resp = client.post(
+                f"/api/channels/{fake_channel.id}/process",
+                json={"video_ids": ["vid1"]},
+            )
+
+        assert resp.status_code == 503
+        assert "broker offline" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

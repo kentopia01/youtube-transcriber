@@ -28,6 +28,9 @@ from app.tasks.celery_app import celery
 
 logger = structlog.get_logger()
 
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_EXPECTED_EXTERNAL = "expected_external_failure"
+
 
 async def _run(channel_id: str, forced: bool) -> dict[str, Any]:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -80,7 +83,7 @@ async def _run(channel_id: str, forced: bool) -> dict[str, Any]:
                 from app.services.telegram_notify import notify as _tg_notify
 
                 event = "persona.refreshed" if was_refresh else "persona.generated"
-                _tg_notify(
+                sent = _tg_notify(
                     event,
                     {
                         "display_name": persona.display_name,
@@ -89,8 +92,30 @@ async def _run(channel_id: str, forced: bool) -> dict[str, Any]:
                         "is_refresh": was_refresh,
                     },
                 )
-            except Exception:  # noqa: BLE001
-                pass
+                if not sent:
+                    logger.warning(
+                        "channel_persona_notify_not_sent",
+                        boundary="generate_persona.notify",
+                        category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                        event_type=event,
+                        channel_id=str(channel_uuid),
+                        persona_id=str(persona.id),
+                        exception_type=None,
+                        error_message="telegram_notify_returned_false",
+                        outcome="caller_continued",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "channel_persona_notify_failed",
+                    boundary="generate_persona.notify",
+                    category=SIDE_EFFECT_BEST_EFFORT,
+                    event_type="persona.refreshed" if was_refresh else "persona.generated",
+                    channel_id=str(channel_uuid),
+                    persona_id=str(persona.id),
+                    exception_type=exc.__class__.__name__,
+                    error_message=str(exc)[:500],
+                    outcome="caller_continued",
+                )
 
             return {
                 "status": "generated",
@@ -141,4 +166,13 @@ def enqueue_channel_persona(channel_id: str, *, forced: bool = False) -> None:
             queue="post",
         )
     except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning("channel_persona_enqueue_failed", channel_id=channel_id, error=str(exc))
+        logger.warning(
+            "channel_persona_enqueue_failed",
+            boundary="generate_persona.enqueue",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            channel_id=str(channel_id),
+            forced=forced,
+            exception_type=exc.__class__.__name__,
+            error_message=str(exc)[:500],
+            outcome="caller_continued",
+        )

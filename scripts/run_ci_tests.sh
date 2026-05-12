@@ -7,6 +7,10 @@
 # CI-only failures locally.
 #
 #   bash scripts/run_ci_tests.sh
+#
+# Smoke/e2e tests that can hit localhost services are skipped by default.
+# Run them deliberately with:
+#   YT_RUN_SMOKE=1 python -m pytest tests/test_v2_smoke.py --run-smoke -q
 
 set -euo pipefail
 
@@ -24,6 +28,7 @@ echo "==> Installing .[dev] (CI's exact pip line)"
 python -m pip install --upgrade pip -q
 python -m pip install "$ROOT[dev]" -q
 
-echo "==> Running pytest with CI's env"
+echo "==> Running non-mutating pytest with CI's env"
+echo "==> Smoke/e2e tests require explicit opt-in: --run-smoke / YT_RUN_SMOKE=1 or --run-e2e / YT_RUN_E2E=1"
 cd "$ROOT"
 ANTHROPIC_API_KEY=test-key-for-ci python -m pytest -q "$@"

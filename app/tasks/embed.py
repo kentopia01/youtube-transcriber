@@ -1,5 +1,6 @@
 import uuid
 
+import structlog
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -16,7 +17,11 @@ from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
 from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
+logger = structlog.get_logger()
 sync_engine = create_engine(settings.database_url_sync)
+
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_BUG_MASK = "bug_mask_candidate"
 
 
 def _speakers_count(transcription: Transcription | None) -> int | None:
@@ -52,27 +57,56 @@ def _notify_completion(db: Session, video: Video, transcription: Transcription |
     from app.services.telegram_notify import notify as _tg_notify
 
     payload = _completion_payload(db, video, transcription)
+    video_id = str(video.id)
+    channel_id = str(video.channel_id) if video.channel_id else None
 
     if settings.report_generation_enabled and settings.report_delivery_enabled:
+        report_path = None
         try:
             from app.services.reporting import generate_video_report
 
             report = generate_video_report(db, video.id)
+            report_path = report.artifact_path
             sent = _tg_notify(
                 "video.report_ready",
                 {
                     **payload,
                     "report_path": report.artifact_path,
                     "filename": report.artifact_path.rsplit("/", 1)[-1],
+                    "summary": report.markdown_content,
                 },
             )
             report.delivery_status = "sent" if sent else "failed"
             if not sent:
                 report.delivery_error = "telegram_notify_returned_false"
+                logger.warning(
+                    "video_report_delivery_failed",
+                    boundary="embed.report_generation_delivery",
+                    category=SIDE_EFFECT_BEST_EFFORT,
+                    event_type="video.report_ready",
+                    video_id=video_id,
+                    channel_id=channel_id,
+                    report_path=report_path,
+                    exception_type=None,
+                    error_message="telegram_notify_returned_false",
+                    outcome="fallback_sent",
+                )
             db.commit()
             if sent:
                 return
         except Exception as exc:  # noqa: BLE001 — report delivery must not fail pipeline completion
+            logger.warning(
+                "video_report_side_effect_failed",
+                boundary="embed.report_generation_delivery",
+                category=SIDE_EFFECT_BEST_EFFORT,
+                event_type="video.report_ready",
+                video_id=video_id,
+                channel_id=channel_id,
+                report_path=report_path,
+                exception_type=exc.__class__.__name__,
+                error_message=str(exc)[:1000],
+                outcome="fallback_sent",
+            )
             try:
                 from app.models.video_report import VideoReport
 
@@ -81,10 +115,35 @@ def _notify_completion(db: Session, video: Video, transcription: Transcription |
                     report.delivery_status = "failed"
                     report.delivery_error = str(exc)[:1000]
                     db.commit()
-            except Exception:  # noqa: BLE001
+            except Exception as state_exc:  # noqa: BLE001
                 db.rollback()
+                logger.warning(
+                    "video_report_failure_state_update_failed",
+                    boundary="embed.report_failure_state_update",
+                    category=SIDE_EFFECT_BUG_MASK,
+                    event_type="video.report_ready",
+                    video_id=video_id,
+                    channel_id=channel_id,
+                    report_path=report_path,
+                    exception_type=state_exc.__class__.__name__,
+                    error_message=str(state_exc)[:1000],
+                    outcome="caller_continued",
+                )
 
-    _tg_notify("video.completed", payload)
+    try:
+        _tg_notify("video.completed", payload)
+    except Exception as exc:  # noqa: BLE001 — completion notification must not fail caller
+        logger.warning(
+            "video_completion_notification_failed",
+            boundary="embed.completion_notification",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type="video.completed",
+            video_id=video_id,
+            channel_id=channel_id,
+            exception_type=exc.__class__.__name__,
+            error_message=str(exc)[:1000],
+            outcome="caller_continued",
+        )
 
 
 @celery.task(
@@ -185,8 +244,19 @@ def generate_embeddings_task(self, payload: dict[str, str] | str) -> dict[str, s
 
             try:
                 _notify_completion(db, video, transcription)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "video_completion_side_effect_failed",
+                    boundary="embed.completion_notification",
+                    category=SIDE_EFFECT_BUG_MASK,
+                    event_type="video.completed",
+                    video_id=str(video.id),
+                    job_id=str(job.id) if job else None,
+                    channel_id=str(video.channel_id) if video.channel_id else None,
+                    exception_type=exc.__class__.__name__,
+                    error_message=str(exc)[:1000],
+                    outcome="caller_continued",
+                )
 
             return payload
 

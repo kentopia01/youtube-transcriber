@@ -90,11 +90,18 @@ def _render_video_report_ready(payload: dict) -> dict:
     meta_line = f"\n{escape(meta)}" if meta else ""
     filename = payload.get("filename") or f"{Path(str(report_path)).stem}.html"
 
+    caption_summary = (payload.get("caption_summary") or "").strip()
+    if not caption_summary and payload.get("summary"):
+        from app.services.reporting import build_report_caption
+
+        caption_summary = build_report_caption(str(payload.get("summary"))) or ""
+    summary_line = f"\n\n{escape(caption_summary)}" if caption_summary else ""
+
     return {
         "text": (
             "<b>✅ Report ready</b>\n\n"
-            f"{escape(title)}{meta_line}\n\n"
-            "Attached: summary report"
+            f"{escape(title)}{meta_line}"
+            f"{summary_line}"
         ),
         "reply_markup": None,
         "parse_mode": "HTML",

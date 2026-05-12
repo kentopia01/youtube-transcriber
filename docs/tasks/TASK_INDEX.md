@@ -23,6 +23,17 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T014C | Overnight brief operations status | done | SentryClaw | Morning brief now includes pending/retry/failure/manual-review/report-delivery/health/spend status |
 | T014D | Summary-only report format | done | SentryClaw | Removed transcript appendix from delivered HTML reports by default and moved source into a top callout |
 | T014E | Report cleanup and delivery path validation | done | BuildClaw | Removed dead transcript report plumbing, renamed summary report type, fixed failed-send dedupe, and validated real Telegram document delivery |
+| T015 | Scan-first summary intelligence | done | SentryClaw / QAClaw | Scan-first prompt/report/caption, eval harness, guarded backfill tooling, and deterministic Phase 4 quality guardrails implemented locally |
+| T016 | Full project engineering audit | done | SentryClaw + specialist agents | Read-only full-project architecture/code/reliability/data/test/ops audit and prioritized remediation roadmap completed in `docs/tasks/T016_full_project_engineering_audit.md` |
+| T017 | Pipeline enqueue transaction boundary | done | BuildClaw / QAClaw | Shared commit-before-publish enqueue helper implemented for retry/channel/batch/manual pipeline starts; focused validation passed |
+| T018 | Unified pipeline attempt factory | done | BuildClaw / QAClaw | Shared attempt factory/allocation contract implemented; QA passed after savepoint and channel batch consistency fixes |
+| T019 | Test-suite smoke isolation | done | SentryClaw / QAClaw | Smoke/e2e tests are opt-in; default pytest/CI runs skip mutating localhost smoke tests |
+| T020 | Alembic/model contract tests | done | BuildClaw / QAClaw | Static non-mutating Alembic/model contract tests added; QA passed |
+| T021 | Config model-name consolidation | done | BuildClaw / QAClaw | Canonical model settings/aliases consolidated across config and LLM paths; QA passed |
+| T022 | Channel dispatcher single source of truth | done | BuildClaw / QAClaw | Batch progress/dispatch centralized in channel dispatcher; QA passed |
+| T023 | Broad exception audit and structured side-effect logging | done | BuildClaw / QAClaw | High-risk fail-open side-effect catches now emit structured logs; QA passed |
+| T024 | Report schema intent cleanup | done | BuildClaw / QAClaw | One-current-summary-report-per-video intent explicit, tested, and QA-validated |
+| T025 | Final full-suite release hygiene | done | SentryClaw | Static gates passed; default full pytest suite passed `1157 passed, 11 skipped` |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

@@ -236,7 +236,7 @@ class TestMorningDigestTask:
         sent = []
         monkeypatch.setattr(
             "app.services.telegram_notify.notify",
-            lambda event, payload=None: sent.append((event, payload)),
+            lambda event, payload=None: sent.append((event, payload)) or True,
         )
 
         result = morning_task.run_morning_digest()
@@ -246,6 +246,55 @@ class TestMorningDigestTask:
             "window_start": fake_render["window_start"],
             "window_end": fake_render["window_end"],
         }) in sent
+
+    def test_notify_failure_logs_and_digest_still_returns(self, monkeypatch):
+        fake_input = digest_svc.DigestInput(
+            window_start=datetime.now(UTC) - timedelta(hours=24),
+            window_end=datetime.now(UTC),
+            videos_completed=[],
+            videos_failed=[],
+            personas_touched=[],
+            cost_auto_ingest_usd=0.0,
+            cost_manual_usd=0.0,
+            subscription_names=[],
+        )
+        fake_render = {
+            "text": "**Opener** nothing overnight.",
+            "model": "claude-sonnet-4-5",
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "window_start": fake_input.window_start.isoformat(),
+            "window_end": fake_input.window_end.isoformat(),
+        }
+
+        class _CtxStub:
+            def __enter__(self):
+                return MagicMock()
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(
+            morning_task, "create_engine", lambda *a, **kw: MagicMock(dispose=lambda: None)
+        )
+        monkeypatch.setattr(morning_task, "Session", lambda engine: _CtxStub())
+        monkeypatch.setattr(morning_task, "gather_digest_inputs", lambda db, window_hours=24: fake_input)
+        monkeypatch.setattr(morning_task, "render_digest_via_llm", lambda inputs: fake_render)
+        monkeypatch.setattr(
+            "app.services.telegram_notify.notify",
+            lambda event, payload=None: (_ for _ in ()).throw(RuntimeError("telegram down")),
+        )
+        logs = []
+        monkeypatch.setattr(morning_task.logger, "warning", lambda event, **fields: logs.append((event, fields)))
+
+        result = morning_task.run_morning_digest()
+
+        assert result["prompt_tokens"] == 100
+        assert logs[0][0] == "morning_digest_notify_failed"
+        assert logs[0][1]["boundary"] == "morning_digest.notify"
+        assert logs[0][1]["category"] == "best_effort_side_effect"
+        assert logs[0][1]["exception_type"] == "RuntimeError"
+        assert logs[0][1]["outcome"] == "caller_continued"
 
 
 # ---------------------------------------------------------------------------

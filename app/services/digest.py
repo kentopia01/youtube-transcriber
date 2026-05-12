@@ -429,7 +429,7 @@ def render_digest_via_llm(
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """Call Sonnet to produce the digest. Returns the full result dict."""
-    model = model or settings.anthropic_summary_model
+    model = model or settings.digest_model
     api_key = api_key or settings.anthropic_api_key
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")

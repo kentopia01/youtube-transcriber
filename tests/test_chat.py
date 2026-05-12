@@ -967,7 +967,7 @@ class TestAnthropicErrorHandling:
         await chat_with_context("question", [], db)
 
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-haiku-4-5"  # anthropic_chat_model default
+        assert call_args[2] == "claude-haiku-4-5"  # chat_model default
         assert "video transcript" in call_args[0].lower()
 
     @pytest.mark.asyncio
@@ -1932,7 +1932,7 @@ class TestQAClawRound8:
         # _call_anthropic(system, messages, model) — verify it was called
         mock_llm.assert_called_once()
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-haiku-4-5"  # anthropic_chat_model default
+        assert call_args[2] == "claude-haiku-4-5"  # chat_model default
 
 
 # ---------------------------------------------------------------------------
@@ -2033,7 +2033,7 @@ class TestQAClawRound9:
         with patch("app.services.chat.settings") as mock_settings:
             mock_settings.chat_retrieval_top_k = 10
             mock_settings.chat_max_history = 10
-            mock_settings.anthropic_chat_model = "custom-model-123"
+            mock_settings.chat_model = "custom-model-123"
             mock_settings.anthropic_api_key = "test-key"
             await chat_with_context("question", [], db)
 

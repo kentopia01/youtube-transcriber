@@ -44,7 +44,7 @@ class _FakeSessionContext:
 def test_cleanup_task_uses_service_contract_and_updates_models(monkeypatch):
     monkeypatch.setattr(cleanup.settings, "transcript_cleanup_enabled", True)
     monkeypatch.setattr(cleanup.settings, "anthropic_api_key", "api-key")
-    monkeypatch.setattr(cleanup.settings, "anthropic_cleanup_model", "cleanup-model")
+    monkeypatch.setattr(cleanup.settings, "cleanup_model", "cleanup-model")
 
     payload = {"video_id": "vid-1", "job_id": "job-1"}
     video = SimpleNamespace(id=uuid.uuid4(), status=None)
@@ -107,7 +107,7 @@ def test_cleanup_task_uses_service_contract_and_updates_models(monkeypatch):
 def test_cleanup_task_records_failure_and_raises(monkeypatch):
     monkeypatch.setattr(cleanup.settings, "transcript_cleanup_enabled", True)
     monkeypatch.setattr(cleanup.settings, "anthropic_api_key", "api-key")
-    monkeypatch.setattr(cleanup.settings, "anthropic_cleanup_model", "cleanup-model")
+    monkeypatch.setattr(cleanup.settings, "cleanup_model", "cleanup-model")
 
     payload = {"video_id": "vid-1", "job_id": "job-1"}
     video = SimpleNamespace(id=uuid.uuid4(), status=None)

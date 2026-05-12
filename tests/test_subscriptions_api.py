@@ -116,6 +116,42 @@ class TestCreateEndpoint:
         r = client.post("/api/subscriptions", json={"url": ""})
         assert r.status_code == 400
 
+    def test_create_uses_supported_discovery_limit_kwarg(self):
+        channel = SimpleNamespace(id=uuid.UUID(int=7), name="Lex")
+        sub = SimpleNamespace(
+            id=uuid.UUID(int=8),
+            channel_id=channel.id,
+            channel=channel,
+            enabled=True,
+            poll_frequency_hours=24,
+            max_videos_per_poll=3,
+            last_polled_at=None,
+            videos_ingested_today=0,
+            consecutive_failure_count=0,
+            disabled_reason=None,
+        )
+        client = _client(_StubSession())
+
+        with (
+            patch(
+                "app.routers.subscriptions.discover_channel_videos",
+                return_value={
+                    "channel_id": "UC-lex",
+                    "channel_name": "Lex",
+                    "description": "",
+                    "thumbnail": None,
+                },
+            ) as discover,
+            patch("app.routers.subscriptions.get_or_create_channel", AsyncMock(return_value=channel)),
+            patch("app.routers.subscriptions.fetch_channel_feed", AsyncMock(return_value=[])),
+            patch("app.routers.subscriptions.create_or_enable_subscription", AsyncMock(return_value=sub)),
+        ):
+            r = client.post("/api/subscriptions", json={"url": "https://youtube.com/@lex"})
+
+        assert r.status_code == 200
+        discover.assert_called_once_with("https://youtube.com/@lex", limit=1)
+        assert r.json()["channel_name"] == "Lex"
+
 
 class TestPatchEndpoint:
     def test_404_when_missing(self):

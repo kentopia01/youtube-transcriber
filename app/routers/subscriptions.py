@@ -78,7 +78,7 @@ async def create(data: SubscriptionCreate, db: AsyncSession = Depends(get_db)):
 
     # Discover channel metadata via yt-dlp (reuses existing flow)
     try:
-        result = discover_channel_videos(url, max_videos=1)
+        result = discover_channel_videos(url, limit=1)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Channel lookup failed: {exc}") from exc
 

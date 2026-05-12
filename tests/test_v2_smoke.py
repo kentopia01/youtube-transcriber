@@ -3,7 +3,8 @@
 These tests verify that Docker services (Postgres, Redis, Web) are reachable
 and that the API returns correct V2 fields.
 
-Mark with pytest.mark.smoke so they can be skipped in CI where services aren't running.
+Marked with pytest.mark.smoke and skipped by default unless explicitly opted in
+with --run-smoke or YT_RUN_SMOKE=1.
 """
 
 import socket
@@ -23,11 +24,15 @@ def _port_open(host: str, port: int, timeout: float = 2.0) -> bool:
         return False
 
 
-# Skip all tests in this file if Docker services aren't running
-pytestmark = pytest.mark.skipif(
-    not _port_open("localhost", 8000),
-    reason="Web service not reachable on localhost:8000",
-)
+# Smoke tests are also guarded globally in tests/conftest.py. The port check
+# remains as a second guard for explicit smoke runs on machines without web up.
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.skipif(
+        not _port_open("localhost", 8000),
+        reason="Web service not reachable on localhost:8000",
+    ),
+]
 
 BASE_URL = "http://localhost:8000"
 

@@ -921,7 +921,7 @@ async def ask_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
-            partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.anthropic_chat_model),
+            partial(_call_anthropic, SYSTEM_PROMPT, messages, settings.chat_model),
         )
 
         from app.services.response_formatter import format_response

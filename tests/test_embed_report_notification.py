@@ -60,6 +60,7 @@ def test_notify_completion_sends_report_ready_without_fallback(monkeypatch, tmp_
     report = SimpleNamespace(
         title="Report Video",
         artifact_path=str(tmp_path / "report.html"),
+        markdown_content="## 30-second take\nUseful scan summary.",
         delivery_status="pending",
         delivery_error=None,
     )
@@ -81,6 +82,7 @@ def test_notify_completion_sends_report_ready_without_fallback(monkeypatch, tmp_
     assert payload["channel_name"] == "20VC"
     assert payload["speakers"] == 2
     assert payload["report_path"] == report.artifact_path
+    assert payload["summary"] == report.markdown_content
     assert report.delivery_status == "sent"
     assert db.commits == 1
 
@@ -90,6 +92,7 @@ def test_notify_completion_falls_back_when_report_delivery_fails(monkeypatch, tm
     report = SimpleNamespace(
         title="Report Video",
         artifact_path=str(tmp_path / "report.html"),
+        markdown_content="## 30-second take\nUseful scan summary.",
         delivery_status="pending",
         delivery_error=None,
     )
@@ -99,6 +102,8 @@ def test_notify_completion_falls_back_when_report_delivery_fails(monkeypatch, tm
     monkeypatch.setattr(embed_task.settings, "report_delivery_enabled", True)
     monkeypatch.setattr("app.services.reporting.generate_video_report", lambda db_arg, video_id: report)
     calls = []
+    logs = []
+    monkeypatch.setattr(embed_task.logger, "warning", lambda event, **fields: logs.append((event, fields)))
 
     def fake_notify(event, payload=None):
         calls.append((event, payload))
@@ -112,7 +117,48 @@ def test_notify_completion_falls_back_when_report_delivery_fails(monkeypatch, tm
     assert report.delivery_status == "failed"
     assert report.delivery_error == "telegram_notify_returned_false"
     assert db.commits == 1
+    assert logs[0][0] == "video_report_delivery_failed"
+    assert logs[0][1]["category"] == "best_effort_side_effect"
+    assert logs[0][1]["video_id"] == str(video.id)
+    assert logs[0][1]["report_path"] == report.artifact_path
+    assert logs[0][1]["outcome"] == "fallback_sent"
 
+
+
+def test_notify_completion_logs_report_exception_and_falls_back(monkeypatch, tmp_path):
+    video = _video()
+    report = SimpleNamespace(
+        title="Report Video",
+        artifact_path=str(tmp_path / "report.html"),
+        markdown_content="## 30-second take\nUseful scan summary.",
+        delivery_status="pending",
+        delivery_error=None,
+    )
+    db = _FakeSession(report=report)
+
+    monkeypatch.setattr(embed_task.settings, "report_generation_enabled", True)
+    monkeypatch.setattr(embed_task.settings, "report_delivery_enabled", True)
+
+    def raise_report(*args, **kwargs):
+        raise RuntimeError("renderer exploded")
+
+    monkeypatch.setattr("app.services.reporting.generate_video_report", raise_report)
+    calls = []
+    logs = []
+    monkeypatch.setattr(embed_task.logger, "warning", lambda event, **fields: logs.append((event, fields)))
+    monkeypatch.setattr(
+        "app.services.telegram_notify.notify",
+        lambda event, payload=None: calls.append((event, payload)) or True,
+    )
+
+    embed_task._notify_completion(db, video, _transcription())
+
+    assert [event for event, _ in calls] == ["video.completed"]
+    assert report.delivery_status == "failed"
+    assert report.delivery_error == "renderer exploded"
+    assert logs[0][0] == "video_report_side_effect_failed"
+    assert logs[0][1]["exception_type"] == "RuntimeError"
+    assert logs[0][1]["outcome"] == "fallback_sent"
 
 def test_notify_completion_uses_original_completion_when_reports_disabled(monkeypatch):
     video = _video()

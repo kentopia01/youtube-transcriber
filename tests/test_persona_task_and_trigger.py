@@ -157,6 +157,61 @@ class TestRunTask:
         assert kwargs["videos_at_generation"] == 5
 
     @pytest.mark.asyncio
+    async def test_notification_failure_logs_and_still_generates(self, monkeypatch, fake_channel):
+        db_mock = MagicMock()
+        db_mock.get = AsyncMock(return_value=fake_channel)
+        _install_async_session(monkeypatch, db_mock)
+
+        monkeypatch.setattr(
+            persona_task_module,
+            "channel_needs_persona",
+            AsyncMock(return_value=(True, "no persona yet")),
+        )
+        monkeypatch.setattr("app.services.persona.get_persona", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            persona_task_module,
+            "select_characteristic_chunks",
+            AsyncMock(return_value=[{"id": str(uuid.uuid4()), "chunk_text": "t", "source_type": "transcript"}]),
+        )
+
+        from app.services.persona import PersonaDerivation
+
+        monkeypatch.setattr(persona_task_module, "derive_persona", lambda **kw: PersonaDerivation(
+            display_name="x", persona_prompt="y", style_notes={}, exemplar_chunk_ids=[],
+            source_chunk_count=1, confidence=0.5, model="m",
+        ))
+        monkeypatch.setattr(persona_task_module, "count_completed_videos", AsyncMock(return_value=3))
+        fake_persona = SimpleNamespace(
+            id=uuid.uuid4(),
+            display_name="x",
+            confidence=0.5,
+            source_chunk_count=1,
+            videos_at_generation=3,
+        )
+        monkeypatch.setattr(persona_task_module, "upsert_persona", AsyncMock(return_value=fake_persona))
+        monkeypatch.setattr(
+            "app.services.telegram_notify.notify",
+            lambda event, payload=None: (_ for _ in ()).throw(RuntimeError("telegram down")),
+        )
+        logs = []
+        monkeypatch.setattr(
+            persona_task_module.logger,
+            "warning",
+            lambda event, **fields: logs.append((event, fields)),
+        )
+
+        result = await persona_task_module._run(str(fake_channel.id), forced=False)
+
+        assert result["status"] == "generated"
+        assert logs[0][0] == "channel_persona_notify_failed"
+        assert logs[0][1]["boundary"] == "generate_persona.notify"
+        assert logs[0][1]["category"] == "best_effort_side_effect"
+        assert logs[0][1]["channel_id"] == str(fake_channel.id)
+        assert logs[0][1]["persona_id"] == str(fake_persona.id)
+        assert logs[0][1]["exception_type"] == "RuntimeError"
+        assert logs[0][1]["outcome"] == "caller_continued"
+
+    @pytest.mark.asyncio
     async def test_forced_skips_should_generate_check(self, monkeypatch, fake_channel):
         db_mock = MagicMock()
         db_mock.get = AsyncMock(return_value=fake_channel)
@@ -208,12 +263,27 @@ class TestEnqueue:
         assert mock_apply.call_args.kwargs["kwargs"] == {"forced": False}
 
     def test_swallows_enqueue_failures(self, monkeypatch):
+        logs = []
+        monkeypatch.setattr(
+            persona_task_module.logger,
+            "warning",
+            lambda event, **fields: logs.append((event, fields)),
+        )
         monkeypatch.setattr(
             persona_task_module.generate_channel_persona_task,
             "apply_async",
             MagicMock(side_effect=RuntimeError("broker down")),
         )
-        persona_task_module.enqueue_channel_persona(str(uuid.uuid4()))  # must not raise
+        channel_id = str(uuid.uuid4())
+
+        persona_task_module.enqueue_channel_persona(channel_id)  # must not raise
+
+        assert logs[0][0] == "channel_persona_enqueue_failed"
+        assert logs[0][1]["boundary"] == "generate_persona.enqueue"
+        assert logs[0][1]["category"] == "best_effort_side_effect"
+        assert logs[0][1]["channel_id"] == channel_id
+        assert logs[0][1]["exception_type"] == "RuntimeError"
+        assert logs[0][1]["outcome"] == "caller_continued"
 
 
 # ---------------------------------------------------------------------------

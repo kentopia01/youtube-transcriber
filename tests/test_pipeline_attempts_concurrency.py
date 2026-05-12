@@ -14,6 +14,7 @@ from app.models.job import Job
 from app.models.video import Video
 from app.routers import videos as videos_router
 from app.schemas.video import VideoSubmit
+from app.services import pipeline_attempts as attempts_service
 from app.services.pipeline_attempts import ACTIVE_PIPELINE_ATTEMPT_STATUSES
 
 
@@ -159,7 +160,7 @@ async def test_concurrent_submit_only_creates_one_active_attempt(monkeypatch):
             lambda video_id, job_id=None: pipeline_runs.append((video_id, job_id)) or f"celery-{len(pipeline_runs)}",
         )
 
-        real_get_active_attempt = videos_router.get_active_pipeline_attempt
+        real_get_active_attempt = attempts_service.get_active_pipeline_attempt
         barrier = _AsyncBarrier(2)
         guarded_calls = 0
 
@@ -171,7 +172,7 @@ async def test_concurrent_submit_only_creates_one_active_attempt(monkeypatch):
                 return None
             return await real_get_active_attempt(db, video_id)
 
-        monkeypatch.setattr(videos_router, "get_active_pipeline_attempt", _guarded_get_active_attempt)
+        monkeypatch.setattr(attempts_service, "get_active_pipeline_attempt", _guarded_get_active_attempt)
 
         async def _submit_once():
             async with session_factory() as db:

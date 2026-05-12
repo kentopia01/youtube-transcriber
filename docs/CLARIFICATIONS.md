@@ -71,3 +71,10 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Report generation and document delivery are post-processing concerns. They must not cause a successfully transcribed/summarized/embedded video to become a failed transcription pipeline job.
 - The daily morning brief should include overnight activity plus operational status: queued/pending work, retries, failed/manual-review items, worker/system health, and LLM spend.
 - Existing manual bot commands for chat/channel navigation should remain available; only pushed delivery notifications are simplified.
+
+### T015 scan-first summary intelligence clarifications
+- Summary quality should be judged by whether Ken can understand the video’s actual contents/takes without watching, not by summary length.
+- Summaries should lead with thesis/verdict and key claims, then include supporting examples, numbers, caveats, implications, and watch recommendation.
+- “Main Topics” as the leading section is no longer sufficient; topic lists may exist only if they support the scan-first contract.
+- Telegram report captions should provide a quick useful summary of the video/report. Do not say “Attached: summary report” and do not add “try it” buttons to pushed report delivery.
+- Low-content transcripts, music-only videos, placeholders, or extraction failures should be flagged plainly as low-content/invalid transcript instead of padded into fake insight.

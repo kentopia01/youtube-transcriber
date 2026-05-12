@@ -213,7 +213,7 @@ async def chat_with_context(
     from app.services.cost_tracker import BudgetExceededError
 
     loop = asyncio.get_running_loop()
-    model = settings.anthropic_chat_model
+    model = settings.chat_model
     active_system = system_prompt or SYSTEM_PROMPT
     try:
         llm_result = await loop.run_in_executor(

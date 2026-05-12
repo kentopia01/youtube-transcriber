@@ -20,6 +20,9 @@ from app.tasks.celery_app import celery
 
 logger = structlog.get_logger()
 
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_EXPECTED_EXTERNAL = "expected_external_failure"
+
 
 def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
     engine = create_engine(settings.database_url_sync, pool_pre_ping=True)
@@ -47,7 +50,7 @@ def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
     try:
         from app.services.telegram_notify import notify as _tg_notify
 
-        _tg_notify(
+        sent = _tg_notify(
             "digest.morning",
             {
                 "text": result["text"],
@@ -55,8 +58,26 @@ def run_morning_digest(window_hours: int = 24) -> dict[str, Any]:
                 "window_end": result["window_end"],
             },
         )
+        if not sent:
+            logger.warning(
+                "morning_digest_notify_not_sent",
+                boundary="morning_digest.notify",
+                category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                event_type="digest.morning",
+                exception_type=None,
+                error_message="telegram_notify_returned_false",
+                outcome="caller_continued",
+            )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("morning_digest_notify_failed", error=str(exc))
+        logger.warning(
+            "morning_digest_notify_failed",
+            boundary="morning_digest.notify",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type="digest.morning",
+            exception_type=exc.__class__.__name__,
+            error_message=str(exc)[:500],
+            outcome="caller_continued",
+        )
 
     logger.info(
         "morning_digest_sent",

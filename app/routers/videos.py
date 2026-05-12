@@ -3,7 +3,6 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -12,17 +11,18 @@ from app.models.video import Video
 from app.schemas.video import ChatToggle, VideoResponse, VideoSubmit
 from app.services.channel_sync import get_or_create_channel, parse_upload_date
 from app.services.job_visibility import hide_superseded_failed_jobs
-from app.services.pipeline_state import PIPELINE_STAGE_QUEUED, set_pipeline_job_state
+from app.services.pipeline_state import PIPELINE_STAGE_QUEUED
 from app.services.pipeline_attempts import (
-    get_active_pipeline_attempt,
-    get_latest_pipeline_attempt,
-    is_active_pipeline_attempt_conflict,
+    ATTEMPT_RESULT_ALREADY_ACTIVE,
+    ATTEMPT_RESULT_BLOCKED,
+    ATTEMPT_RESULT_CREATED,
+    create_pipeline_attempt_async,
 )
 from app.services.pipeline_observability import (
     ATTEMPT_REASON_MANUAL_RESUBMIT,
     ATTEMPT_REASON_VIDEO_SUBMIT,
 )
-from app.services.pipeline_recovery import get_retry_block_reason
+from app.services.pipeline_enqueue import PipelineEnqueueError, enqueue_pipeline_job_after_commit_async
 from app.services.youtube import extract_video_id, get_video_info, is_channel_url
 from app.tasks.pipeline import run_pipeline
 
@@ -115,62 +115,33 @@ async def submit_video(
     else:
         video = existing
 
-    # One-active-attempt guard.
-    active_attempt = await get_active_pipeline_attempt(db, video.id)
-    if active_attempt:
-        await db.commit()
-        return {
-            "job_id": str(active_attempt.id),
-            "video_id": str(video.id),
-            "status": "existing",
-        }
-
     video_uuid = video.id
-    latest_attempt = await get_latest_pipeline_attempt(db, video_uuid)
-    retry_block_reason = get_retry_block_reason(latest_attempt)
-    if existing_was_failed and retry_block_reason:
-        raise HTTPException(status_code=409, detail=retry_block_reason)
-    attempt_number = ((latest_attempt.attempt_number if latest_attempt else 0) or 0) + 1
-
-    # Create a new attempt.
-    job = Job(
+    attempt = await create_pipeline_attempt_async(
+        db,
         video_id=video_uuid,
-        job_type="pipeline",
         status="queued",
-        attempt_number=attempt_number,
-        supersedes_job_id=latest_attempt.id if latest_attempt else None,
+        current_stage=PIPELINE_STAGE_QUEUED,
+        progress_message=lambda attempt_number: f"Queued for processing (attempt #{attempt_number})",
         attempt_creation_reason=(
             ATTEMPT_REASON_MANUAL_RESUBMIT if existing_was_failed else ATTEMPT_REASON_VIDEO_SUBMIT
         ),
     )
-    set_pipeline_job_state(
-        job,
-        lifecycle_status="queued",
-        current_stage=PIPELINE_STAGE_QUEUED,
-        progress_pct=0.0,
-        progress_message=f"Queued for processing (attempt #{attempt_number})",
-        error_message=None,
-        started_at=None,
-        completed_at=None,
-    )
-    db.add(job)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        await db.rollback()
-        if not is_active_pipeline_attempt_conflict(exc):
-            raise
 
-        active_attempt = await get_active_pipeline_attempt(db, video_uuid)
-        if not active_attempt:
-            raise HTTPException(status_code=409, detail="Active pipeline attempt already exists")
-
+    if attempt.status == ATTEMPT_RESULT_ALREADY_ACTIVE and attempt.active_job is not None:
+        await db.commit()
         return {
-            "job_id": str(active_attempt.id),
+            "job_id": str(attempt.active_job.id),
             "video_id": str(video_uuid),
             "status": "existing",
         }
 
+    if attempt.status == ATTEMPT_RESULT_BLOCKED:
+        raise HTTPException(status_code=409, detail=attempt.reason or "Pipeline attempt is blocked")
+
+    if attempt.status != ATTEMPT_RESULT_CREATED or attempt.job is None:
+        raise HTTPException(status_code=409, detail=attempt.reason or "Could not create pipeline attempt")
+
+    job = attempt.job
     if existing_was_failed:
         await hide_superseded_failed_jobs(
             db,
@@ -178,14 +149,18 @@ async def submit_video(
             superseded_by_job_id=job.id,
         )
 
-    await db.commit()
+    video_id_str = str(video_uuid)
+    job_id_str = str(job.id)
+    try:
+        await enqueue_pipeline_job_after_commit_async(
+            db,
+            job,
+            publish=lambda: run_pipeline(video_id_str, job_id=job_id_str),
+        )
+    except PipelineEnqueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # Launch pipeline
-    celery_id = run_pipeline(str(video_uuid), job_id=str(job.id))
-    job.celery_task_id = celery_id
-    await db.commit()
-
-    return {"job_id": str(job.id), "video_id": str(video_uuid), "status": "queued"}
+    return {"job_id": job_id_str, "video_id": video_id_str, "status": "queued"}
 
 
 @router.get("/{video_id}", response_model=VideoResponse)

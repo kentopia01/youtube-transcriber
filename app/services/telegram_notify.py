@@ -25,6 +25,28 @@ from app.services.telegram_messages import EVENT_RENDERERS, UnknownEvent
 
 logger = structlog.get_logger()
 
+SIDE_EFFECT_BEST_EFFORT = "best_effort_side_effect"
+SIDE_EFFECT_EXPECTED_EXTERNAL = "expected_external_failure"
+SIDE_EFFECT_BUG_MASK = "bug_mask_candidate"
+
+
+def _exception_fields(exc: Exception, *, limit: int = 500) -> dict[str, str]:
+    return {
+        "exception_type": exc.__class__.__name__,
+        "error_message": str(exc)[:limit],
+    }
+
+_SAFE_ENTITY_KEYS = ("video_id", "job_id", "channel_id", "batch_id", "report_path")
+
+
+def _safe_entity_context(payload: dict[str, Any] | None) -> dict[str, str]:
+    context: dict[str, str] = {}
+    for key in _SAFE_ENTITY_KEYS:
+        value = (payload or {}).get(key)
+        if value is not None:
+            context[key] = str(value)[:300]
+    return context
+
 
 # In-process dedupe: (event_type, dedupe_key) -> last-successful-send unix ts.
 # Failed sends must not poison dedupe, so in-flight events are reserved
@@ -45,7 +67,15 @@ def _load_state() -> dict:
         }
     try:
         return json.loads(p.read_text())
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            "telegram_notify_state_load_failed",
+            boundary="telegram_notify.state_load",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            state_path=str(p),
+            outcome="settings_fallback_used",
+            **_exception_fields(exc),
+        )
         return {
             "enabled": settings.telegram_notify_enabled,
             "muted_events": list(settings.telegram_notify_muted_events),
@@ -107,13 +137,25 @@ def _send(
     text: str,
     reply_markup: dict | None = None,
     parse_mode: str | None = "Markdown",
+    *,
+    event_type: str | None = None,
+    dedupe_key: str | None = None,
+    entity_context: dict[str, str] | None = None,
 ) -> bool:
     """POST sendMessage. Short timeout, all failures swallowed."""
     import requests  # local import so tests can import this module without the dep
 
     token = settings.telegram_bot_token
     if not token:
-        logger.debug("telegram_notify_no_token")
+        logger.debug(
+            "telegram_notify_no_token",
+            boundary="telegram_notify.send_message",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            outcome="suppressed",
+            **(entity_context or {}),
+        )
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -132,13 +174,30 @@ def _send(
         if getattr(resp, "ok", True) is False:
             logger.warning(
                 "telegram_notify_send_failed",
+                boundary="telegram_notify.send_message",
+                category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                event_type=event_type,
+                dedupe_key=dedupe_key,
                 status_code=getattr(resp, "status_code", None),
-                text=getattr(resp, "text", "")[:200],
+                response_text=getattr(resp, "text", "")[:200],
+                exception_type=None,
+                error_message=getattr(resp, "text", "")[:200],
+                outcome="suppressed",
+                **(entity_context or {}),
             )
             return False
         return True
     except Exception as exc:  # noqa: BLE001 — fire-and-forget
-        logger.warning("telegram_notify_send_failed", error=str(exc))
+        logger.warning(
+            "telegram_notify_send_failed",
+            boundary="telegram_notify.send_message",
+            category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            outcome="suppressed",
+            **(entity_context or {}),
+            **_exception_fields(exc),
+        )
         return False
 
 
@@ -151,18 +210,41 @@ def _send_document(
     mime_type: str | None = None,
     reply_markup: dict | None = None,
     parse_mode: str | None = "Markdown",
+    event_type: str | None = None,
+    dedupe_key: str | None = None,
+    entity_context: dict[str, str] | None = None,
 ) -> bool:
     """POST sendDocument with a local file attachment."""
     import requests  # local import so tests can import this module without the dep
 
     token = settings.telegram_bot_token
     if not token:
-        logger.debug("telegram_notify_no_token")
+        logger.debug(
+            "telegram_notify_no_token",
+            boundary="telegram_notify.send_document",
+            category=SIDE_EFFECT_BEST_EFFORT,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            document_path=document_path,
+            outcome="suppressed",
+            **(entity_context or {}),
+        )
         return False
 
     path = Path(document_path)
     if not path.exists() or not path.is_file():
-        logger.warning("telegram_notify_document_missing", path=str(path))
+        logger.warning(
+            "telegram_notify_document_missing",
+            boundary="telegram_notify.send_document",
+            category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            document_path=str(path),
+            exception_type=None,
+            error_message="document_missing",
+            outcome="suppressed",
+            **(entity_context or {}),
+        )
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendDocument"
@@ -189,13 +271,32 @@ def _send_document(
         if getattr(resp, "ok", True) is False:
             logger.warning(
                 "telegram_notify_document_send_failed",
+                boundary="telegram_notify.send_document",
+                category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+                event_type=event_type,
+                dedupe_key=dedupe_key,
+                document_path=str(path),
                 status_code=getattr(resp, "status_code", None),
-                text=getattr(resp, "text", "")[:200],
+                response_text=getattr(resp, "text", "")[:200],
+                exception_type=None,
+                error_message=getattr(resp, "text", "")[:200],
+                outcome="suppressed",
+                **(entity_context or {}),
             )
             return False
         return True
     except Exception as exc:  # noqa: BLE001 — fire-and-forget
-        logger.warning("telegram_notify_document_send_failed", error=str(exc), path=str(path))
+        logger.warning(
+            "telegram_notify_document_send_failed",
+            boundary="telegram_notify.send_document",
+            category=SIDE_EFFECT_EXPECTED_EXTERNAL,
+            event_type=event_type,
+            dedupe_key=dedupe_key,
+            document_path=str(path),
+            outcome="suppressed",
+            **(entity_context or {}),
+            **_exception_fields(exc),
+        )
         return False
 
 
@@ -207,14 +308,25 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
     from any context (sync Celery task, async router, cron). Returns True
     when a send was attempted successfully, otherwise False.
     """
-    payload = dict(payload or {})
+    entity_context: dict[str, str] = {}
     try:
+        payload = dict(payload or {})
+        entity_context = _safe_entity_context(payload)
         if not _should_send(event_type):
             return False
 
         renderer = EVENT_RENDERERS.get(event_type)
         if renderer is None:
-            logger.warning("telegram_notify_unknown_event", event_type=event_type)
+            logger.warning(
+                "telegram_notify_unknown_event",
+                boundary="telegram_notify.render",
+                category=SIDE_EFFECT_BUG_MASK,
+                event_type=event_type,
+                exception_type=None,
+                error_message="unknown_event",
+                outcome="suppressed",
+                **entity_context,
+            )
             return False
 
         try:
@@ -224,21 +336,41 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
         except Exception as exc:  # noqa: BLE001 — never crash the caller
             logger.warning(
                 "telegram_notify_render_failed",
+                boundary="telegram_notify.render",
+                category=SIDE_EFFECT_BUG_MASK,
                 event_type=event_type,
-                error=str(exc),
+                outcome="suppressed",
+                **entity_context,
+                **_exception_fields(exc),
             )
             return False
 
         dedupe_key = str(rendered.get("dedupe_key") or event_type)
         if not _dedupe_reserve(event_type, dedupe_key):
-            logger.debug("telegram_notify_deduped", event_type=event_type, key=dedupe_key)
+            logger.debug(
+                "telegram_notify_deduped",
+                boundary="telegram_notify.dedupe",
+                category=SIDE_EFFECT_BEST_EFFORT,
+                event_type=event_type,
+                dedupe_key=dedupe_key,
+                outcome="suppressed",
+                **entity_context,
+            )
             return False
 
         sent = False
         try:
             chat_id = _primary_chat_id()
             if chat_id is None:
-                logger.debug("telegram_notify_no_user")
+                logger.debug(
+                    "telegram_notify_no_user",
+                    boundary="telegram_notify.resolve_recipient",
+                    category=SIDE_EFFECT_BEST_EFFORT,
+                    event_type=event_type,
+                    dedupe_key=dedupe_key,
+                    outcome="suppressed",
+                    **entity_context,
+                )
                 return False
 
             if rendered.get("document_path"):
@@ -250,6 +382,9 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
                     mime_type=rendered.get("document_mime_type"),
                     reply_markup=rendered.get("reply_markup"),
                     parse_mode=rendered.get("parse_mode", "Markdown"),
+                    event_type=event_type,
+                    dedupe_key=dedupe_key,
+                    entity_context=entity_context,
                 )
                 return sent
 
@@ -258,10 +393,33 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
                 rendered["text"],
                 reply_markup=rendered.get("reply_markup"),
                 parse_mode=rendered.get("parse_mode", "Markdown"),
+                event_type=event_type,
+                dedupe_key=dedupe_key,
+                entity_context=entity_context,
             )
             return sent
         finally:
-            _dedupe_finish(event_type, dedupe_key, sent=sent)
+            try:
+                _dedupe_finish(event_type, dedupe_key, sent=sent)
+            except Exception as exc:  # noqa: BLE001 — dedupe accounting must not affect callers
+                logger.warning(
+                    "telegram_notify_dedupe_finish_failed",
+                    boundary="telegram_notify.dedupe",
+                    category=SIDE_EFFECT_BEST_EFFORT,
+                    event_type=event_type,
+                    dedupe_key=dedupe_key,
+                    outcome="caller_continued",
+                    **entity_context,
+                    **_exception_fields(exc),
+                )
     except Exception as exc:  # noqa: BLE001 — absolute safety net
-        logger.warning("telegram_notify_failed", event_type=event_type, error=str(exc))
+        logger.warning(
+            "telegram_notify_failed",
+            boundary="telegram_notify.notify",
+            category=SIDE_EFFECT_BUG_MASK,
+            event_type=event_type,
+            outcome="suppressed",
+            **entity_context,
+            **_exception_fields(exc),
+        )
         return False

@@ -156,8 +156,12 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DIARIZATION_ENABLED` | `false` | Enable speaker diarization (requires `HF_TOKEN`) |
 | `HF_TOKEN` | | HuggingFace token for pyannote.audio models |
 | `TRANSCRIPT_CLEANUP_ENABLED` | `false` | Enable LLM-powered filler word removal |
-| `CLEANUP_MODEL` | `claude-haiku-4-20250514` | Anthropic model for transcript cleanup |
-| `ANTHROPIC_API_KEY` | | API key for summarization and cleanup |
+| `CLEANUP_MODEL` | `claude-haiku-4-5` | Anthropic model for transcript cleanup (`ANTHROPIC_CLEANUP_MODEL` remains a deprecated alias) |
+| `SUMMARY_MODEL` | `claude-sonnet-4-5` | Anthropic model for pipeline summaries, report backfills, and evaluation generation (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias) |
+| `CHAT_MODEL` | `claude-haiku-4-5` | Anthropic model for web/Telegram chat (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias) |
+| `PERSONA_MODEL` | `claude-sonnet-4-5` | Anthropic model for persona generation/refresh (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias) |
+| `DIGEST_MODEL` | `claude-sonnet-4-5` | Anthropic model for the overnight/morning digest; old `ANTHROPIC_SUMMARY_MODEL` also still feeds this unless `DIGEST_MODEL` is set |
+| `ANTHROPIC_API_KEY` | | API key for summarization, cleanup, chat, persona, and digest calls |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
 | `REDIS_URL` | | Redis URL (Celery broker) |

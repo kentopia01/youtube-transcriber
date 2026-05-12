@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,8 +10,9 @@ from app.models.channel import Channel
 from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.video import Video
-from app.models.video_report import VideoReport
+from app.models.video_report import SUMMARY_REPORT_TYPE, VideoReport
 from app.services.reporting import (
+    build_report_caption,
     build_report_render_data,
     generate_video_report,
     render_video_report_html,
@@ -39,10 +41,25 @@ def _summary(video_id):
     return SimpleNamespace(
         video_id=video_id,
         content="""
-## Main Topics
-- AI increases SDR throughput.
-- Proprietary data moats matter.
-- Variable comp is returning.
+## 30-second take
+The speaker argues AI sales stacks matter because they can turn SDR work from manual prospecting into repeatable leverage, but only when teams pair automation with proprietary data and clear compensation incentives.
+
+## Key takes
+- AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard.
+- Proprietary data moats matter because generic automation is easy for competitors to copy.
+- Variable comp is returning because teams still need humans accountable for pipeline quality.
+
+## Useful details
+- The strongest examples are tied to sales teams that already know their ICP and workflow.
+
+## Caveats / counterpoints
+- The summary does not include proof that every GTM team should automate immediately.
+
+## Ken relevance
+- Relevant for agent GTM workflows and internal automation design.
+
+## Watch verdict
+Skim — useful if refining an AI-enabled sales workflow.
 """.strip(),
         model="claude-haiku-4-5-20251001",
         prompt_tokens=100,
@@ -59,11 +76,26 @@ def _transcription(video_id):
     )
 
 
+def _matches_filter(item, expression):
+    left_key = getattr(getattr(expression, "left", None), "key", None)
+    right = getattr(expression, "right", None)
+    value = getattr(right, "value", None)
+    op = getattr(expression, "operator", None)
+    if left_key and op is operator.eq:
+        return getattr(item, left_key, None) == value
+    return True
+
+
 class _Query:
     def __init__(self, items):
         self.items = items
 
     def filter(self, *args, **kwargs):
+        self.items = [
+            item
+            for item in self.items
+            if all(_matches_filter(item, expression) for expression in args)
+        ]
         return self
 
     def order_by(self, *args, **kwargs):
@@ -77,12 +109,12 @@ class _Query:
 
 
 class _FakeSession:
-    def __init__(self, *, video, channel, summary, transcription):
+    def __init__(self, *, video, channel, summary, transcription, reports=None):
         self.video = video
         self.channel = channel
         self.summary = summary
         self.transcription = transcription
-        self.reports = []
+        self.reports = list(reports or [])
         self.commits = 0
 
     def get(self, model, item_id):
@@ -129,7 +161,12 @@ def test_build_report_render_data_is_summary_first():
     assert data.channel_name == "20VC"
     assert data.duration == "1h 1m"
     assert data.word_count == 320
-    assert any("AI increases SDR throughput" in point for point in data.key_points)
+    assert "speaker argues AI sales stacks matter" in data.scan_html
+    assert data.key_points == [
+        "AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard.",
+        "Proprietary data moats matter because generic automation is easy for competitors to copy.",
+        "Variable comp is returning because teams still need humans accountable for pipeline quality.",
+    ]
 
 
 def test_build_report_render_data_allows_missing_transcription():
@@ -161,10 +198,12 @@ def test_render_video_report_html_is_self_contained():
     assert "<style>" in html
     assert "The AI Sales Stack" in html
     assert "30-second scan" in html
+    assert "speaker argues AI sales stacks matter" in html
     assert "Source" in html
     assert "Open original YouTube video" in html
     assert html.index("Source") < html.index("30-second scan")
-    assert "Key takeaways" in html
+    assert html.index("30-second scan") < html.index("Key takeaways")
+    assert html.index("Key takeaways") < html.index("Full intelligence brief")
     assert "Transcript Appendix" not in html
     assert "Full transcript text here" not in html
 
@@ -186,7 +225,7 @@ def test_generate_video_report_writes_summary_report_artifact_and_upserts(tmp_pa
 
     assert db.commits == 1
     assert report in db.reports
-    assert report.report_type == "summary_report"
+    assert report.report_type == SUMMARY_REPORT_TYPE
     assert report.delivery_status == "pending"
     assert report.model == summary.model
     assert report.artifact_path.endswith("_report.html")
@@ -208,6 +247,47 @@ def test_generate_video_report_writes_summary_report_artifact_and_upserts(tmp_pa
     assert "Full transcript text here" not in report.markdown_content
 
 
+def test_generate_video_report_normalizes_existing_report_type_instead_of_creating_variant(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("app.services.reporting.settings.report_artifact_dir", str(tmp_path))
+    video = _video()
+    summary = _summary(video.id)
+    existing_report = VideoReport(
+        video_id=video.id,
+        report_type="experimental_variant",
+        title="Old report",
+        html_content="old",
+        artifact_path="old.html",
+    )
+    db = _FakeSession(
+        video=video,
+        channel=_channel(video.channel_id),
+        summary=summary,
+        transcription=_transcription(video.id),
+        reports=[existing_report],
+    )
+
+    report = generate_video_report(db, video.id, commit=False)
+
+    assert report is existing_report
+    assert len(db.reports) == 1
+    assert report.report_type == SUMMARY_REPORT_TYPE
+    assert report.delivery_status == "pending"
+    assert report.artifact_path != "old.html"
+    assert Path(report.artifact_path).exists()
+    assert db.commits == 0
+
+
+def test_build_report_caption_uses_scan_first_summary():
+    caption = build_report_caption(_summary(uuid.uuid4()).content)
+
+    assert caption is not None
+    assert "speaker argues AI sales stacks matter" in caption
+    assert "AI increases SDR throughput" in caption
+    assert "Main Topics" not in caption
+
+
 def test_generate_video_report_can_use_video_and_summary_without_transcription(tmp_path, monkeypatch):
     monkeypatch.setattr("app.services.reporting.settings.report_artifact_dir", str(tmp_path))
     video = _video()
@@ -221,7 +301,7 @@ def test_generate_video_report_can_use_video_and_summary_without_transcription(t
 
     report = generate_video_report(db, video.id)
 
-    assert report.report_type == "summary_report"
+    assert report.report_type == SUMMARY_REPORT_TYPE
     assert report.model == summary.model
     assert Path(report.artifact_path).exists()
     assert "AI increases SDR throughput" in report.html_content

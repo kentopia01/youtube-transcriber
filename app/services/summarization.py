@@ -11,25 +11,63 @@ logger = structlog.get_logger()
 def _call_anthropic_with_retry(client: anthropic.Anthropic, **kwargs):
     return client.messages.create(**kwargs)
 
-SUMMARY_SYSTEM_PROMPT = """You are an expert content summarizer. Create a comprehensive yet concise summary of the following video transcript. Include:
+SUMMARY_SYSTEM_PROMPT = """You are Ken's executive video analyst. Your job is not to list topics; it is to make the transcript useful enough that Ken can scan it and understand the video's actual arguments, examples, caveats, and value without watching.
 
-1. **Main Topics**: Key subjects discussed
-2. **Key Points**: Important arguments, facts, or insights
-3. **Notable Quotes**: Any memorable or significant statements
-4. **Takeaways**: Main conclusions or action items
+Write in this exact markdown structure:
 
-Format with markdown headers and bullet points for readability."""
+## 30-second take
+One dense paragraph with the video's thesis/verdict, the speaker's actual angle, and why it matters.
 
-CHUNK_SUMMARY_PROMPT = """Summarize this portion of a video transcript concisely, preserving key points and notable quotes:"""
+## Key takes
+- 4-7 bullets. Each bullet must include a specific claim/take and its implication. Avoid generic topic labels.
 
-CONSOLIDATION_PROMPT = """You are given multiple partial summaries of a single video transcript titled "{title}". Combine them into one cohesive, comprehensive summary. Include:
+## Useful details
+- Specific examples, numbers, names, frameworks, tactics, or stories from the video.
+- Preserve concrete facts over broad paraphrase.
 
-1. **Main Topics**: Key subjects discussed
-2. **Key Points**: Important arguments, facts, or insights
-3. **Notable Quotes**: Any memorable or significant statements
-4. **Takeaways**: Main conclusions or action items
+## Caveats / counterpoints
+- Important limitations, weak spots, disagreements, risks, or missing context. If the transcript gives none, say that.
 
-Format with markdown headers and bullet points for readability."""
+## Ken relevance
+- Explain why this matters for Ken's agent systems, AI ops, content/business opportunities, investing, GTM, or personal workflow when applicable.
+- If relevance is low, say so plainly.
+
+## Watch verdict
+Choose one: Skip / Skim / Watch fully. Give a one-sentence reason.
+
+Rules:
+- Lead with the take, not a topic inventory.
+- Capture what the speaker actually says or believes, including opinionated claims.
+- Include numbers and examples when present.
+- Do not invent facts beyond the transcript.
+- If the transcript is mostly music, lyrics, ads, placeholders, repeated text, or too little substantive speech, clearly mark it as a low-content transcript in the 30-second take and explain what can/cannot be learned. Do not pad it into fake insight.
+- Keep the whole summary concise but specific."""
+
+CHUNK_SUMMARY_PROMPT = """Summarize this transcript portion for later consolidation. Preserve specific claims, examples, numbers, caveats, named people/products, and any watch-worthy moments. Do not reduce it to generic topics. If this chunk is low-content/music/placeholders/repetition, label that plainly:"""
+
+CONSOLIDATION_PROMPT = """You are Ken's executive video analyst. You are given multiple partial summaries of a single video transcript titled "{title}". Combine them into one cohesive scan-first intelligence brief.
+
+Use this exact markdown structure:
+
+## 30-second take
+One dense paragraph with the video's thesis/verdict, the speaker's actual angle, and why it matters.
+
+## Key takes
+- 4-7 bullets. Each bullet must include a specific claim/take and its implication.
+
+## Useful details
+- Specific examples, numbers, names, frameworks, tactics, or stories from the video.
+
+## Caveats / counterpoints
+- Important limitations, weak spots, disagreements, risks, or missing context. If none, say that.
+
+## Ken relevance
+- Explain why this matters for Ken's agent systems, AI ops, content/business opportunities, investing, GTM, or personal workflow when applicable.
+
+## Watch verdict
+Choose one: Skip / Skim / Watch fully. Give a one-sentence reason.
+
+Rules: lead with the take, preserve concrete substance, do not invent beyond the transcript, and clearly flag low-content transcripts rather than padding them."""
 
 MAX_TOKENS_PER_CHUNK = 80000  # Leave room for prompts within Claude's context
 
@@ -40,7 +78,14 @@ def _count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
 
-def summarize_text(text: str, video_title: str = "", api_key: str = "", model: str = "") -> dict:
+def summarize_text(
+    text: str,
+    video_title: str = "",
+    api_key: str = "",
+    model: str = "",
+    *,
+    record_usage_enabled: bool = True,
+) -> dict:
     """Summarize transcript text using Claude API.
 
     For long transcripts (>100k tokens), uses chunk-then-consolidate approach.
@@ -52,18 +97,38 @@ def summarize_text(text: str, video_title: str = "", api_key: str = "", model: s
     client = anthropic.Anthropic(api_key=api_key)
     if not model:
         from app.config import settings
-        model = settings.anthropic_summary_model
+        model = settings.summary_model
 
     token_count = _count_tokens(text)
     logger.info("summarizing", token_count=token_count, title=video_title, model=model)
 
     if token_count <= MAX_TOKENS_PER_CHUNK:
-        return _summarize_single(client, model, text, video_title)
+        return _summarize_single(
+            client,
+            model,
+            text,
+            video_title,
+            record_usage_enabled=record_usage_enabled,
+        )
     else:
-        return _summarize_chunked(client, model, text, video_title, token_count)
+        return _summarize_chunked(
+            client,
+            model,
+            text,
+            video_title,
+            token_count,
+            record_usage_enabled=record_usage_enabled,
+        )
 
 
-def _summarize_single(client: anthropic.Anthropic, model: str, text: str, title: str) -> dict:
+def _summarize_single(
+    client: anthropic.Anthropic,
+    model: str,
+    text: str,
+    title: str,
+    *,
+    record_usage_enabled: bool = True,
+) -> dict:
     """Summarize text in a single API call."""
     from app.services.cost_tracker import record_usage
 
@@ -77,7 +142,8 @@ def _summarize_single(client: anthropic.Anthropic, model: str, text: str, title:
         messages=[{"role": "user", "content": user_content}],
     )
 
-    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
+    if record_usage_enabled:
+        record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     return {
         "summary": response.content[0].text,
@@ -88,7 +154,13 @@ def _summarize_single(client: anthropic.Anthropic, model: str, text: str, title:
 
 
 def _summarize_chunked(
-    client: anthropic.Anthropic, model: str, text: str, title: str, total_tokens: int
+    client: anthropic.Anthropic,
+    model: str,
+    text: str,
+    title: str,
+    total_tokens: int,
+    *,
+    record_usage_enabled: bool = True,
 ) -> dict:
     """Summarize long text by chunking, summarizing each, then consolidating."""
     # Split into chunks
@@ -119,7 +191,8 @@ def _summarize_chunked(
         partial_summaries.append(response.content[0].text)
         total_prompt += response.usage.input_tokens
         total_completion += response.usage.output_tokens
-        record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
+        if record_usage_enabled:
+            record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     # Consolidate
     combined = "\n\n---\n\n".join(
@@ -135,7 +208,8 @@ def _summarize_chunked(
     )
     total_prompt += response.usage.input_tokens
     total_completion += response.usage.output_tokens
-    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
+    if record_usage_enabled:
+        record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
     return {
         "summary": response.content[0].text,

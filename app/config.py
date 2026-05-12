@@ -1,4 +1,12 @@
-from pydantic_settings import BaseSettings
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_CLEANUP_MODEL = "claude-haiku-4-5"
+DEFAULT_SUMMARY_MODEL = "claude-sonnet-4-5"
+DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
+DEFAULT_PERSONA_MODEL = "claude-sonnet-4-5"
+DEFAULT_DIGEST_MODEL = "claude-sonnet-4-5"
 
 
 class Settings(BaseSettings):
@@ -35,11 +43,26 @@ class Settings(BaseSettings):
     diarization_enabled: bool = False
     transcript_cleanup_enabled: bool = False
 
-    # LLM cleanup
-    cleanup_model: str = "claude-haiku-4-5-20251001"
-
-    # LLM summarization
-    summary_model: str = "claude-haiku-4-5-20251001"
+    # Canonical Anthropic model settings. Use these env vars for new config.
+    # Deprecated ANTHROPIC_*_MODEL env vars remain supported as aliases below.
+    cleanup_model: str = Field(
+        DEFAULT_CLEANUP_MODEL,
+        validation_alias=AliasChoices(
+            "cleanup_model",
+            "CLEANUP_MODEL",
+            "anthropic_cleanup_model",
+            "ANTHROPIC_CLEANUP_MODEL",
+        ),
+    )
+    summary_model: str = Field(
+        DEFAULT_SUMMARY_MODEL,
+        validation_alias=AliasChoices(
+            "summary_model",
+            "SUMMARY_MODEL",
+            "anthropic_summary_model",
+            "ANTHROPIC_SUMMARY_MODEL",
+        ),
+    )
 
     # Embedding
     embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
@@ -50,8 +73,34 @@ class Settings(BaseSettings):
     # Search
     search_mode: str = "hybrid"  # "vector", "hybrid", or "keyword"
 
-    # Chat
-    chat_model: str = "claude-sonnet-4-20250514"
+    # Chat / persona / digest LLMs
+    chat_model: str = Field(
+        DEFAULT_CHAT_MODEL,
+        validation_alias=AliasChoices(
+            "chat_model",
+            "CHAT_MODEL",
+            "anthropic_chat_model",
+            "ANTHROPIC_CHAT_MODEL",
+        ),
+    )
+    persona_model: str = Field(
+        DEFAULT_PERSONA_MODEL,
+        validation_alias=AliasChoices(
+            "persona_model",
+            "PERSONA_MODEL",
+            "anthropic_persona_model",
+            "ANTHROPIC_PERSONA_MODEL",
+        ),
+    )
+    digest_model: str = Field(
+        DEFAULT_DIGEST_MODEL,
+        validation_alias=AliasChoices(
+            "digest_model",
+            "DIGEST_MODEL",
+            "anthropic_summary_model",
+            "ANTHROPIC_SUMMARY_MODEL",
+        ),
+    )
     chat_max_history: int = 10
     chat_retrieval_top_k: int = 10
 
@@ -75,12 +124,6 @@ class Settings(BaseSettings):
 
     # API authentication (empty = dev mode, no auth required)
     api_key: str = ""
-
-    # LLM models (explicit per-use-case settings)
-    anthropic_cleanup_model: str = "claude-haiku-4-5"
-    anthropic_chat_model: str = "claude-haiku-4-5"
-    anthropic_summary_model: str = "claude-sonnet-4-5"
-    anthropic_persona_model: str = "claude-sonnet-4-5"
 
     # Persona generation tunables
     persona_min_videos: int = 3
@@ -130,7 +173,43 @@ class Settings(BaseSettings):
     audio_dir: str = "/data/audio"
     model_cache_dir: str = "/data/models"
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+
+    @property
+    def anthropic_cleanup_model(self) -> str:
+        """Deprecated compatibility alias for ``cleanup_model``."""
+        return self.cleanup_model
+
+    @anthropic_cleanup_model.setter
+    def anthropic_cleanup_model(self, value: str) -> None:
+        self.cleanup_model = value
+
+    @property
+    def anthropic_summary_model(self) -> str:
+        """Deprecated compatibility alias for ``summary_model``."""
+        return self.summary_model
+
+    @anthropic_summary_model.setter
+    def anthropic_summary_model(self, value: str) -> None:
+        self.summary_model = value
+
+    @property
+    def anthropic_chat_model(self) -> str:
+        """Deprecated compatibility alias for ``chat_model``."""
+        return self.chat_model
+
+    @anthropic_chat_model.setter
+    def anthropic_chat_model(self, value: str) -> None:
+        self.chat_model = value
+
+    @property
+    def anthropic_persona_model(self) -> str:
+        """Deprecated compatibility alias for ``persona_model``."""
+        return self.persona_model
+
+    @anthropic_persona_model.setter
+    def anthropic_persona_model(self, value: str) -> None:
+        self.persona_model = value
 
 
 settings = Settings()

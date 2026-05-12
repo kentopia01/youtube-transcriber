@@ -3,7 +3,6 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
@@ -17,14 +16,17 @@ from app.services.pipeline_state import (
     set_pipeline_job_state,
 )
 from app.services.pipeline_attempts import (
-    get_active_pipeline_attempt,
-    get_latest_pipeline_attempt,
-    is_active_pipeline_attempt_conflict,
+    ATTEMPT_RESULT_ALREADY_ACTIVE,
+    ATTEMPT_RESULT_BLOCKED,
+    ATTEMPT_RESULT_CREATED,
+    allocate_pipeline_attempt_async,
+    create_pipeline_attempt_from_allocation_async,
 )
 from app.services.pipeline_observability import (
     ATTEMPT_REASON_STALE_RECOVERY,
     ATTEMPT_REASON_USER_RETRY,
 )
+from app.services.pipeline_enqueue import PipelineEnqueueError, enqueue_pipeline_job_after_commit_async
 from app.services.pipeline_recovery import STALE_REAP_RECOVERY_STATUS, get_retry_block_reason
 from app.services.pipeline_resume import detect_resume_point_async, select_resume_stage
 from app.tasks.pipeline import run_pipeline_from
@@ -95,25 +97,21 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     video.dismissed_at = None
     video.dismissed_reason = None
 
-    # One-active-attempt guard.
-    existing_attempt = await get_active_pipeline_attempt(db, video.id)
-    if existing_attempt:
+    video_uuid = video.id
+    allocation = await allocate_pipeline_attempt_async(db, video_uuid)
+    if allocation.status == ATTEMPT_RESULT_ALREADY_ACTIVE and allocation.active_job is not None:
         return {
-            "status": existing_attempt.status,
-            "job_id": str(existing_attempt.id),
-            "video_id": str(video.id),
+            "status": allocation.active_job.status,
+            "job_id": str(allocation.active_job.id),
+            "video_id": str(video_uuid),
         }
 
-    latest_attempt = await get_latest_pipeline_attempt(db, job.video_id)
-    retry_block_reason = get_retry_block_reason(latest_attempt or job)
-    if retry_block_reason:
-        raise HTTPException(status_code=409, detail=retry_block_reason)
+    if allocation.status == ATTEMPT_RESULT_BLOCKED:
+        raise HTTPException(status_code=409, detail=allocation.reason or "Pipeline attempt is blocked")
 
     # Artifact-aware retry planning.
     start_from, artifact_check_result = await _detect_resume_point(db, video)
 
-    video_uuid = video.id
-    attempt_number = ((latest_attempt.attempt_number if latest_attempt else 0) or 0) + 1
     start_label = start_from.split(".")[-1]
 
     attempt_reason = (
@@ -122,58 +120,53 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         else ATTEMPT_REASON_USER_RETRY
     )
 
-    retry = Job(
-        video_id=video_uuid,
-        channel_id=job.channel_id,
-        job_type="pipeline",
+    attempt = await create_pipeline_attempt_from_allocation_async(
+        db,
+        allocation,
         status="queued",
-        attempt_number=attempt_number,
+        current_stage=PIPELINE_STAGE_QUEUED,
+        progress_message=lambda attempt_number: (
+            f"Queued retry attempt #{attempt_number} (resuming from {start_label})"
+        ),
+        channel_id=job.channel_id,
         supersedes_job_id=job.id,
         attempt_creation_reason=attempt_reason,
         last_artifact_check_result=artifact_check_result,
     )
-    set_pipeline_job_state(
-        retry,
-        lifecycle_status="queued",
-        current_stage=PIPELINE_STAGE_QUEUED,
-        progress_pct=0.0,
-        progress_message=f"Queued retry attempt #{attempt_number} (resuming from {start_label})",
-        error_message=None,
-        started_at=None,
-        completed_at=None,
-    )
-    db.add(retry)
-    try:
-        await db.flush()
-    except IntegrityError as exc:
-        await db.rollback()
-        if not is_active_pipeline_attempt_conflict(exc):
-            raise
-
-        active_attempt = await get_active_pipeline_attempt(db, video_uuid)
-        if not active_attempt:
-            raise HTTPException(status_code=409, detail="Active pipeline attempt already exists")
-
+    if attempt.status == ATTEMPT_RESULT_ALREADY_ACTIVE and attempt.active_job is not None:
         return {
-            "status": active_attempt.status,
-            "job_id": str(active_attempt.id),
+            "status": attempt.active_job.status,
+            "job_id": str(attempt.active_job.id),
             "video_id": str(video_uuid),
         }
+    if attempt.status == ATTEMPT_RESULT_BLOCKED:
+        raise HTTPException(status_code=409, detail=attempt.reason or "Pipeline attempt is blocked")
+    if attempt.status != ATTEMPT_RESULT_CREATED or attempt.job is None:
+        raise HTTPException(status_code=409, detail=attempt.reason or "Could not create pipeline attempt")
 
+    retry = attempt.job
     await hide_superseded_failed_jobs(
         db,
         video_id=video_uuid,
         superseded_by_job_id=retry.id,
     )
 
-    retry.celery_task_id = run_pipeline_from(
-        str(video_uuid),
-        start_from=start_from,
-        job_id=str(retry.id),
-    )
-    await db.commit()
+    video_id_str = str(video_uuid)
+    retry_job_id_str = str(retry.id)
+    try:
+        await enqueue_pipeline_job_after_commit_async(
+            db,
+            retry,
+            publish=lambda: run_pipeline_from(
+                video_id_str,
+                start_from=start_from,
+                job_id=retry_job_id_str,
+            ),
+        )
+    except PipelineEnqueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    payload = {"status": "queued", "job_id": str(retry.id), "video_id": str(video_uuid)}
+    payload = {"status": "queued", "job_id": retry_job_id_str, "video_id": video_id_str}
     if request.headers.get("HX-Request"):
         response = JSONResponse(payload)
         response.headers["HX-Redirect"] = f"/jobs/{retry.id}"
