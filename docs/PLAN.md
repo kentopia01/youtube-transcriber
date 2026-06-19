@@ -30,8 +30,10 @@ Completed:
 - T023: broad exception audit + structured side-effect logging
 - T024: report schema intent cleanup
 - T025: final full-suite release hygiene
+- T026: brief quality repair and report depth gate
+- T027: summary quality gate hotfix
 
-The current default validation baseline is green: `1157 passed, 11 skipped`; skipped tests are opt-in smoke/e2e tests.
+The prior full default validation baseline is green: `1157 passed, 11 skipped`; skipped tests are opt-in smoke/e2e tests. T026 added focused brief-quality validation after that baseline.
 
 ## Current verified reality
 

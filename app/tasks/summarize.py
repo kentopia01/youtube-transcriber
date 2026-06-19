@@ -10,6 +10,7 @@ from app.models.video import Video
 from app.services.pipeline_recovery import get_stage_retry_limit, record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_SUMMARIZE
 from app.services.provider_retry import is_retryable_provider_error
+from app.services.summary_quality import format_summary_quality_messages, validate_summary_contract
 from app.services.summarization import summarize_text
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
 from app.tasks.celery_app import celery
@@ -60,7 +61,45 @@ def summarize_transcription_task(self, payload: dict[str, str] | str) -> dict[st
                 video_title=video.title,
                 api_key=settings.anthropic_api_key,
                 model=settings.summary_model,
+                video_duration_seconds=video.duration_seconds,
             )
+            quality = validate_summary_contract(
+                result["summary"],
+                word_count=transcription.word_count,
+                duration_seconds=video.duration_seconds,
+            )
+            if quality.is_malformed:
+                feedback = format_summary_quality_messages(quality)
+                update_pipeline_job(
+                    job,
+                    task=self,
+                    lifecycle_status="running",
+                    current_stage=PIPELINE_STAGE_SUMMARIZE,
+                    progress_pct=84.0,
+                    progress_message="Regenerating summary after quality gate",
+                    error_message=None,
+                    completed_at=None,
+                )
+                db.commit()
+                result = summarize_text(
+                    transcription.full_text,
+                    video_title=video.title,
+                    api_key=settings.anthropic_api_key,
+                    model=settings.summary_model,
+                    video_duration_seconds=video.duration_seconds,
+                    quality_feedback=feedback,
+                    output_format="markdown",
+                )
+                quality = validate_summary_contract(
+                    result["summary"],
+                    word_count=transcription.word_count,
+                    duration_seconds=video.duration_seconds,
+                )
+                if quality.is_malformed:
+                    raise ValueError(
+                        "Generated summary failed quality gate after regeneration: "
+                        + "; ".join(format_summary_quality_messages(quality))
+                    )
 
             # Upsert: update existing summary or create new one
             existing_summary = db.query(Summary).filter(

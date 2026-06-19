@@ -11,6 +11,7 @@ from app.services.pipeline_recovery import (
     is_pipeline_job_stale,
     record_pipeline_failure,
 )
+from app.services.pipeline_state import JOB_PROGRESS_MESSAGE_MAX_LENGTH, set_pipeline_job_state
 
 
 def test_build_failure_signature_normalizes_numbers_and_paths():
@@ -116,3 +117,13 @@ def test_record_pipeline_failure_logs_notify_failure_and_continues(monkeypatch):
     assert logs[0][1]["video_id"] == "video-1"
     assert logs[0][1]["exception_type"] == "RuntimeError"
     assert logs[0][1]["outcome"] == "caller_continued"
+
+
+def test_pipeline_progress_message_is_truncated_for_db_column():
+    job = Job(job_type="pipeline", status="running")
+    long_message = "Summary failed: " + ("missing required heading; " * 80)
+
+    set_pipeline_job_state(job, progress_message=long_message)
+
+    assert len(job.progress_message) == JOB_PROGRESS_MESSAGE_MAX_LENGTH
+    assert job.progress_message.endswith("...")

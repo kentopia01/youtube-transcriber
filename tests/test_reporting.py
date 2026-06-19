@@ -12,6 +12,7 @@ from app.models.transcription import Transcription
 from app.models.video import Video
 from app.models.video_report import SUMMARY_REPORT_TYPE, VideoReport
 from app.services.reporting import (
+    ReportQualityError,
     build_report_caption,
     build_report_render_data,
     generate_video_report,
@@ -41,25 +42,59 @@ def _summary(video_id):
     return SimpleNamespace(
         video_id=video_id,
         content="""
-## 30-second take
+## At-a-Glance
+- Verdict: Skim
+- Core thesis: The speaker argues AI sales stacks matter because they can turn SDR work from manual prospecting into repeatable leverage.
+- Why it matters: Ken can reuse the pattern for agent GTM workflows and internal automation design.
+- Best use: Skim for the workflow and incentive pattern.
+
+## Executive Summary
 The speaker argues AI sales stacks matter because they can turn SDR work from manual prospecting into repeatable leverage, but only when teams pair automation with proprietary data and clear compensation incentives.
 
-## Key takes
-- AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard.
-- Proprietary data moats matter because generic automation is easy for competitors to copy.
-- Variable comp is returning because teams still need humans accountable for pipeline quality.
+The strongest useful thread is that AI is not valuable because it adds another dashboard; it is valuable when it removes repetitive prospecting work, protects a data moat, and keeps humans accountable for pipeline quality.
 
-## Useful details
-- The strongest examples are tied to sales teams that already know their ICP and workflow.
+## Key Takeaways
+- Claim: AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard. | Evidence: The speaker ties useful automation to prospecting workflow removal. | Caveat: The summary does not prove every team has the same workflow. | Implication: Ken should automate around known GTM bottlenecks.
+- Claim: Proprietary data moats matter because generic automation is easy for competitors to copy. | Evidence: The video contrasts proprietary data with generic tooling. | Caveat: The moat depends on data quality. | Implication: Ken should preserve unique source data in agent GTM workflows.
+- Claim: Variable comp is returning because teams still need humans accountable for pipeline quality. | Evidence: The speaker connects compensation incentives with quality ownership. | Caveat: Incentive design can become noisy. | Implication: Ken should keep accountability attached to automated sales loops.
+- Claim: AI sales stacks work best when the team already understands its ICP and workflow. | Evidence: The strongest examples are tied to teams with known sales motion. | Caveat: Weak ICP clarity will limit gains. | Implication: Ken should map the workflow before choosing tools.
 
-## Caveats / counterpoints
-- The summary does not include proof that every GTM team should automate immediately.
+## Detailed Brief
+### SDR leverage
+- Claims: AI should remove repetitive prospecting work, not just create another system to check.
+- Evidence: The strongest examples are tied to sales teams that already know their ICP and workflow.
+- Caveats: The summary does not include proof that every GTM team should automate immediately.
+- Implications: Ken should anchor agent work in concrete sales bottlenecks.
 
-## Ken relevance
+### Data moat
+- Claims: Proprietary data makes automation more defensible than generic workflow copying.
+- Evidence: The speaker distinguishes data ownership from generic automation.
+- Caveats: Bad or stale data will collapse the moat.
+- Implications: Ken should capture and label GTM source data while building agents.
+
+### Incentives
+- Claims: Human accountability and variable comp still matter after automation.
+- Evidence: Pipeline quality remains tied to human ownership.
+- Caveats: Comp plans can create perverse incentives.
+- Implications: Ken should design review loops for agent-assisted GTM.
+
+## Notable Concepts & Terms
+- SDR throughput: More useful sales-development output per human rep.
+- Proprietary data moat: Data competitors cannot easily copy.
+- Variable comp: Incentive pay tied to pipeline or revenue outcomes.
+- ICP: The customer profile that defines the sales workflow.
+
+## Operator Notes / Why Ken Should Care
 - Relevant for agent GTM workflows and internal automation design.
+- Useful for thinking about where agent systems should own tasks versus where humans should stay accountable.
 
-## Watch verdict
-Skim — useful if refining an AI-enabled sales workflow.
+## Watch Map
+- timestamp unavailable: Skim the parts on SDR throughput, proprietary data, and compensation incentives.
+
+## Source/Metadata
+- Title: The AI Sales Stack
+- Transcript words: 320
+- Timestamp note: Timestamps or chapters were unavailable in the transcript.
 """.strip(),
         model="claude-haiku-4-5-20251001",
         prompt_tokens=100,
@@ -161,11 +196,23 @@ def test_build_report_render_data_is_summary_first():
     assert data.channel_name == "20VC"
     assert data.duration == "1h 1m"
     assert data.word_count == 320
-    assert "speaker argues AI sales stacks matter" in data.scan_html
+    assert "speaker argues AI sales stacks matter" in data.executive_summary_html
+    assert "Verdict" in data.at_a_glance_html
+    assert data.watch_verdict_html is not None
+    assert "Skim" in data.watch_verdict_html
+    assert data.ken_relevance_html is not None
+    assert "agent GTM workflows" in data.ken_relevance_html
+    assert data.detailed_brief_html is not None
+    assert "SDR leverage" in data.detailed_brief_html
+    assert data.concepts_html is not None
+    assert "Proprietary data moat" in data.concepts_html
+    assert data.operator_notes_html is not None
+    assert data.watch_map_html is not None
     assert data.key_points == [
-        "AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard.",
-        "Proprietary data moats matter because generic automation is easy for competitors to copy.",
-        "Variable comp is returning because teams still need humans accountable for pipeline quality.",
+        "Claim: AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard. | Evidence: The speaker ties useful automation to prospecting workflow removal. | Caveat: The summary does not prove every team has the same workflow. | Implication: Ken should automate around known GTM bottlenecks.",
+        "Claim: Proprietary data moats matter because generic automation is easy for competitors to copy. | Evidence: The video contrasts proprietary data with generic tooling. | Caveat: The moat depends on data quality. | Implication: Ken should preserve unique source data in agent GTM workflows.",
+        "Claim: Variable comp is returning because teams still need humans accountable for pipeline quality. | Evidence: The speaker connects compensation incentives with quality ownership. | Caveat: Incentive design can become noisy. | Implication: Ken should keep accountability attached to automated sales loops.",
+        "Claim: AI sales stacks work best when the team already understands its ICP and workflow. | Evidence: The strongest examples are tied to teams with known sales motion. | Caveat: Weak ICP clarity will limit gains. | Implication: Ken should map the workflow before choosing tools.",
     ]
 
 
@@ -179,7 +226,7 @@ def test_build_report_render_data_allows_missing_transcription():
     )
 
     assert data.word_count is None
-    assert "AI increases SDR throughput" in data.executive_summary_html
+    assert "repeatable leverage" in data.executive_summary_html
 
 
 def test_render_video_report_html_is_self_contained():
@@ -197,15 +244,53 @@ def test_render_video_report_html_is_self_contained():
     assert "<!DOCTYPE html>" in html
     assert "<style>" in html
     assert "The AI Sales Stack" in html
-    assert "30-second scan" in html
+    assert "At-a-Glance" in html
+    assert "Executive Summary" in html
     assert "speaker argues AI sales stacks matter" in html
     assert "Source" in html
     assert "Open original YouTube video" in html
-    assert html.index("Source") < html.index("30-second scan")
-    assert html.index("30-second scan") < html.index("Key takeaways")
-    assert html.index("Key takeaways") < html.index("Full intelligence brief")
+    assert "Detailed Brief" in html
+    assert "Notable Concepts &amp; Terms" in html
+    assert "Operator Notes / Why Ken Should Care" in html
+    assert "Watch Map" in html
+    assert html.index("At-a-Glance") < html.index("Executive Summary")
+    assert html.index("Executive Summary") < html.index("Key Takeaways")
+    assert html.index("Key Takeaways") < html.index("Detailed Brief")
+    assert html.index("Detailed Brief") < html.index("Source/Metadata")
+    assert "max-width:390px" not in html
+    assert ".container{width:100%;max-width:none" in html
+    assert ".takeaway-list{list-style:none" in html
     assert "Transcript Appendix" not in html
     assert "Full transcript text here" not in html
+
+
+def test_render_video_report_html_formats_extracted_key_point_markdown():
+    video = _video()
+    summary = SimpleNamespace(
+        video_id=video.id,
+        content="""
+## 30-second take
+Short scan.
+
+## Key takes
+- **Important thesis**: `agents` need reliable handoffs.
+""".strip(),
+        model="claude-haiku-4-5-20251001",
+        prompt_tokens=100,
+        completion_tokens=40,
+    )
+    data = build_report_render_data(
+        video=video,
+        channel=_channel(video.channel_id),
+        summary=summary,
+        transcription=None,
+    )
+
+    html = render_video_report_html(data)
+
+    assert "**Important thesis**" not in html
+    assert "<strong>Important thesis</strong>" in html
+    assert "<code>agents</code>" in html
 
 
 def test_generate_video_report_writes_summary_report_artifact_and_upserts(tmp_path, monkeypatch):
@@ -305,4 +390,39 @@ def test_generate_video_report_can_use_video_and_summary_without_transcription(t
     assert report.model == summary.model
     assert Path(report.artifact_path).exists()
     assert "AI increases SDR throughput" in report.html_content
-    assert "words" not in report.html_content
+    assert '<span class="meta-item">320 words</span>' not in report.html_content
+
+
+def test_generate_video_report_blocks_long_single_paragraph_teaser(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.reporting.settings.report_artifact_dir", str(tmp_path))
+    video = _video()
+    video.duration_seconds = 759
+    thin_summary = SimpleNamespace(
+        video_id=video.id,
+        content="""
+## 30-second take
+This is one dense teaser paragraph about a long video but it has no key takeaways, detailed brief, evidence, caveats, operator notes, or watch map.
+""".strip(),
+        model="claude-sonnet-4-5",
+        prompt_tokens=100,
+        completion_tokens=40,
+    )
+    transcription = _transcription(video.id)
+    transcription.word_count = 1648
+    db = _FakeSession(
+        video=video,
+        channel=_channel(video.channel_id),
+        summary=thin_summary,
+        transcription=transcription,
+    )
+
+    try:
+        generate_video_report(db, video.id)
+    except ReportQualityError as exc:
+        assert "too thin" in str(exc)
+        assert "Key Takeaways" in str(exc)
+    else:
+        raise AssertionError("expected ReportQualityError")
+
+    assert db.commits == 0
+    assert not list(tmp_path.rglob("*.html"))

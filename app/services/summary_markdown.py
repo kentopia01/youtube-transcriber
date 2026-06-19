@@ -48,6 +48,35 @@ def find_section(sections: Mapping[str, str], heading: str) -> str | None:
 
 def extract_markdown_section(markdown: str | None, headings: Sequence[str]) -> str | None:
     """Return markdown content under the first matching heading."""
+    if not markdown:
+        return None
+
+    wanted = {normalize_heading(heading) for heading in headings}
+    lines = markdown.strip().splitlines()
+    collecting = False
+    heading_level: int | None = None
+    collected: list[str] = []
+
+    for raw in lines:
+        stripped = raw.strip()
+        heading_match = re.match(r"^(#{1,6})\s+(.+?)\s*$", stripped)
+        if heading_match:
+            level = len(heading_match.group(1))
+            normalized = normalize_heading(heading_match.group(2))
+            if collecting and heading_level is not None and level <= heading_level:
+                break
+            if normalized in wanted:
+                collecting = True
+                heading_level = level
+                collected = []
+                continue
+        if collecting:
+            collected.append(raw.rstrip())
+
+    content = "\n".join(collected).strip()
+    if content:
+        return content
+
     sections = extract_heading_sections(markdown)
     for heading in headings:
         content = find_section(sections, heading)

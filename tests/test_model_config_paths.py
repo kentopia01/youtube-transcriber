@@ -73,10 +73,21 @@ def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
 
     observed: dict[str, str] = {}
 
-    def fake_summarize_single(client, model, text, title, *, record_usage_enabled=True):
+    def fake_summarize_single(
+        client,
+        model,
+        text,
+        title,
+        *,
+        record_usage_enabled=True,
+        duration_seconds=None,
+        quality_feedback=None,
+        output_format="structured",
+    ):
         observed["model"] = model
         observed["text"] = text
         observed["title"] = title
+        observed["output_format"] = output_format
         return {
             "summary": "ok",
             "model": model,
@@ -88,7 +99,12 @@ def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
 
     result = summarization.summarize_text("transcript", video_title="Title", api_key="api-key")
 
-    assert observed == {"model": "summary-canonical", "text": "transcript", "title": "Title"}
+    assert observed == {
+        "model": "summary-canonical",
+        "text": "transcript",
+        "title": "Title",
+        "output_format": "structured",
+    }
     assert result["model"] == "summary-canonical"
 
 

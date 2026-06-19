@@ -42,26 +42,58 @@ def _candidate(
 
 def _valid_summary() -> str:
     return """
-## 30-second take
+## At-a-Glance
+- Verdict: Skim
+- Core thesis: The speaker argues AI ops teams should use agents to remove repeatable workflow drag while keeping evals and human review in place.
+- Why it matters: Ken can turn the pattern into agent systems and GTM workflows.
+- Best use: Skim for the operating pattern.
+
+## Executive Summary
 The speaker argues AI ops teams should use agents to remove repeatable workflow drag while keeping evals and human review in place.
 
-## Key takes
-- Agents create leverage when they automate a specific workflow instead of becoming a generic chatbot.
-- AI ops needs evals because unchecked automation can silently lower quality.
-- Content and GTM teams can reuse the same workflow to turn research into sales opportunities.
-- Ken should treat the idea as an operating pattern rather than a standalone product recommendation.
+The useful point for Ken is that agents create leverage when they automate a specific workflow instead of becoming a generic chatbot, and when quality checks remain attached to the system.
 
-## Useful details
-- The video mentions agent handoffs, evals, GTM workflows, and human review.
+## Key Takeaways
+- Claim: Agents create leverage when they automate a specific workflow instead of becoming a generic chatbot. | Evidence: The video mentions agent handoffs and workflow boundaries. | Caveat: It does not prove every workflow benefits. | Implication: Ken should start with bounded agent systems.
+- Claim: AI ops needs evals because unchecked automation can silently lower quality. | Evidence: The transcript names evals and human review. | Caveat: Eval design still requires judgement. | Implication: Ken should attach evals to every automated workflow.
+- Claim: Content and GTM teams can reuse the same workflow to turn research into sales opportunities. | Evidence: GTM workflows are listed as a concrete use case. | Caveat: The output depends on input quality. | Implication: Ken can connect content intelligence to business opportunities.
+- Claim: Ken should treat the idea as an operating pattern rather than a standalone product recommendation. | Evidence: The speaker emphasizes workflow, handoffs, evals, and review. | Caveat: Tooling still affects implementation. | Implication: Ken should port the pattern across personal workflow and AI ops.
 
-## Caveats / counterpoints
-- The transcript does not prove this works for every team or every workflow.
+## Detailed Brief
+### Agent workflow
+- Claims: Agent workflows work when scoped.
+- Evidence: The video mentions agent handoffs, evals, GTM workflows, and human review.
+- Caveats: The transcript does not prove this works for every team or every workflow.
+- Implications: Ken should choose bounded workflows first.
 
-## Ken relevance
+### Quality guardrail
+- Claims: Evals protect agent output quality.
+- Evidence: Human review and evals are named together.
+- Caveats: Bad evals can give false confidence.
+- Implications: Ken should keep quality evidence attached to agent outputs.
+
+### GTM reuse
+- Claims: Content and sales workflows can share the same agent pattern.
+- Evidence: GTM workflows are named as a use case.
+- Caveats: Source data quality matters.
+- Implications: Ken can reuse transcript intelligence for content/business opportunities.
+
+## Notable Concepts & Terms
+- Agent handoff: Context transfer between tools or agents.
+- Eval: A deterministic or model-assisted quality check.
+- GTM workflow: Repeatable content/sales process.
+- Human review: Manual guardrail for high-risk outputs.
+
+## Operator Notes / Why Ken Should Care
 - Relevant to Ken's agent systems, AI ops, content/business opportunities, investing, GTM, and personal workflow.
 
-## Watch verdict
-Skim — useful for the operating pattern, but the summary captures the core idea.
+## Watch Map
+- timestamp unavailable: Skim for the operating pattern, eval loop, and GTM reuse.
+
+## Source/Metadata
+- Title: Backfill sample
+- Transcript words: 1200
+- Timestamp note: Timestamps or chapters were unavailable in the transcript.
 """.strip()
 
 

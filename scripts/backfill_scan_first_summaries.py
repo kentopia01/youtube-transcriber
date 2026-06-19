@@ -53,6 +53,7 @@ class BackfillCandidate:
     status: str
     transcript: str
     channel_youtube_id: str | None = None
+    duration_seconds: float | None = None
     word_count: int | None = None
     existing_summary: str | None = None
     summary_model: str | None = None
@@ -275,8 +276,8 @@ def print_backfill_plan(
     else:
         print("Mode: LIVE APPLY — Anthropic calls and DB writes are enabled for this limited batch.")
     print(
-        "Validation: generated summaries are checked for required headings, Ken relevance, "
-        "and Watch verdict before writes; malformed outputs are blocked unless --allow-malformed is set."
+        "Validation: generated briefs are checked for required report sections, key takeaway depth, "
+        "operator notes, and Watch verdict before writes; malformed outputs are blocked unless --allow-malformed is set."
     )
     print(f"Filters: {filters_label}")
     print(f"Selected videos: {len(plan)}")
@@ -290,6 +291,8 @@ def print_backfill_plan(
         print(f"    title: {candidate.title}")
         print(f"    channel: {candidate.channel_name or 'unknown'}")
         print(f"    status: {candidate.status}")
+        if candidate.duration_seconds is not None:
+            print(f"    duration_seconds: {int(candidate.duration_seconds)}")
         print(f"    word_count: {candidate.effective_word_count}")
         print(f"    existing_summary: {existing_summary_label(candidate, now=now)}")
         print(f"    intended_action: {item.intended_action}")
@@ -309,6 +312,7 @@ def generate_scan_first_summary(
         api_key=api_key,
         model=model,
         record_usage_enabled=False,
+        video_duration_seconds=candidate.duration_seconds,
     )
     return GeneratedBackfillSummary(
         summary=result["summary"],
@@ -340,6 +344,7 @@ def apply_backfill_item(
     quality = validate_summary_contract(
         generated.summary,
         word_count=candidate.effective_word_count,
+        duration_seconds=candidate.duration_seconds,
     )
     if quality.is_malformed and not allow_malformed:
         raise SummaryValidationError(candidate.youtube_video_id, quality)
@@ -436,6 +441,7 @@ def load_backfill_candidates_from_db(
             status=video.status,
             transcript=transcription.full_text,
             channel_youtube_id=channel_row.youtube_channel_id if channel_row else None,
+            duration_seconds=video.duration_seconds,
             word_count=transcription.word_count,
             existing_summary=summary.content if summary else None,
             summary_model=summary.model if summary else None,

@@ -8,28 +8,60 @@ from app.services.summary_quality import (
 
 def _summary(*, key_takes: str | None = None, ken_relevance: str | None = None, verdict: str = "Skim") -> str:
     return f"""
-## 30-second take
-The speaker argues AI operators should use agents for leverage, but only with clear evals and workflow guardrails.
+## At-a-Glance
+- Verdict: {verdict}
+- Core thesis: The speaker argues AI operators should use agents for leverage, but only with clear evals and workflow guardrails.
+- Why it matters: Ken can reuse the operating pattern in agent systems.
+- Best use: Skim for the workflow pattern.
 
-## Key takes
-{key_takes or "- Agents can remove repetitive research work when scoped to a narrow workflow.\n- Evals matter because unchecked automation creates silent quality regressions.\n- GTM teams can use the workflow to turn content into repeatable sales insights.\n- The implication is that Ken should treat this as an ops pattern, not just tooling news."}
+## Executive Summary
+The speaker argues that agent leverage comes from narrowing automation to a concrete workflow, instrumenting evals, and keeping human review where quality can silently regress.
 
-## Useful details
-- The video names evals, agent handoffs, and GTM workflows as concrete implementation areas.
+The useful angle for Ken is not a new tool recommendation; it is an operating pattern for AI ops, content/business workflows, and GTM systems.
 
-## Caveats / counterpoints
-- The speaker does not prove the approach works for every team.
+## Key Takeaways
+{key_takes or "- Claim: Agents can remove repetitive research work when scoped to a narrow workflow. | Evidence: The video names research handoffs and review loops. | Caveat: It does not prove generic chatbots help. | Implication: Ken should define workflow boundaries before automation.\n- Claim: Evals matter because unchecked automation creates silent quality regressions. | Evidence: The speaker points to quality checks and human review. | Caveat: Eval design is still hard. | Implication: Ken should treat evals as part of the system, not afterthoughts.\n- Claim: GTM teams can turn content into repeatable sales insights. | Evidence: The transcript ties content research to sales workflows. | Caveat: The examples assume clean source data. | Implication: Ken can reuse the pattern for content/business opportunities.\n- Claim: The core idea is an operating pattern rather than tooling news. | Evidence: The speaker emphasizes process, scopes, and review. | Caveat: Tool choice still matters in implementation. | Implication: Ken should port the pattern into his personal workflow."}
 
-## Ken relevance
+## Detailed Brief
+### Workflow scope
+- Claims: Agents work better when scoped to a narrow workflow.
+- Evidence: The video names evals, agent handoffs, and GTM workflows as concrete implementation areas.
+- Caveats: Broad automation can hide quality failures.
+- Implications: Ken should pick bounded workflows first.
+
+### Quality loop
+- Claims: Review and evals are part of the product surface.
+- Evidence: The speaker links evals with human review.
+- Caveats: The transcript does not prove one eval design fits every workflow.
+- Implications: Ken should store quality evidence with outputs.
+
+### GTM leverage
+- Claims: The same workflow can feed sales and content loops.
+- Evidence: GTM workflows are named as a concrete use case.
+- Caveats: It assumes useful input material.
+- Implications: Ken can turn transcript intelligence into sales/content prompts.
+
+## Notable Concepts & Terms
+- Agent handoff: A transfer of context or task ownership between tools or agents.
+- Eval: A check that catches quality regression.
+- GTM workflow: A repeatable sales/content process.
+- Human review: A guardrail for automation quality.
+
+## Operator Notes / Why Ken Should Care
 {ken_relevance or "- Relevant to Ken's agent systems, AI ops, content/business opportunities, investing, GTM, and personal workflow."}
 
-## Watch verdict
-{verdict} — useful enough to sample, but the summary captures the core take.
+## Watch Map
+- timestamp unavailable: Skim the section where the speaker connects evals, handoffs, and workflow design.
+
+## Source/Metadata
+- Title: Test video
+- Transcript words: 1800
+- Timestamp note: Timestamps or chapters were unavailable in the transcript.
 """.strip()
 
 
 def test_validate_summary_contract_passes_well_formed_scan_first_summary():
-    result = validate_summary_contract(_summary(), word_count=1800)
+    result = validate_summary_contract(_summary(), word_count=1200)
 
     assert result.passed
     assert result.key_take_count == 4
@@ -39,13 +71,22 @@ def test_validate_summary_contract_passes_well_formed_scan_first_summary():
     assert format_summary_quality_messages(result)[0].startswith("PASS:")
 
 
+def test_validate_summary_contract_requires_more_depth_for_long_transcripts():
+    result = validate_summary_contract(_summary(), word_count=1800, duration_seconds=720)
+
+    assert not result.passed
+    assert result.requires_deep_brief
+    assert result.minimum_key_takes == 5
+    assert any("expected at least 5" in error for error in result.errors)
+
+
 def test_validate_summary_contract_errors_on_missing_required_sections_and_verdict():
     result = validate_summary_contract(
         """
-## 30-second take
+## At-a-Glance
 This is a generic paragraph.
 
-## Key takes
+## Key Takeaways
 - One point.
 """.strip(),
         word_count=1800,
@@ -53,8 +94,8 @@ This is a generic paragraph.
 
     assert result.is_malformed
     assert any("missing required heading" in error for error in result.errors)
-    assert any("Ken relevance" in error for error in result.errors)
-    assert any("Watch verdict" in error for error in result.errors)
+    assert any("Operator Notes" in error for error in result.errors)
+    assert any("Skip / Skim / Watch fully" in error for error in result.errors)
 
 
 def test_validate_summary_contract_blocks_substantive_summary_with_too_few_key_takes():
@@ -66,7 +107,7 @@ def test_validate_summary_contract_blocks_substantive_summary_with_too_few_key_t
     assert not result.passed
     assert result.is_malformed
     assert result.key_take_count == 1
-    assert any("expected at least 4" in error for error in result.errors)
+    assert any("expected at least 5" in error for error in result.errors)
 
 
 def test_validate_summary_contract_allows_low_content_with_fewer_key_takes():
@@ -102,7 +143,7 @@ def test_validate_summary_contract_blocks_short_non_low_content_summary_with_too
 def test_validate_summary_contract_blocks_false_positive_low_content_wording():
     result = validate_summary_contract(
         _summary(
-            key_takes="- The speaker discusses licensing strategy for AI-generated music products.",
+            key_takes="- Claim: The speaker discusses licensing strategy for AI-generated music products. | Evidence: The transcript names rights and product strategy. | Caveat: This is not a low-content transcript. | Implication: Ken should evaluate product risk before GTM.",
             ken_relevance="- Relevant to Ken's agent systems and AI ops workflow, and this is not a low-content transcript.",
         ),
         word_count=1200,
@@ -116,7 +157,7 @@ def test_validate_summary_contract_blocks_false_positive_low_content_wording():
 def test_validate_summary_contract_warns_when_ken_relevance_is_generic():
     result = validate_summary_contract(
         _summary(ken_relevance="- This is relevant because it may matter later."),
-        word_count=1600,
+        word_count=1200,
     )
 
     assert result.passed

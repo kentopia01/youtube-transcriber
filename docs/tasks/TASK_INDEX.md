@@ -34,6 +34,8 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T023 | Broad exception audit and structured side-effect logging | done | BuildClaw / QAClaw | High-risk fail-open side-effect catches now emit structured logs; QA passed |
 | T024 | Report schema intent cleanup | done | BuildClaw / QAClaw | One-current-summary-report-per-video intent explicit, tested, and QA-validated |
 | T025 | Final full-suite release hygiene | done | SentryClaw | Static gates passed; default full pytest suite passed `1157 passed, 11 skipped` |
+| T026 | Brief quality repair and report depth gate | done | OpsClaw | Structured JSON brief contract, report depth gate, and bounded thin-report regeneration |
+| T027 | Summary quality gate hotfix | done | SentryClaw | Structured brief repair pass now falls back to direct markdown contract before current summarize-stage retries |
 | T028 | yt-dlp cookie 403 fallback | done | SentryClaw | Cookie-backed media 403 retries once without cookies |
 | T029 | Controlled download 403 recovery | done | SentryClaw | Guarded retry script added; seven failed jobs queued under patched downloader |
 | T030 | YouTube download health probe | done | SentryClaw | Cookie/no-cookie probe with JSON output and native env loading |

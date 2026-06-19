@@ -350,7 +350,11 @@ def render_eval_markdown(
     )
     if generated:
         quality_lines = format_summary_quality_messages(
-            validate_summary_contract(generated.summary, word_count=candidate.effective_word_count)
+            validate_summary_contract(
+                generated.summary,
+                word_count=candidate.effective_word_count,
+                duration_seconds=candidate.duration_seconds,
+            )
         )
     else:
         quality_lines = ["Not run because no summary was generated."]
@@ -564,6 +568,7 @@ def generate_scan_first_summary(
         api_key=api_key,
         model=model,
         record_usage_enabled=False,
+        video_duration_seconds=candidate.duration_seconds,
     )
     return GeneratedSummary(
         summary=result["summary"],
@@ -700,6 +705,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             quality = validate_summary_contract(
                 generated_summary.summary,
                 word_count=candidate.effective_word_count,
+                duration_seconds=candidate.duration_seconds,
             )
             for line in format_summary_quality_messages(quality):
                 if not line.startswith("PASS:"):

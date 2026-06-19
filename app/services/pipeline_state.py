@@ -27,6 +27,15 @@ PIPELINE_ATTEMPT_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 PIPELINE_TERMINAL_ONLY_STAGES = (PIPELINE_STAGE_COMPLETED, PIPELINE_STAGE_CANCELLED)
 
 _SENTINEL = object()
+JOB_PROGRESS_MESSAGE_MAX_LENGTH = 512
+
+
+def _truncate_db_string(value: str | None, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 3].rstrip() + "..."
 
 
 def classify_pipeline_attempt(job: Job | Any) -> str | None:
@@ -128,6 +137,7 @@ def set_pipeline_job_state(
         job.progress_pct = float(progress_pct)
 
     if progress_message is not _SENTINEL:
+        progress_message = _truncate_db_string(progress_message, JOB_PROGRESS_MESSAGE_MAX_LENGTH)
         state_changed = state_changed or getattr(job, "progress_message", None) != progress_message
         job.progress_message = progress_message
 

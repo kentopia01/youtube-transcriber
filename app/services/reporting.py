@@ -32,11 +32,19 @@ from app.models.video import Video
 from app.models.video_report import SUMMARY_REPORT_TYPE, VideoReport
 from app.services.summary_markdown import (
     bullet_points_from_markdown,
+    extract_heading_sections,
     extract_markdown_section,
     first_content_block,
 )
+from app.services.summary_quality import validate_report_depth
 
 logger = structlog.get_logger()
+
+
+@dataclass
+class ReportSection:
+    title: str
+    html: str
 
 
 @dataclass
@@ -46,12 +54,27 @@ class ReportRenderData:
     channel_name: str | None
     video_url: str | None
     duration: str | None
+    at_a_glance_html: str
     executive_summary_html: str
     scan_html: str
     key_points: list[str]
+    key_points_html: list[str]
+    watch_verdict_html: str | None
+    ken_relevance_html: str | None
+    action_items_html: str | None
+    detailed_brief_html: str | None
+    concepts_html: str | None
+    operator_notes_html: str | None
+    watch_map_html: str | None
+    source_metadata_html: str | None
+    brief_sections: list[ReportSection]
     generated_at: str
     word_count: int | None = None
     model: str | None = None
+
+
+class ReportQualityError(ValueError):
+    """Raised when an existing summary is too thin to ship as a report."""
 
 
 def _template_env() -> Environment:
@@ -113,6 +136,9 @@ def _markdownish_to_html(text: str | None) -> str:
         if not line:
             close_list()
             continue
+        if line in {"---", "***"}:
+            close_list()
+            continue
         if line.startswith("### "):
             close_list()
             parts.append(f"<h3>{_inline_markdown(line[4:])}</h3>")
@@ -143,7 +169,13 @@ def _markdownish_to_html(text: str | None) -> str:
 def _inline_markdown(text: str) -> str:
     escaped = escape(text, quote=False)
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    escaped = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", escaped)
+    escaped = re.sub(r"`(.+?)`", r"<code>\1</code>", escaped)
     return escaped
+
+
+def _inline_markdown_list(items: list[str]) -> list[str]:
+    return [_inline_markdown(item) for item in items]
 
 
 def _scan_from_summary(summary: str | None) -> str | None:
@@ -154,6 +186,8 @@ def _scan_from_summary(summary: str | None) -> str | None:
                 "30-second take",
                 "30 second take",
                 "30-second scan",
+                "At-a-Glance",
+                "At a Glance",
                 "executive summary",
                 "bottom line",
                 "summary",
@@ -168,7 +202,7 @@ def _key_points_from_summary(summary: str | None, *, limit: int = 6) -> list[str
         return []
 
     for section_names in (
-        ["Key takes", "Key takeaways"],
+        ["Key Takeaways", "Key takes", "Key takeaways"],
         ["Takeaways", "Action items"],
         ["Key points", "Useful details"],
     ):
@@ -185,6 +219,193 @@ def _key_points_from_summary(summary: str | None, *, limit: int = 6) -> list[str
 
     sentences = re.split(r"(?<=[.!?])\s+", summary.strip())
     return [s for s in sentences if s][:limit]
+
+
+def _section_html(summary: str | None, headings: list[str]) -> str | None:
+    content = extract_markdown_section(summary, headings)
+    if not content:
+        return None
+    return _markdownish_to_html(content)
+
+
+def _section_content(summary: str | None, headings: list[str]) -> str | None:
+    return extract_markdown_section(summary, headings)
+
+
+def _combined_section_html(summary: str | None, section_specs: list[tuple[str, list[str]]]) -> str | None:
+    parts: list[str] = []
+    for title, headings in section_specs:
+        content = _section_content(summary, headings)
+        if content:
+            parts.append(f"### {title}\n{content}")
+    if not parts:
+        return None
+    return _markdownish_to_html("\n\n".join(parts))
+
+
+def _at_a_glance_html(summary: str | None) -> str:
+    return (
+        _section_html(summary, ["At-a-Glance", "At a Glance"])
+        or _combined_section_html(
+            summary,
+            [
+                ("Scan", ["30-second take", "30 second take", "30-second scan"]),
+                ("Verdict", ["Watch verdict", "Verdict"]),
+            ],
+        )
+        or _markdownish_to_html(_scan_from_summary(summary))
+    )
+
+
+def _executive_summary_html(summary: str | None) -> str:
+    return (
+        _section_html(summary, ["Executive Summary", "Overall Summary"])
+        or _markdownish_to_html(_scan_from_summary(summary))
+    )
+
+
+def _detailed_brief_html(summary: str | None) -> str | None:
+    return _section_html(summary, ["Detailed Brief"]) or _combined_section_html(
+        summary,
+        [
+            ("Useful Details", ["Useful details", "Details", "Numbers and named references"]),
+            ("Caveats / Counterpoints", ["Caveats / counterpoints", "Caveats", "Counterpoints"]),
+            ("Additional Context", ["Additional Context"]),
+        ],
+    )
+
+
+def _concepts_html(summary: str | None) -> str | None:
+    explicit = _section_html(
+        summary,
+        ["Notable Concepts & Terms", "Notable Concepts and Terms", "Concepts", "Terms"],
+    )
+    if explicit:
+        return explicit
+
+    fallback_source = _section_content(summary, ["Useful details", "Details", "Key Takeaways", "Key takes"])
+    concepts: list[str] = []
+    for point in bullet_points_from_markdown(fallback_source, limit=8):
+        match = re.match(r"(?:\*\*)?([^:*]{2,60})(?:\*\*)?\s*:\s+(.+)", point)
+        if not match:
+            continue
+        term = match.group(1).strip()
+        meaning = match.group(2).strip()
+        if term and meaning:
+            concepts.append(f"- {term}: {meaning}")
+        if len(concepts) >= 5:
+            break
+    if concepts:
+        return _markdownish_to_html("\n".join(concepts))
+    return None
+
+
+def _operator_notes_html(summary: str | None) -> str | None:
+    return _section_html(
+        summary,
+        [
+            "Operator Notes / Why Ken Should Care",
+            "Operator Notes",
+            "Why Ken Should Care",
+            "Ken relevance",
+            "Why it matters to Ken",
+        ],
+    )
+
+
+def _watch_map_html(summary: str | None) -> str | None:
+    return _section_html(summary, ["Watch Map"]) or _section_html(summary, ["Watch verdict", "Verdict"])
+
+
+def _source_metadata_html(summary: str | None) -> str | None:
+    return _section_html(summary, ["Source/Metadata", "Source Metadata", "Metadata"])
+
+
+def _section_preview_html(
+    summary: str | None,
+    headings: list[str],
+    *,
+    max_bullets: int = 2,
+    max_chars: int | None = None,
+) -> str | None:
+    content = extract_markdown_section(summary, headings)
+    if not content:
+        return None
+
+    first_block = first_content_block(content, max_lines=2)
+    bullets = bullet_points_from_markdown(content, limit=max_bullets)
+    parts: list[str] = []
+    if first_block:
+        if max_chars and len(first_block) > max_chars:
+            cutoff = first_block.rfind(".", 0, max_chars)
+            if cutoff < max_chars // 2:
+                cutoff = max_chars
+            first_block = first_block[: cutoff + 1].rstrip()
+        parts.append(_markdownish_to_html(first_block))
+    if bullets:
+        parts.append(
+            "<ul>"
+            + "".join(f"<li>{_inline_markdown(point)}</li>" for point in bullets)
+            + "</ul>"
+        )
+    return "\n".join(parts) if parts else _markdownish_to_html(content)
+
+
+def _brief_sections_from_summary(summary: str | None) -> list[ReportSection]:
+    """Build the body sections after the decision-first top of the report."""
+    if not summary:
+        return []
+
+    sections: list[ReportSection] = []
+    section_specs = [
+        ("Ken Relevance", ["Ken relevance", "Why it matters to Ken"]),
+        ("Useful Details", ["Useful details", "Details", "Numbers and named references"]),
+        ("Caveats / Counterpoints", ["Caveats / counterpoints", "Caveats", "Counterpoints"]),
+    ]
+    used_headings = {
+        "30 second take",
+        "30 second scan",
+        "executive summary",
+        "bottom line",
+        "summary",
+        "key takes",
+        "key takeaways",
+        "takeaways",
+        "key points",
+        "action items",
+        "actions",
+        "next steps",
+        "actionable ideas",
+        "ken relevance",
+        "why it matters to ken",
+        "watch verdict",
+        "verdict",
+        "useful details",
+        "details",
+        "numbers and named references",
+        "caveats counterpoints",
+        "caveats",
+        "counterpoints",
+    }
+
+    for title, headings in section_specs:
+        html = _section_html(summary, headings)
+        if html:
+            sections.append(ReportSection(title=title, html=html))
+
+    leftovers: list[str] = []
+    for heading, content in extract_heading_sections(summary).items():
+        if heading not in used_headings and content:
+            leftovers.append(f"## {heading.title()}\n{content}")
+    if leftovers:
+        sections.append(
+            ReportSection(
+                title="Additional Context",
+                html=_markdownish_to_html("\n\n".join(leftovers)),
+            )
+        )
+
+    return sections
 
 
 def build_report_caption(summary: str | None, *, max_chars: int = 700) -> str | None:
@@ -227,9 +448,37 @@ def build_report_render_data(
         channel_name=channel.name if channel else None,
         video_url=video.url,
         duration=_fmt_duration(video.duration_seconds),
-        executive_summary_html=_markdownish_to_html(summary_text),
+        at_a_glance_html=_at_a_glance_html(summary_text),
+        executive_summary_html=_executive_summary_html(summary_text),
         scan_html=_markdownish_to_html(_scan_from_summary(summary_text)),
         key_points=_key_points_from_summary(summary_text),
+        key_points_html=_inline_markdown_list(_key_points_from_summary(summary_text)),
+        watch_verdict_html=_section_preview_html(
+            summary_text,
+            ["Watch verdict", "Verdict", "At-a-Glance", "At a Glance"],
+            max_bullets=0,
+            max_chars=420,
+        ),
+        ken_relevance_html=_section_preview_html(
+            summary_text,
+            [
+                "Operator Notes / Why Ken Should Care",
+                "Operator Notes",
+                "Why Ken Should Care",
+                "Ken relevance",
+                "Why it matters to Ken",
+            ],
+        ),
+        action_items_html=_section_html(
+            summary_text,
+            ["Action items", "Actions", "Next steps", "Actionable ideas"],
+        ),
+        detailed_brief_html=_detailed_brief_html(summary_text),
+        concepts_html=_concepts_html(summary_text),
+        operator_notes_html=_operator_notes_html(summary_text),
+        watch_map_html=_watch_map_html(summary_text),
+        source_metadata_html=_source_metadata_html(summary_text),
+        brief_sections=_brief_sections_from_summary(summary_text),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         word_count=transcription.word_count if transcription else None,
         model=summary.model if summary else None,
@@ -246,14 +495,28 @@ def render_video_report_markdown(data: ReportRenderData) -> str:
     if data.channel_name or data.duration:
         lines.append(" · ".join(p for p in [data.channel_name, data.duration] if p))
         lines.append("")
-    lines.append("## 30-second take")
-    lines.append(re.sub(r"<[^>]+>", "", data.scan_html))
-    if data.key_points:
-        lines.extend(["", "## Key takes"])
-        lines.extend(f"- {p}" for p in data.key_points)
-    lines.extend(["", "## Full intelligence brief"])
-    # Keep markdown artifact simple/plain; HTML is the canonical styled artifact.
+    lines.append("## At-a-Glance")
+    lines.append(re.sub(r"<[^>]+>", "", data.at_a_glance_html))
+    lines.extend(["", "## Executive Summary"])
     lines.append(re.sub(r"<[^>]+>", "", data.executive_summary_html))
+    if data.key_points:
+        lines.extend(["", "## Key Takeaways"])
+        lines.extend(f"- {p}" for p in data.key_points)
+    if data.detailed_brief_html:
+        lines.extend(["", "## Detailed Brief"])
+        lines.append(re.sub(r"<[^>]+>", "", data.detailed_brief_html))
+    if data.concepts_html:
+        lines.extend(["", "## Notable Concepts & Terms"])
+        lines.append(re.sub(r"<[^>]+>", "", data.concepts_html))
+    if data.operator_notes_html:
+        lines.extend(["", "## Operator Notes / Why Ken Should Care"])
+        lines.append(re.sub(r"<[^>]+>", "", data.operator_notes_html))
+    if data.watch_map_html:
+        lines.extend(["", "## Watch Map"])
+        lines.append(re.sub(r"<[^>]+>", "", data.watch_map_html))
+    if data.source_metadata_html:
+        lines.extend(["", "## Source/Metadata"])
+        lines.append(re.sub(r"<[^>]+>", "", data.source_metadata_html))
     return "\n".join(lines).strip() + "\n"
 
 
@@ -271,6 +534,24 @@ def generate_video_report(
     transcription = db.query(Transcription).filter(Transcription.video_id == video_uuid).first()
     summary = db.query(Summary).filter(Summary.video_id == video_uuid).first()
     channel = db.get(Channel, video.channel_id) if video.channel_id else None
+    report_depth = validate_report_depth(
+        summary.content if summary else None,
+        word_count=transcription.word_count if transcription else None,
+        duration_seconds=video.duration_seconds,
+    )
+    if report_depth.is_too_thin:
+        logger.warning(
+            "video_report_quality_gate_failed",
+            video_id=str(video_uuid),
+            title=video.title,
+            word_count=transcription.word_count if transcription else None,
+            duration_seconds=video.duration_seconds,
+            errors=report_depth.errors,
+        )
+        raise ReportQualityError(
+            "Summary is too thin to render as a report for a long/substantive video: "
+            + "; ".join(report_depth.errors)
+        )
 
     data = build_report_render_data(
         video=video,
@@ -322,7 +603,9 @@ def generate_video_report(
 
 
 __all__ = [
+    "ReportSection",
     "ReportRenderData",
+    "ReportQualityError",
     "build_report_caption",
     "build_report_render_data",
     "generate_video_report",
