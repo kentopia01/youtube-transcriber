@@ -193,6 +193,34 @@ def _render_cost_threshold_100(payload: dict) -> dict:
     }
 
 
+def _render_ops_youtube_download_degraded(payload: dict) -> dict:
+    count = int(payload.get("count") or 0)
+    threshold = int(payload.get("threshold") or 0)
+    cookie = payload.get("cookie") or {}
+    yt_dlp = payload.get("yt_dlp") or {}
+    videos = payload.get("videos") or []
+    first_titles = [
+        (video.get("title") or video.get("youtube_video_id") or "Untitled")[:70]
+        for video in videos[:3]
+        if isinstance(video, dict)
+    ]
+    lines = [
+        "⚠️ *YouTube download degraded*",
+        f"{count} download-stage 403 failures (threshold {threshold})",
+        f"cookies: `{cookie.get('status', 'unknown')}`",
+        f"yt-dlp: `{yt_dlp.get('version', 'unknown')}` ({yt_dlp.get('status', 'unknown')})",
+    ]
+    if first_titles:
+        lines.append("")
+        lines.extend(f"- {title}" for title in first_titles)
+    return {
+        "text": "\n".join(lines),
+        "reply_markup": None,
+        "parse_mode": "Markdown",
+        "dedupe_key": f"ops_youtube_download_degraded:{payload.get('since', '')}:{count}",
+    }
+
+
 def _render_digest_weekly(payload: dict) -> dict:
     text = payload.get("text")
     if not text:
@@ -232,6 +260,7 @@ EVENT_RENDERERS: dict[str, Any] = {
     "channel.queued": _render_channel_queued,
     "cost.threshold_80": _render_cost_threshold_80,
     "cost.threshold_100": _render_cost_threshold_100,
+    "ops.youtube_download_degraded": _render_ops_youtube_download_degraded,
     "digest.weekly": _render_digest_weekly,
     "digest.morning": _render_digest_morning,
 }

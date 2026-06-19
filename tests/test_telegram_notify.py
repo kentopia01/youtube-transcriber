@@ -128,6 +128,20 @@ The speaker argues GPT-5.5 is best used as an execution model when another model
         fatal = telegram_messages._render_cost_threshold_100({"spent": 5.0, "cap": 5.0})
         assert "exceeded" in fatal["text"]
 
+    def test_ops_youtube_download_degraded(self):
+        out = telegram_messages._render_ops_youtube_download_degraded({
+            "count": 7,
+            "threshold": 3,
+            "since": "2026-06-19T02:00:00+08:00",
+            "cookie": {"status": "anonymous_only"},
+            "yt_dlp": {"version": "2026.03.03", "status": "old"},
+            "videos": [{"title": "How GitHub Deals With 17 Million Pull Requests a Month"}],
+        })
+        assert "YouTube download degraded" in out["text"]
+        assert "7 download-stage 403" in out["text"]
+        assert "anonymous_only" in out["text"]
+        assert out["reply_markup"] is None
+
     def test_digest_weekly_requires_text(self):
         with pytest.raises(telegram_messages.UnknownEvent):
             telegram_messages._render_digest_weekly({})

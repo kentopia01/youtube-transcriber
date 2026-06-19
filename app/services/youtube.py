@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 import yt_dlp
+from yt_dlp.utils import DownloadError
 
 from app.config import settings
 
@@ -17,6 +18,22 @@ def _apply_cookie_opts(ydl_opts: dict) -> dict:
     elif settings.ytdlp_cookies_from_browser:
         ydl_opts["cookiesfrombrowser"] = (settings.ytdlp_cookies_from_browser,)
     return ydl_opts
+
+
+def _cookies_enabled(ydl_opts: dict) -> bool:
+    return "cookiefile" in ydl_opts or "cookiesfrombrowser" in ydl_opts
+
+
+def _without_cookie_opts(ydl_opts: dict) -> dict:
+    fallback_opts = dict(ydl_opts)
+    fallback_opts.pop("cookiefile", None)
+    fallback_opts.pop("cookiesfrombrowser", None)
+    return fallback_opts
+
+
+def _is_media_forbidden_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "http error 403" in message or "forbidden" in message
 
 
 def extract_video_id(url: str) -> str | None:
@@ -93,8 +110,22 @@ def download_audio(video_id: str, audio_dir: str) -> dict:
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except DownloadError as exc:
+        if not _cookies_enabled(ydl_opts) or not _is_media_forbidden_error(exc):
+            raise
+
+        logger.warning(
+            "audio_download_retry_without_cookies",
+            video_id=video_id,
+            reason="cookie_backed_download_403",
+            error=str(exc),
+        )
+        fallback_opts = _without_cookie_opts(ydl_opts)
+        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
     logger.info("audio_downloaded", video_id=video_id, path=output_path)
 

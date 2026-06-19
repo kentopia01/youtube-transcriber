@@ -34,6 +34,13 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T023 | Broad exception audit and structured side-effect logging | done | BuildClaw / QAClaw | High-risk fail-open side-effect catches now emit structured logs; QA passed |
 | T024 | Report schema intent cleanup | done | BuildClaw / QAClaw | One-current-summary-report-per-video intent explicit, tested, and QA-validated |
 | T025 | Final full-suite release hygiene | done | SentryClaw | Static gates passed; default full pytest suite passed `1157 passed, 11 skipped` |
+| T028 | yt-dlp cookie 403 fallback | done | SentryClaw | Cookie-backed media 403 retries once without cookies |
+| T029 | Controlled download 403 recovery | done | SentryClaw | Guarded retry script added; seven failed jobs queued under patched downloader |
+| T030 | YouTube download health probe | done | SentryClaw | Cookie/no-cookie probe with JSON output and native env loading |
+| T031 | Cookie lint and safe refresh policy | done | SentryClaw | Cookie file lint classifies anonymous-only and auth-like sessions without exposing values |
+| T032 | Batch download failure alerting | done | SentryClaw | Threshold checker and Telegram diagnostic renderer added |
+| T033 | yt-dlp version guardrail | done | SentryClaw | Version freshness checker added |
+| T034 | Authenticated cookie last resort | planned | SentryClaw | Runbook-only fallback; no login automation or credential storage |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.
