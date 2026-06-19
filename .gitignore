@@ -25,3 +25,9 @@ venv/
 /data/
 .DS_Store
 .claude/
+.openclaw/
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md

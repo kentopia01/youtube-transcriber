@@ -43,6 +43,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T032 | Batch download failure alerting | done | SentryClaw | Threshold checker and Telegram diagnostic renderer added |
 | T033 | yt-dlp version guardrail | done | SentryClaw | Version freshness checker added |
 | T034 | Authenticated cookie last resort | planned | SentryClaw | Runbook-only fallback; no login automation or credential storage |
+| T035 | Repo cleanup after download hardening | done | SentryClaw | T026/T027 summary-quality work committed separately; generated OpenClaw workspace files ignored |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.
