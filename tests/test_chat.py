@@ -717,6 +717,7 @@ class TestChatService:
         mock_settings.anthropic_api_key = ""
         mock_settings.chat_retrieval_top_k = 10
         mock_settings.chat_max_history = 10
+        mock_settings.chat_llm_provider = "anthropic"
         mock_settings.chat_model = "claude-sonnet-4-20250514"
 
         db = AsyncMock()
@@ -1007,7 +1008,7 @@ class TestAnthropicErrorHandling:
         await chat_with_context("question", [], db)
 
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-haiku-4-5"  # chat_model default
+        assert call_args[2] == "codex"  # chat_model default
         assert "video transcript" in call_args[0].lower()
 
     @pytest.mark.asyncio
@@ -1477,6 +1478,10 @@ class TestQAClawRound5:
     def test_call_anthropic_passes_correct_params(self, mock_get_client):
         """_call_anthropic should pass model, system, messages, and max_tokens."""
         from app.services.chat import _call_anthropic
+        from app.services import chat as chat_mod
+
+        original_provider = chat_mod.settings.chat_llm_provider
+        chat_mod.settings.chat_llm_provider = "anthropic"
 
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -1487,11 +1492,14 @@ class TestQAClawRound5:
         mock_client.messages.create.return_value = mock_response
         mock_get_client.return_value = mock_client
 
-        result = _call_anthropic(
-            system="Test system prompt",
-            messages=[{"role": "user", "content": "Hello"}],
-            model="claude-sonnet-4-20250514",
-        )
+        try:
+            result = _call_anthropic(
+                system="Test system prompt",
+                messages=[{"role": "user", "content": "Hello"}],
+                model="claude-sonnet-4-20250514",
+            )
+        finally:
+            chat_mod.settings.chat_llm_provider = original_provider
 
         mock_client.messages.create.assert_called_once_with(
             model="claude-sonnet-4-20250514",
@@ -1972,7 +1980,7 @@ class TestQAClawRound8:
         # _call_anthropic(system, messages, model) — verify it was called
         mock_llm.assert_called_once()
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "claude-haiku-4-5"  # chat_model default
+        assert call_args[2] == "codex"  # chat_model default
 
 
 # ---------------------------------------------------------------------------

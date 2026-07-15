@@ -93,8 +93,8 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 
 ### T044 Codex-auth batch LLM migration clarifications
 - Prioritize daily/nightly transcription follow-on intelligence: summary generation, report/caption intelligence, and morning/daily digest.
-- Chat is a secondary smoke path, not the first production target.
+- Chat and persona generation were secondary to the initial batch path, then promoted in T047 after summary/digest validation.
 - Smart Router is not assumed maintained infrastructure; it must be triaged, launched, health-checked, and Codex-auth smoke-tested before transcriber routing depends on it.
 - The transcriber must not read or store Codex OAuth tokens. It should call a local OpenAI-compatible endpoint.
-- Anthropic remains default and fallback during the pilot.
+- Anthropic remains the explicit fallback/rollback path for migrated workflows.
 - Per-workload provider flags are preferred over switching the whole application at once.

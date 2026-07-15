@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.services.embedding import SUMMARY_SPEAKER_LABEL
 from app.services.global_search import GlobalSearchOptions, global_search
+from app.services.llm_provider import LLMProviderError, generate_openai_compatible
 from app.services.search import encode_query, semantic_search
 
 logger = structlog.get_logger()
@@ -118,7 +119,7 @@ async def _fallback_semantic_search(
     )
 
 
-def _call_anthropic(
+def _call_anthropic_direct(
     system: str,
     messages: list[dict],
     model: str,
@@ -144,6 +145,59 @@ def _call_anthropic(
         "prompt_tokens": response.usage.input_tokens,
         "completion_tokens": response.usage.output_tokens,
     }
+
+
+def _call_anthropic(
+    system: str,
+    messages: list[dict],
+    model: str,
+) -> dict:
+    """Call the configured chat LLM.
+
+    Kept under the historical name because the chat and Telegram tests patch
+    this seam directly. The primary provider is now configurable.
+    """
+    from app.services.cost_tracker import BudgetExceededError, check_budget, record_usage
+
+    check_budget()
+    provider = settings.chat_llm_provider.strip().lower()
+
+    if provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        return _call_anthropic_direct(system, messages, model)
+
+    if provider in {"openai_compatible", "openai-compatible", "openai"}:
+        try:
+            response = generate_openai_compatible(
+                base_url=settings.chat_llm_base_url,
+                api_key=settings.chat_llm_api_key,
+                model=model,
+                system=system,
+                messages=messages,
+                max_tokens=4096,
+            )
+        except LLMProviderError as exc:
+            fallback_provider = settings.chat_llm_fallback_provider.strip().lower()
+            if fallback_provider != "anthropic" or not settings.anthropic_api_key:
+                raise
+            logger.warning(
+                "chat_llm_fallback_to_anthropic",
+                provider=provider,
+                model=model,
+                error=str(exc),
+            )
+            return _call_anthropic_direct(system, messages, settings.chat_llm_fallback_model)
+
+        record_usage(response.model, response.prompt_tokens, response.completion_tokens)
+        return {
+            "content": response.content,
+            "model": response.model,
+            "prompt_tokens": response.prompt_tokens,
+            "completion_tokens": response.completion_tokens,
+        }
+
+    raise RuntimeError(f"Unsupported chat LLM provider: {provider}")
 
 
 async def chat_with_context(
@@ -240,8 +294,9 @@ async def chat_with_context(
         for chunk in chunks
     ]
 
-    if not settings.anthropic_api_key:
-        logger.warning("chat_missing_api_key")
+    provider = settings.chat_llm_provider.strip().lower()
+    if provider == "anthropic" and not settings.anthropic_api_key:
+        logger.warning("chat_missing_api_key", provider=provider)
         return {
             "content": "Chat is unavailable: Anthropic API key is not configured.",
             "sources": sources,
@@ -270,7 +325,7 @@ async def chat_with_context(
             "completion_tokens": 0,
         }
     except Exception as exc:
-        logger.error("anthropic_api_error", error=str(exc))
+        logger.error("chat_llm_error", provider=provider, error=str(exc))
         return {
             "content": "Sorry, an error occurred while generating the response. Please try again.",
             "sources": sources,

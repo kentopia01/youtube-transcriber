@@ -5,8 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEFAULT_CLEANUP_MODEL = "claude-haiku-4-5"
 DEFAULT_ANTHROPIC_SUMMARY_MODEL = "claude-sonnet-4-5"
 DEFAULT_SUMMARY_MODEL = "codex"
-DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
-DEFAULT_PERSONA_MODEL = "claude-sonnet-4-5"
+DEFAULT_ANTHROPIC_CHAT_MODEL = "claude-haiku-4-5"
+DEFAULT_CHAT_MODEL = "codex"
+DEFAULT_ANTHROPIC_PERSONA_MODEL = "claude-sonnet-4-5"
+DEFAULT_PERSONA_MODEL = "codex"
 DEFAULT_ANTHROPIC_DIGEST_MODEL = "claude-sonnet-4-5"
 DEFAULT_DIGEST_MODEL = "codex"
 
@@ -122,6 +124,46 @@ class Settings(BaseSettings):
     summary_llm_fallback_model: str = Field(
         DEFAULT_ANTHROPIC_SUMMARY_MODEL,
         validation_alias=AliasChoices("summary_llm_fallback_model", "SUMMARY_LLM_FALLBACK_MODEL"),
+    )
+    chat_llm_provider: str = Field(
+        "openai_compatible",
+        validation_alias=AliasChoices("chat_llm_provider", "CHAT_LLM_PROVIDER"),
+    )
+    chat_llm_base_url: str = Field(
+        "http://127.0.0.1:8400/v1",
+        validation_alias=AliasChoices("chat_llm_base_url", "CHAT_LLM_BASE_URL"),
+    )
+    chat_llm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("chat_llm_api_key", "CHAT_LLM_API_KEY"),
+    )
+    chat_llm_fallback_provider: str = Field(
+        "anthropic",
+        validation_alias=AliasChoices("chat_llm_fallback_provider", "CHAT_LLM_FALLBACK_PROVIDER"),
+    )
+    chat_llm_fallback_model: str = Field(
+        DEFAULT_ANTHROPIC_CHAT_MODEL,
+        validation_alias=AliasChoices("chat_llm_fallback_model", "CHAT_LLM_FALLBACK_MODEL"),
+    )
+    persona_llm_provider: str = Field(
+        "openai_compatible",
+        validation_alias=AliasChoices("persona_llm_provider", "PERSONA_LLM_PROVIDER"),
+    )
+    persona_llm_base_url: str = Field(
+        "http://127.0.0.1:8400/v1",
+        validation_alias=AliasChoices("persona_llm_base_url", "PERSONA_LLM_BASE_URL"),
+    )
+    persona_llm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("persona_llm_api_key", "PERSONA_LLM_API_KEY"),
+    )
+    persona_llm_fallback_provider: str = Field(
+        "anthropic",
+        validation_alias=AliasChoices("persona_llm_fallback_provider", "PERSONA_LLM_FALLBACK_PROVIDER"),
+    )
+    persona_llm_fallback_model: str = Field(
+        DEFAULT_ANTHROPIC_PERSONA_MODEL,
+        validation_alias=AliasChoices("persona_llm_fallback_model", "PERSONA_LLM_FALLBACK_MODEL"),
     )
     digest_llm_provider: str = Field(
         "openai_compatible",

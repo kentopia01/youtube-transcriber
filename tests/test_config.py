@@ -5,7 +5,9 @@ import os
 import pytest
 
 from app.config import (
+    DEFAULT_ANTHROPIC_CHAT_MODEL,
     DEFAULT_ANTHROPIC_DIGEST_MODEL,
+    DEFAULT_ANTHROPIC_PERSONA_MODEL,
     DEFAULT_ANTHROPIC_SUMMARY_MODEL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CLEANUP_MODEL,
@@ -68,6 +70,16 @@ class TestConfigDefaults:
             "SUMMARY_LLM_API_KEY",
             "SUMMARY_LLM_FALLBACK_PROVIDER",
             "SUMMARY_LLM_FALLBACK_MODEL",
+            "CHAT_LLM_PROVIDER",
+            "CHAT_LLM_BASE_URL",
+            "CHAT_LLM_API_KEY",
+            "CHAT_LLM_FALLBACK_PROVIDER",
+            "CHAT_LLM_FALLBACK_MODEL",
+            "PERSONA_LLM_PROVIDER",
+            "PERSONA_LLM_BASE_URL",
+            "PERSONA_LLM_API_KEY",
+            "PERSONA_LLM_FALLBACK_PROVIDER",
+            "PERSONA_LLM_FALLBACK_MODEL",
             "DIGEST_LLM_PROVIDER",
             "DIGEST_LLM_BASE_URL",
             "DIGEST_LLM_API_KEY",
@@ -83,6 +95,16 @@ class TestConfigDefaults:
         assert s.summary_llm_api_key == ""
         assert s.summary_llm_fallback_provider == "anthropic"
         assert s.summary_llm_fallback_model == DEFAULT_ANTHROPIC_SUMMARY_MODEL
+        assert s.chat_llm_provider == "openai_compatible"
+        assert s.chat_llm_base_url == "http://127.0.0.1:8400/v1"
+        assert s.chat_llm_api_key == ""
+        assert s.chat_llm_fallback_provider == "anthropic"
+        assert s.chat_llm_fallback_model == DEFAULT_ANTHROPIC_CHAT_MODEL
+        assert s.persona_llm_provider == "openai_compatible"
+        assert s.persona_llm_base_url == "http://127.0.0.1:8400/v1"
+        assert s.persona_llm_api_key == ""
+        assert s.persona_llm_fallback_provider == "anthropic"
+        assert s.persona_llm_fallback_model == DEFAULT_ANTHROPIC_PERSONA_MODEL
         assert s.digest_llm_provider == "openai_compatible"
         assert s.digest_llm_base_url == "http://127.0.0.1:8400/v1"
         assert s.digest_llm_api_key == ""
@@ -95,6 +117,16 @@ class TestConfigDefaults:
         monkeypatch.setenv("SUMMARY_LLM_API_KEY", "local-summary-key")
         monkeypatch.setenv("SUMMARY_LLM_FALLBACK_PROVIDER", "anthropic")
         monkeypatch.setenv("SUMMARY_LLM_FALLBACK_MODEL", "summary-fallback")
+        monkeypatch.setenv("CHAT_LLM_PROVIDER", "openai_compatible")
+        monkeypatch.setenv("CHAT_LLM_BASE_URL", "http://router.local/v1")
+        monkeypatch.setenv("CHAT_LLM_API_KEY", "local-chat-key")
+        monkeypatch.setenv("CHAT_LLM_FALLBACK_PROVIDER", "anthropic")
+        monkeypatch.setenv("CHAT_LLM_FALLBACK_MODEL", "chat-fallback")
+        monkeypatch.setenv("PERSONA_LLM_PROVIDER", "openai_compatible")
+        monkeypatch.setenv("PERSONA_LLM_BASE_URL", "http://router.local/v1")
+        monkeypatch.setenv("PERSONA_LLM_API_KEY", "local-persona-key")
+        monkeypatch.setenv("PERSONA_LLM_FALLBACK_PROVIDER", "anthropic")
+        monkeypatch.setenv("PERSONA_LLM_FALLBACK_MODEL", "persona-fallback")
         monkeypatch.setenv("DIGEST_LLM_PROVIDER", "openai_compatible")
         monkeypatch.setenv("DIGEST_LLM_BASE_URL", "http://router.local/v1")
         monkeypatch.setenv("DIGEST_LLM_API_KEY", "local-digest-key")
@@ -108,6 +140,16 @@ class TestConfigDefaults:
         assert s.summary_llm_api_key == "local-summary-key"
         assert s.summary_llm_fallback_provider == "anthropic"
         assert s.summary_llm_fallback_model == "summary-fallback"
+        assert s.chat_llm_provider == "openai_compatible"
+        assert s.chat_llm_base_url == "http://router.local/v1"
+        assert s.chat_llm_api_key == "local-chat-key"
+        assert s.chat_llm_fallback_provider == "anthropic"
+        assert s.chat_llm_fallback_model == "chat-fallback"
+        assert s.persona_llm_provider == "openai_compatible"
+        assert s.persona_llm_base_url == "http://router.local/v1"
+        assert s.persona_llm_api_key == "local-persona-key"
+        assert s.persona_llm_fallback_provider == "anthropic"
+        assert s.persona_llm_fallback_model == "persona-fallback"
         assert s.digest_llm_provider == "openai_compatible"
         assert s.digest_llm_base_url == "http://router.local/v1"
         assert s.digest_llm_api_key == "local-digest-key"

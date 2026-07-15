@@ -8,7 +8,7 @@ A self-hosted web application that transcribes YouTube videos using Apple Silico
 - **Detect language** automatically from the first 30 seconds
 - **Identify speakers** via pyannote.audio diarization (optional)
 - **Clean transcripts** with Anthropic Haiku — removes filler words while preserving meaning (optional)
-- **Summarize and digest** with Codex via local Smart Router, with Anthropic fallback
+- **Summarize, digest, chat, and persona updates** with Codex via local Smart Router, with Anthropic fallback
 - **Search** across all transcribed content using semantic embeddings
 - **Chat** with your transcript library via OpenClaw AI skills
 - **Batch process** entire YouTube channels
@@ -58,7 +58,7 @@ YouTube URL → yt-dlp download
   → Transcription (mlx-whisper large-v3-turbo, Metal GPU)
   → Speaker Diarization (pyannote.audio) [optional]
   → LLM Transcript Cleanup (Anthropic Haiku) [optional]
-  → Summarization + digest intelligence (Codex via Smart Router; Anthropic fallback)
+  → Summarization + digest/chat/persona intelligence (Codex via Smart Router; Anthropic fallback)
   → Semantic Embeddings (nomic-embed-text-v1.5, 768d, speaker-aware chunks)
 ```
 
@@ -158,14 +158,24 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `TRANSCRIPT_CLEANUP_ENABLED` | `false` | Enable LLM-powered filler word removal |
 | `CLEANUP_MODEL` | `claude-haiku-4-5` | Anthropic model for transcript cleanup (`ANTHROPIC_CLEANUP_MODEL` remains a deprecated alias) |
 | `SUMMARY_MODEL` | `codex` | Model for pipeline summaries, report backfills, and evaluation generation; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
-| `CHAT_MODEL` | `claude-haiku-4-5` | Anthropic model for web/Telegram chat (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias) |
-| `PERSONA_MODEL` | `claude-sonnet-4-5` | Anthropic model for persona generation/refresh (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias) |
+| `CHAT_MODEL` | `codex` | Model for web/Telegram chat and direct video Q&A; default routes through local Smart Router Codex auth (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `PERSONA_MODEL` | `codex` | Model for persona generation/refresh; default routes through local Smart Router Codex auth (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
 | `DIGEST_MODEL` | `codex` | Model for the overnight/morning digest; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
 | `SUMMARY_LLM_PROVIDER` | `openai_compatible` | Summary provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
 | `SUMMARY_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `SUMMARY_LLM_PROVIDER=openai_compatible` |
 | `SUMMARY_LLM_API_KEY` | | Optional bearer token for the summary OpenAI-compatible endpoint; leave empty for local Smart Router |
 | `SUMMARY_LLM_FALLBACK_PROVIDER` | `anthropic` | Summary fallback provider when the Codex route fails |
 | `SUMMARY_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Summary fallback model if the OpenAI-compatible route fails |
+| `CHAT_LLM_PROVIDER` | `openai_compatible` | Chat provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
+| `CHAT_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `CHAT_LLM_PROVIDER=openai_compatible` |
+| `CHAT_LLM_API_KEY` | | Optional bearer token for the chat OpenAI-compatible endpoint; leave empty for local Smart Router |
+| `CHAT_LLM_FALLBACK_PROVIDER` | `anthropic` | Chat fallback provider when the Codex route fails |
+| `CHAT_LLM_FALLBACK_MODEL` | `claude-haiku-4-5` | Chat fallback model if the OpenAI-compatible route fails |
+| `PERSONA_LLM_PROVIDER` | `openai_compatible` | Persona provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
+| `PERSONA_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `PERSONA_LLM_PROVIDER=openai_compatible` |
+| `PERSONA_LLM_API_KEY` | | Optional bearer token for the persona OpenAI-compatible endpoint; leave empty for local Smart Router |
+| `PERSONA_LLM_FALLBACK_PROVIDER` | `anthropic` | Persona fallback provider when the Codex route fails |
+| `PERSONA_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Persona fallback model if the OpenAI-compatible route fails |
 | `DIGEST_LLM_PROVIDER` | `openai_compatible` | Digest provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
 | `DIGEST_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `DIGEST_LLM_PROVIDER=openai_compatible` |
 | `DIGEST_LLM_API_KEY` | | Optional bearer token for the digest OpenAI-compatible endpoint; leave empty for local Smart Router |

@@ -30,6 +30,7 @@ from app.models.embedding_chunk import EmbeddingChunk
 from app.models.persona import Persona
 from app.models.video import Video
 from app.services.embedding import SUMMARY_SPEAKER_LABEL
+from app.services.llm_provider import LLMProviderError, generate_openai_compatible
 
 logger = structlog.get_logger()
 
@@ -224,7 +225,7 @@ def _parse_derivation_json(raw: str, valid_chunk_ids: set[str]) -> dict:
     return data
 
 
-def _call_derivation_llm(user_message: str, model: str, api_key: str) -> tuple[str, str]:
+def _call_anthropic_derivation(user_message: str, model: str, api_key: str) -> tuple[str, str]:
     """Call Anthropic for persona derivation. Returns (raw_text, model_actual)."""
     from app.services.cost_tracker import check_budget, record_usage
 
@@ -241,6 +242,49 @@ def _call_derivation_llm(user_message: str, model: str, api_key: str) -> tuple[s
     return response.content[0].text, response.model
 
 
+def _call_derivation_llm(user_message: str, model: str, api_key: str) -> tuple[str, str]:
+    """Call the configured persona derivation provider."""
+    from app.services.cost_tracker import check_budget, record_usage
+
+    provider = settings.persona_llm_provider.strip().lower()
+    if provider == "anthropic":
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        return _call_anthropic_derivation(user_message, model, api_key)
+
+    if provider in {"openai_compatible", "openai-compatible", "openai"}:
+        check_budget()
+        try:
+            response = generate_openai_compatible(
+                base_url=settings.persona_llm_base_url,
+                api_key=settings.persona_llm_api_key,
+                model=model,
+                system=DERIVATION_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=2048,
+            )
+        except LLMProviderError as exc:
+            fallback_provider = settings.persona_llm_fallback_provider.strip().lower()
+            if fallback_provider != "anthropic" or not api_key:
+                raise
+            logger.warning(
+                "persona_llm_fallback_to_anthropic",
+                provider=provider,
+                model=model,
+                error=str(exc),
+            )
+            return _call_anthropic_derivation(
+                user_message,
+                settings.persona_llm_fallback_model,
+                api_key,
+            )
+
+        record_usage(response.model, response.prompt_tokens, response.completion_tokens)
+        return response.content, response.model
+
+    raise RuntimeError(f"Unsupported persona LLM provider: {provider}")
+
+
 def derive_persona(
     channel_name: str,
     channel_description: str | None,
@@ -255,7 +299,8 @@ def derive_persona(
 
     model = model or settings.persona_model
     api_key = api_key or settings.anthropic_api_key
-    if not api_key:
+    provider = settings.persona_llm_provider.strip().lower()
+    if provider == "anthropic" and not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
     user_message = _build_derivation_user_message(channel_name, channel_description, chunks)

@@ -238,6 +238,100 @@ def test_persona_derivation_defaults_to_canonical_persona_model(monkeypatch):
     assert derivation.model == "persona-actual"
 
 
+def test_chat_can_use_openai_compatible_provider(monkeypatch):
+    from app.services import chat
+    from app.services.llm_provider import LLMTextResponse
+
+    monkeypatch.setattr(settings, "chat_llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "chat_llm_base_url", "http://127.0.0.1:8400/v1")
+    monkeypatch.setattr(settings, "chat_llm_api_key", "")
+    monkeypatch.setattr(chat, "_get_anthropic_client", lambda: pytest.fail("Anthropic should not be used"))
+    monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
+    monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *_args, **_kwargs: None)
+
+    observed: dict[str, object] = {}
+
+    def fake_generate(**kwargs):
+        observed.update(kwargs)
+        return LLMTextResponse(
+            content="Codex chat worked.",
+            model="codex-actual",
+            prompt_tokens=13,
+            completion_tokens=4,
+        )
+
+    monkeypatch.setattr(chat, "generate_openai_compatible", fake_generate)
+
+    result = chat._call_anthropic(
+        "system",
+        [{"role": "user", "content": "question"}],
+        "codex",
+    )
+
+    assert observed["base_url"] == "http://127.0.0.1:8400/v1"
+    assert observed["api_key"] == ""
+    assert observed["model"] == "codex"
+    assert observed["max_tokens"] == 4096
+    assert result == {
+        "content": "Codex chat worked.",
+        "model": "codex-actual",
+        "prompt_tokens": 13,
+        "completion_tokens": 4,
+    }
+
+
+def test_persona_can_use_openai_compatible_provider(monkeypatch):
+    from app.services import persona
+    from app.services.llm_provider import LLMTextResponse
+
+    chunk_id = str(uuid.uuid4())
+    monkeypatch.setattr(settings, "persona_llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "persona_llm_base_url", "http://127.0.0.1:8400/v1")
+    monkeypatch.setattr(settings, "persona_llm_api_key", "")
+    monkeypatch.setattr(
+        persona.anthropic,
+        "Anthropic",
+        lambda api_key: pytest.fail("Anthropic should not be constructed for OpenAI-compatible persona"),
+    )
+    monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
+    monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *_args, **_kwargs: None)
+
+    observed: dict[str, object] = {}
+
+    def fake_generate(**kwargs):
+        observed.update(kwargs)
+        return LLMTextResponse(
+            content=json.dumps(
+                {
+                    "display_name": "Channel",
+                    "persona_prompt": "You are Channel.",
+                    "style_notes": {"tone": "direct"},
+                    "exemplar_chunk_ids": [chunk_id],
+                    "confidence": 0.8,
+                }
+            ),
+            model="codex-actual",
+            prompt_tokens=21,
+            completion_tokens=9,
+        )
+
+    monkeypatch.setattr(persona, "generate_openai_compatible", fake_generate)
+
+    derivation = persona.derive_persona(
+        "Channel",
+        None,
+        [{"id": chunk_id, "source_type": "transcript", "chunk_text": "specific excerpt"}],
+        model="codex",
+        api_key="",
+    )
+
+    assert observed["base_url"] == "http://127.0.0.1:8400/v1"
+    assert observed["api_key"] == ""
+    assert observed["model"] == "codex"
+    assert observed["max_tokens"] == 2048
+    assert derivation.model == "codex-actual"
+
+
 def test_digest_render_defaults_to_canonical_digest_model(monkeypatch):
     from app.services import cost_tracker, digest
 

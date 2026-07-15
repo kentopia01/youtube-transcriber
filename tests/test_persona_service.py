@@ -112,6 +112,7 @@ class TestDerivePersona:
     def test_missing_api_key_raises(self, monkeypatch):
         from app import config
 
+        monkeypatch.setattr(config.settings, "persona_llm_provider", "anthropic")
         monkeypatch.setattr(config.settings, "anthropic_api_key", "")
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
             derive_persona("ch", None, [_fake_chunk(1, "hi")])
@@ -134,6 +135,7 @@ class TestDerivePersona:
         fake_client = MagicMock()
         fake_client.messages.create.return_value = fake_resp
 
+        monkeypatch.setattr(persona_service.settings, "persona_llm_provider", "anthropic")
         monkeypatch.setattr(persona_service.anthropic, "Anthropic", lambda api_key: fake_client)
         monkeypatch.setattr(
             "app.services.cost_tracker.check_budget", lambda: None
@@ -166,6 +168,7 @@ class TestDerivePersona:
 
         fake_client = MagicMock()
         fake_client.messages.create.return_value = fake_resp
+        monkeypatch.setattr(persona_service.settings, "persona_llm_provider", "anthropic")
         monkeypatch.setattr(persona_service.anthropic, "Anthropic", lambda api_key: fake_client)
         monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
         monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *a, **kw: None)
@@ -188,6 +191,7 @@ class TestDerivePersona:
 
         fake_client = MagicMock()
         fake_client.messages.create.return_value = fake_resp
+        monkeypatch.setattr(persona_service.settings, "persona_llm_provider", "anthropic")
         monkeypatch.setattr(persona_service.anthropic, "Anthropic", lambda api_key: fake_client)
         monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
         monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *a, **kw: None)

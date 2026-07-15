@@ -354,3 +354,15 @@ Implemented posture:
 - validation did not send a live digest notification
 
 Source of truth: `docs/tasks/T046_digest_codex_default.md`.
+
+## Completed follow-on: T047 chat and persona Codex default
+
+T047 promoted interactive intelligence paths to Codex primary with Anthropic fallback.
+
+Implemented posture:
+- web chat, Telegram chat, and direct video Q&A use the shared chat provider setting
+- channel persona generation and refresh use the shared persona provider setting
+- both paths call the local Smart Router OpenAI-compatible endpoint
+- Anthropic remains the rollback/fallback path per workflow
+
+Source of truth: `docs/tasks/T047_chat_persona_codex_default.md`.
