@@ -34,7 +34,7 @@
             </div>
             <span class="chat-video-count">
                 <i class="iconoir-video-camera" style="font-size:0.7rem"></i>
-                {{ active_video_count }} video{{ "s" if active_video_count != 1 }} active
+                {{ active_video_count }} video{{ "s" if active_video_count != 1 }} searchable
             </span>
         </div>
 
@@ -56,6 +56,16 @@
 
         <div class="chat-input-bar">
             <div class="chat-input-inner">
+                <select class="input-field"
+                        id="chat-channel-filter"
+                        {% if not session %}disabled{% endif %}
+                        aria-label="Retrieval scope"
+                        style="max-width: 220px;">
+                    <option value="">All accounts</option>
+                    {% for channel in channels or [] %}
+                    <option value="{{ channel.id }}">{{ channel.name }}</option>
+                    {% endfor %}
+                </select>
                 <textarea class="chat-input-field"
                           id="chat-input"
                           placeholder="Ask about your videos..."
@@ -167,7 +177,10 @@
             const resp = await fetch('/api/chat/sessions/' + SESSION_ID + '/messages', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({content: text})
+                body: JSON.stringify({
+                    content: text,
+                    channel_id: document.getElementById('chat-channel-filter')?.value || null
+                })
             });
 
             const thinkingEl = document.getElementById(thinkingId);

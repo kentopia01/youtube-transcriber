@@ -2,8 +2,9 @@
 """Controlled T015 scan-first summary/report backfill.
 
 Default mode is a read-only dry-run: it selects completed videos with
-transcriptions and prints the exact plan. It does not call Anthropic and does
-not write summary/report rows unless all live-mode safety flags are present.
+transcriptions and prints the exact plan. It does not call the configured
+summary provider and does not write summary/report rows unless all live-mode
+safety flags are present.
 
 Examples:
   python scripts/backfill_scan_first_summaries.py --limit 5
@@ -511,8 +512,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Documented operator override: allow live writes even when deterministic scan-first validation reports hard errors.",
     )
-    parser.add_argument("--api-key", default=os.environ.get("ANTHROPIC_API_KEY", ""), help="Anthropic API key for live apply.")
-    parser.add_argument("--model", default=None, help="Anthropic summary model override for live apply.")
+    parser.add_argument("--api-key", default=os.environ.get("ANTHROPIC_API_KEY", ""), help="Anthropic API key for Anthropic primary or fallback during live apply.")
+    parser.add_argument("--model", default=None, help="Summary model override for live apply.")
     return parser
 
 
@@ -565,13 +566,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not live_apply:
             return 0 if plan else 1
 
-        if not args.api_key:
-            parser.error("live backfill requires ANTHROPIC_API_KEY or --api-key")
         model = args.model
         if not model:
             from app.config import settings
 
             model = settings.summary_model
+        if not args.api_key:
+            from app.config import settings
+
+            provider = settings.summary_llm_provider.strip().lower()
+            fallback_provider = settings.summary_llm_fallback_provider.strip().lower()
+            if provider == "anthropic" or fallback_provider == "anthropic":
+                parser.error("live backfill requires ANTHROPIC_API_KEY or --api-key for Anthropic primary/fallback")
 
         total_prompt = 0
         total_completion = 0

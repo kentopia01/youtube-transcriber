@@ -366,6 +366,21 @@ class TestSendMessage:
         assert history[1]["role"] == "assistant"
         assert history[1]["content"] == "First answer"
 
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_channel_scope_passed_to_chat(self, mock_chat):
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        channel_id = uuid.uuid4()
+        s = _make_session(title="Chat")
+        db = StubDB(execute_results=[s])
+        client = _build_client(db)
+        resp = client.post(
+            f"/api/chat/sessions/{s.id}/messages",
+            json={"content": "Scope this", "channel_id": str(channel_id)},
+        )
+
+        assert resp.status_code == 200
+        assert mock_chat.call_args[1]["channel_id"] == channel_id
+
     def test_send_message_session_not_found(self):
         db = StubDB(execute_results=[None])
         client = _build_client(db)
@@ -512,7 +527,7 @@ class TestChatService:
     @patch("app.services.chat._call_anthropic")
     @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
     @patch("app.services.chat.encode_query")
-    async def test_chat_with_context_calls_search_with_chat_enabled(
+    async def test_chat_with_context_searches_all_embedded_videos_by_default(
         self, mock_encode, mock_search, mock_llm,
     ):
         from app.services.chat import chat_with_context
@@ -540,14 +555,39 @@ class TestChatService:
         db = AsyncMock()
         result = await chat_with_context("question", [], db)
 
-        # Verify chat_enabled_only=True was passed to search
+        # Default chat searches all embedded videos; channel_id narrows it.
         mock_search.assert_called_once()
         _, kwargs = mock_search.call_args
-        assert kwargs["chat_enabled_only"] is True
+        assert kwargs["chat_enabled_only"] is False
 
         assert result["content"] == "Answer"
         assert len(result["sources"]) == 1
         assert result["sources"][0]["video_title"] == "Test"
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_chat_with_context_passes_channel_filter(
+        self, mock_encode, mock_search, mock_llm,
+    ):
+        from app.services.chat import chat_with_context
+
+        channel_id = uuid.uuid4()
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "claude-sonnet-4-20250514",
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+
+        await chat_with_context("question", [], AsyncMock(), channel_id=channel_id)
+
+        _, kwargs = mock_search.call_args
+        assert kwargs["channel_id"] == channel_id
+        assert kwargs["chat_enabled_only"] is False
 
     @pytest.mark.asyncio
     @patch("app.services.chat._call_anthropic")

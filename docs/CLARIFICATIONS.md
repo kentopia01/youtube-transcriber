@@ -12,6 +12,18 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 
 ## Current clarifications
 
+### Global corpus search clarifications
+- The goal is whole-corpus search over every ingested video, not persona prompt expansion.
+- Web chat should default to all embedded YouTube videos, with an explicit channel/account filter for scoped retrieval.
+- Channel/persona-specific chat can still pass a channel scope explicitly.
+- Keep `/api/search` behavior stable; add a separate global search route and UI.
+- Use existing pgvector and PostgreSQL full-text search first. Do not introduce FAISS, Qdrant, Weaviate, GraphRAG, or a local heavy reranker for v1.
+- Search should include summary chunks as a separate retrieval lane because summary chunks are useful for broad/thematic queries.
+- Retrieval should return source metadata: video ID, title, YouTube ID, channel name when available, timestamp, source type, and score components.
+- Result packing should favor concise evidence snippets over dumping whole chunks into downstream prompts.
+- Advanced techniques are follow-ons after evaluation: query fusion/HyDE, API rerankers, RAPTOR-style hierarchy, and GraphRAG-style graph summaries.
+- The target hardware is basic local hardware, so local inference must stay bounded and optional.
+
 ### Superseded failed jobs and retention
 - Superseded failed jobs should be hidden from the default failed-job UI.
 - A failed job is superseded when a newer job for the same video is created through retry or failed-video re-submit.
@@ -78,3 +90,11 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - “Main Topics” as the leading section is no longer sufficient; topic lists may exist only if they support the scan-first contract.
 - Telegram report captions should provide a quick useful summary of the video/report. Do not say “Attached: summary report” and do not add “try it” buttons to pushed report delivery.
 - Low-content transcripts, music-only videos, placeholders, or extraction failures should be flagged plainly as low-content/invalid transcript instead of padded into fake insight.
+
+### T044 Codex-auth batch LLM migration clarifications
+- Prioritize daily/nightly transcription follow-on intelligence: summary generation, report/caption intelligence, and morning/daily digest.
+- Chat is a secondary smoke path, not the first production target.
+- Smart Router is not assumed maintained infrastructure; it must be triaged, launched, health-checked, and Codex-auth smoke-tested before transcriber routing depends on it.
+- The transcriber must not read or store Codex OAuth tokens. It should call a local OpenAI-compatible endpoint.
+- Anthropic remains default and fallback during the pilot.
+- Per-workload provider flags are preferred over switching the whole application at once.

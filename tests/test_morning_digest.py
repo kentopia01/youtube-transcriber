@@ -11,6 +11,7 @@ import pytest
 
 from app.services import digest as digest_svc
 from app.services import telegram_messages as tg_msgs
+from app.services.llm_provider import LLMTextResponse
 from app.tasks import morning_digest as morning_task
 
 
@@ -159,6 +160,7 @@ class TestDigestInputPromptBlock:
 
 class TestRenderDigest:
     def test_calls_anthropic_and_parses(self, monkeypatch):
+        monkeypatch.setattr(digest_svc.settings, "digest_llm_provider", "anthropic")
         start, end = _window()
         d = digest_svc.DigestInput(
             window_start=start,
@@ -190,6 +192,54 @@ class TestRenderDigest:
         call_kwargs = fake_client.messages.create.call_args.kwargs
         assert "Chief of Staff" in call_kwargs["system"]
         assert "operations" in call_kwargs["system"]
+
+    def test_can_use_openai_compatible_provider(self, monkeypatch):
+        monkeypatch.setattr(digest_svc.settings, "digest_llm_provider", "openai_compatible")
+        monkeypatch.setattr(digest_svc.settings, "digest_llm_base_url", "http://127.0.0.1:8400/v1")
+        monkeypatch.setattr(digest_svc.settings, "digest_llm_api_key", "")
+        monkeypatch.setattr(
+            digest_svc.anthropic,
+            "Anthropic",
+            lambda api_key: pytest.fail("Anthropic should not be constructed for OpenAI-compatible digest"),
+        )
+        monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
+        monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *a, **kw: None)
+
+        observed: dict[str, object] = {}
+
+        def fake_generate(**kwargs):
+            observed.update(kwargs)
+            return LLMTextResponse(
+                content="**Opener** Codex route worked.",
+                model="codex-actual",
+                prompt_tokens=22,
+                completion_tokens=6,
+            )
+
+        monkeypatch.setattr(digest_svc, "generate_openai_compatible", fake_generate)
+
+        start, end = _window()
+        inputs = digest_svc.DigestInput(
+            window_start=start,
+            window_end=end,
+            videos_completed=[],
+            videos_failed=[],
+            personas_touched=[],
+            cost_auto_ingest_usd=0.0,
+            cost_manual_usd=0.0,
+            subscription_names=[],
+        )
+
+        result = digest_svc.render_digest_via_llm(inputs, model="codex")
+
+        assert observed["base_url"] == "http://127.0.0.1:8400/v1"
+        assert observed["api_key"] == ""
+        assert observed["model"] == "codex"
+        assert observed["max_tokens"] == 1024
+        assert result["text"] == "**Opener** Codex route worked."
+        assert result["model"] == "codex-actual"
+        assert result["prompt_tokens"] == 22
+        assert result["completion_tokens"] == 6
 
 
 # ---------------------------------------------------------------------------

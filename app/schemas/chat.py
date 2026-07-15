@@ -15,15 +15,18 @@ class ChatSessionRename(BaseModel):
 
 class ChatMessageSend(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
+    channel_id: uuid.UUID | None = None
 
 
 class ChatSourceOut(BaseModel):
     video_id: str
+    youtube_video_id: str | None = None
     video_title: str
     chunk_text: str
     start_time: float | None = None
     end_time: float | None = None
     similarity: float | None = None
+    source_type: str | None = None
 
 
 class ChatMessageOut(BaseModel):

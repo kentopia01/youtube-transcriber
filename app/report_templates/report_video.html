@@ -137,15 +137,6 @@ code{background:#eef2f7;border:1px solid #d8e0eb;border-radius:5px;padding:1px 4
   </section>
   {% endif %}
 
-  {% if report.watch_map_html %}
-  <section class="section">
-    <h2>Watch Map</h2>
-    <div class="detail-block">
-      {{ report.watch_map_html | safe }}
-    </div>
-  </section>
-  {% endif %}
-
   <section class="source-block">
     <p class="label">Source/Metadata</p>
     {% if report.video_url %}

@@ -87,9 +87,6 @@ The useful point for Ken is that agents create leverage when they automate a spe
 ## Operator Notes / Why Ken Should Care
 - Relevant to Ken's agent systems, AI ops, content/business opportunities, investing, GTM, and personal workflow.
 
-## Watch Map
-- timestamp unavailable: Skim for the operating pattern, eval loop, and GTM reuse.
-
 ## Source/Metadata
 - Title: Backfill sample
 - Transcript words: 1200

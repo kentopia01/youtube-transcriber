@@ -178,6 +178,7 @@ def test_eval_generation_can_disable_cost_tracker_db_writes(monkeypatch):
     def fake_anthropic_call(client, **kwargs):
         return SimpleNamespace(
             content=[SimpleNamespace(text="## 30-second take\nGenerated")],
+            model="claude-test",
             usage=SimpleNamespace(input_tokens=11, output_tokens=7),
         )
 
@@ -189,6 +190,8 @@ def test_eval_generation_can_disable_cost_tracker_db_writes(monkeypatch):
 
     result = summarization._summarize_single(
         object(),
+        "anthropic",
+        "api-key",
         "claude-test",
         "transcript",
         "title",

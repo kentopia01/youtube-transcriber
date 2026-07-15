@@ -4,6 +4,36 @@
 
 The YouTube Transcriber pipeline has completed the stabilization, delivery-quality, remediation, and final default full-suite validation arc through T025.
 
+## Active follow-on: Global corpus search
+
+Goal: add a first-class operator search path across every ingested video, transcript chunk, and summary chunk without replacing the current Postgres/pgvector storage layer.
+
+The operator search surface remains separate from `/api/search`. Web chat now defaults to all embedded videos and can be narrowed to a specific YouTube channel/account; channel/persona chat can still pass its own channel scope.
+
+Implementation posture:
+- reuse existing Nomic query embeddings, pgvector, and PostgreSQL full-text search
+- search all ingested videos by default, with optional channel/source filters
+- fuse vector, keyword, and summary lanes with reciprocal rank fusion
+- dedupe and diversify results so one video does not dominate every answer
+- return compact evidence snippets with video IDs, timestamps, source type, and scores
+- defer HyDE, API rerankers, RAPTOR, and GraphRAG until v1 search is measurable
+
+Hardware posture:
+- no heavy local reranker in the first release
+- keep candidate pools bounded
+- make advanced inference optional and off by default
+
+Execution chunks:
+- T037: global search source-of-truth docs and task contract
+- T038: global search service with whole-corpus hybrid retrieval
+- T039: diversity, dedupe, and evidence pack helpers
+- T040: API endpoint and operator UI
+- T041: web chat default all-corpus retrieval plus channel/account filter
+- T042: reranker/query-expansion experiment
+- T043: evaluation benchmark and tuning
+
+Source of truth begins with `docs/tasks/T037_global_search_source_of_truth.md`.
+
 Completed:
 - T001: hide superseded failed jobs + retention cleanup
 - T002: native ops cleanup and README rollout notes
@@ -287,3 +317,40 @@ Validation posture:
 - no live smoke, runtime mutation, commit, or push was performed
 
 Source of truth: `docs/tasks/T025_final_full_suite_release_hygiene.md`.
+
+## Implemented pilot: T044 Codex-auth batch LLM migration
+
+T044 prepared the high-value unattended LLM path for Codex-auth routing before the summary and digest defaults were promoted in follow-up tasks.
+
+Implemented posture:
+- Smart Router was recovered as a launchd-backed local OpenAI-compatible service on `127.0.0.1:8400`
+- the router `codex` profile passed live Codex-auth smoke tests
+- summary and digest generation now have per-workload provider/base-url/fallback settings
+- Anthropic remains the rollback path
+- the transcriber calls only the local OpenAI-compatible endpoint and does not read Codex OAuth tokens
+- production switch remains gated by existing transcript comparisons and one controlled live batch/video smoke
+
+Source of truth: `docs/tasks/T044_codex_auth_batch_llm_migration.md`.
+
+## Completed follow-on: T045 summary delivery polish and Codex default
+
+T045 promoted the summary workload to Codex primary with Anthropic fallback after tightening the report delivery surface.
+
+Implemented posture:
+- Telegram report-ready delivery now starts with a compact decision brief and keeps the full report as the attached appendix
+- Watch Map was removed from the summary/report contract
+- Detailed Brief is treated as extra detail and de-duped against Key Takeaways
+- summary defaults use Smart Router Codex with Anthropic fallback
+
+Source of truth: `docs/tasks/T045_summary_delivery_codex_default.md`.
+
+## Completed follow-on: T046 digest Codex default
+
+T046 promoted digest generation to Codex primary with Anthropic fallback after a fresh non-delivering 24h digest eval.
+
+Implemented posture:
+- digest defaults use Smart Router Codex with Anthropic fallback
+- rollback stays one config flip: `DIGEST_LLM_PROVIDER=anthropic`
+- validation did not send a live digest notification
+
+Source of truth: `docs/tasks/T046_digest_codex_default.md`.

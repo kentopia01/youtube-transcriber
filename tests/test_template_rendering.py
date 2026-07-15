@@ -608,12 +608,13 @@ def _make_chat_session(**overrides):
 
 class TestChatPage:
     def _build_chat_db(self, sessions=None):
-        """Chat page does: execute_1=sessions list, execute_2=session detail, scalar=video count."""
+        """Chat page does: sessions list, optional session detail, channel list, video count."""
         if sessions is None:
             sessions = [_make_chat_session()]
         return MockDB(
             execute_1=sessions,
             execute_2=sessions[0] if sessions else None,
+            execute_3=[_make_channel(name="AI Engineer")],
             scalar=5,
             default=[],
         )
@@ -635,7 +636,14 @@ class TestChatPage:
     def test_chat_page_shows_video_count(self):
         client = _build_client(self._build_chat_db())
         resp = client.get("/chat")
-        assert "5 videos active" in resp.text
+        assert "5 videos searchable" in resp.text
+
+    def test_chat_page_has_channel_scope_filter(self):
+        client = _build_client(self._build_chat_db())
+        resp = client.get("/chat")
+        assert "chat-channel-filter" in resp.text
+        assert "All accounts" in resp.text
+        assert "AI Engineer" in resp.text
 
     def test_chat_page_has_new_chat_button(self):
         client = _build_client(self._build_chat_db())

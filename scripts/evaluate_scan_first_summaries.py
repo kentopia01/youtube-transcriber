@@ -3,8 +3,9 @@
 
 This script reads existing transcript rows, selects a small representative sample,
 and writes local markdown artifacts for inspection. It never updates production
-summary rows. Live Anthropic generation is opt-in via ``--generate`` and disables
-cost-tracker DB writes so the harness remains read-only against Postgres.
+summary rows. Live LLM generation is opt-in via ``--generate`` and disables
+cost-tracker DB writes so the harness remains read-only against Postgres. The
+active summary provider/model come from app settings unless overridden.
 
 Examples:
   python scripts/evaluate_scan_first_summaries.py --list
@@ -346,7 +347,7 @@ def render_eval_markdown(
     generated_summary = (
         generated.summary
         if generated
-        else "_Not generated. Run this harness with `--generate` and `ANTHROPIC_API_KEY` to call Anthropic. No production summary rows will be updated._"
+        else "_Not generated. Run this harness with `--generate` to call the configured summary provider. No production summary rows will be updated._"
     )
     if generated:
         quality_lines = format_summary_quality_messages(
@@ -630,10 +631,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate",
         action="store_true",
-        help="Call Anthropic and write generated scan-first summaries to local markdown files. Still no DB writes.",
+        help="Call the configured summary provider and write generated scan-first summaries to local markdown files. Still no DB writes.",
     )
-    parser.add_argument("--api-key", default=os.environ.get("ANTHROPIC_API_KEY", ""), help="Anthropic API key for --generate.")
-    parser.add_argument("--model", default=None, help="Anthropic model override for --generate.")
+    parser.add_argument("--api-key", default=os.environ.get("ANTHROPIC_API_KEY", ""), help="Anthropic API key for Anthropic primary or fallback during --generate.")
+    parser.add_argument("--model", default=None, help="Summary model override for --generate.")
     parser.add_argument(
         "--transcript-preview-chars",
         type=int,
@@ -687,12 +688,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     generated: dict[str, GeneratedSummary] = {}
     model = args.model
     if args.generate:
-        if not args.api_key:
-            parser.error("--generate requires ANTHROPIC_API_KEY or --api-key")
         if not model:
             from app.config import settings
 
             model = settings.summary_model
+        if not args.api_key:
+            from app.config import settings
+
+            provider = settings.summary_llm_provider.strip().lower()
+            fallback_provider = settings.summary_llm_fallback_provider.strip().lower()
+            if provider == "anthropic" or fallback_provider == "anthropic":
+                parser.error("--generate requires ANTHROPIC_API_KEY or --api-key for Anthropic primary/fallback")
         for sample in samples:
             candidate = sample.candidate
             print(f"Generating {sample.category}: {candidate.youtube_video_id} — {candidate.title}")

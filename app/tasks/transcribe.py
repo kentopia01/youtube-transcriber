@@ -1,4 +1,5 @@
 import uuid
+from math import isfinite
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -18,6 +19,20 @@ from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 _logger = structlog.get_logger()
 
 sync_engine = create_engine(settings.database_url_sync)
+
+
+def _finite_float_or_none(value):
+    if value is None:
+        return None
+    value = float(value)
+    return value if isfinite(value) else None
+
+
+def _finite_float(value, field: str) -> float:
+    value = float(value)
+    if not isfinite(value):
+        raise ValueError(f"{field} must be finite")
+    return value
 
 
 @celery.task(bind=True, name="tasks.transcribe_audio")
@@ -89,7 +104,7 @@ def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str]
                     language=result.get("language"),
                     model_size=model_name,
                     word_count=len(result["text"].split()),
-                    processing_time_seconds=float(result["processing_time"]) if result.get("processing_time") is not None else None,
+                    processing_time_seconds=_finite_float_or_none(result.get("processing_time")),
                 )
                 db.add(transcription)
                 db.flush()
@@ -98,10 +113,10 @@ def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str]
                 segment = TranscriptionSegment(
                     transcription_id=transcription.id,
                     segment_index=i,
-                    start_time=float(seg["start"]),
-                    end_time=float(seg["end"]),
+                    start_time=_finite_float(seg["start"], "segment.start"),
+                    end_time=_finite_float(seg["end"], "segment.end"),
                     text=seg["text"],
-                    confidence=float(seg["confidence"]) if seg.get("confidence") is not None else None,
+                    confidence=_finite_float_or_none(seg.get("confidence")),
                 )
                 db.add(segment)
 

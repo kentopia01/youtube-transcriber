@@ -27,6 +27,7 @@ from app.models.persona import Persona
 from app.models.summary import Summary
 from app.models.video import Video
 from app.models.video_report import VideoReport
+from app.services.llm_provider import LLMProviderError, generate_openai_compatible
 
 logger = structlog.get_logger()
 
@@ -431,29 +432,73 @@ def render_digest_via_llm(
     """Call Sonnet to produce the digest. Returns the full result dict."""
     model = model or settings.digest_model
     api_key = api_key or settings.anthropic_api_key
-    if not api_key:
+    provider = settings.digest_llm_provider.strip().lower()
+    if provider == "anthropic" and not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
     from app.services.cost_tracker import check_budget, record_usage
 
     check_budget()
-    client = anthropic.Anthropic(api_key=api_key)
     user_message = inputs.to_prompt_block()
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        system=CHIEF_OF_STAFF_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
-    text = response.content[0].text
+    if provider == "anthropic":
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=1024,
+            system=CHIEF_OF_STAFF_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        response_model = response.model
+        prompt_tokens = response.usage.input_tokens
+        completion_tokens = response.usage.output_tokens
+        text = response.content[0].text
+    elif provider in {"openai_compatible", "openai-compatible", "openai"}:
+        try:
+            llm_response = generate_openai_compatible(
+                base_url=settings.digest_llm_base_url,
+                api_key=settings.digest_llm_api_key,
+                model=model,
+                system=CHIEF_OF_STAFF_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=1024,
+            )
+        except LLMProviderError as exc:
+            fallback_provider = settings.digest_llm_fallback_provider.strip().lower()
+            if fallback_provider != "anthropic" or not api_key:
+                raise
+            logger.warning(
+                "digest_llm_fallback_to_anthropic",
+                provider=provider,
+                model=model,
+                error=str(exc),
+            )
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model=settings.digest_llm_fallback_model,
+                max_tokens=1024,
+                system=CHIEF_OF_STAFF_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            response_model = response.model
+            prompt_tokens = response.usage.input_tokens
+            completion_tokens = response.usage.output_tokens
+            text = response.content[0].text
+        else:
+            response_model = llm_response.model
+            prompt_tokens = llm_response.prompt_tokens
+            completion_tokens = llm_response.completion_tokens
+            text = llm_response.content
+    else:
+        raise RuntimeError(f"Unsupported digest LLM provider: {provider}")
+
+    record_usage(response_model, prompt_tokens, completion_tokens)
 
     return {
         "text": text,
-        "model": response.model,
-        "prompt_tokens": response.usage.input_tokens,
-        "completion_tokens": response.usage.output_tokens,
+        "model": response_model,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
         "window_start": inputs.window_start.isoformat(),
         "window_end": inputs.window_end.isoformat(),
     }

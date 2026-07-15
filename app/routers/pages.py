@@ -373,9 +373,11 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
         )
         session = s_result.scalar_one_or_none()
 
-    # Count active videos
-    active_video_count = await db.scalar(
-        select(func.count(Video.id)).where(Video.chat_enabled == True)
+    channels_result = await db.execute(select(Channel).order_by(Channel.name))
+    channels = channels_result.scalars().all()
+
+    searchable_video_count = await db.scalar(
+        select(func.count(Video.id)).where(Video.status == "completed")
     ) or 0
 
     return request.app.state.templates.TemplateResponse(
@@ -387,7 +389,8 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
             "session_groups": _group_sessions_by_date(sessions),
             "session": session,
             "current_session_id": session.id if session else None,
-            "active_video_count": active_video_count,
+            "active_video_count": searchable_video_count,
+            "channels": channels,
         },
     )
 
@@ -422,9 +425,11 @@ async def chat_session_page(
     )
     sessions = sessions_result.scalars().all()
 
-    # Count active videos
-    active_video_count = await db.scalar(
-        select(func.count(Video.id)).where(Video.chat_enabled == True)
+    channels_result = await db.execute(select(Channel).order_by(Channel.name))
+    channels = channels_result.scalars().all()
+
+    searchable_video_count = await db.scalar(
+        select(func.count(Video.id)).where(Video.status == "completed")
     ) or 0
 
     return request.app.state.templates.TemplateResponse(
@@ -436,7 +441,8 @@ async def chat_session_page(
             "session_groups": _group_sessions_by_date(sessions),
             "session": session,
             "current_session_id": session.id,
-            "active_video_count": active_video_count,
+            "active_video_count": searchable_video_count,
+            "channels": channels,
         },
     )
 
@@ -446,6 +452,14 @@ async def search_page(request: Request):
     return request.app.state.templates.TemplateResponse(
         request,
         "search.html", {"request": request}
+    )
+
+
+@router.get("/global-search")
+async def global_search_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "global_search.html", {"request": request}
     )
 
 

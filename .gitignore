@@ -23,6 +23,7 @@ venv/
 *.webm
 
 /data/
+/reports/
 .DS_Store
 .claude/
 .openclaw/

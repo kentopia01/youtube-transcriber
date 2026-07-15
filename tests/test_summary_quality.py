@@ -50,9 +50,6 @@ The useful angle for Ken is not a new tool recommendation; it is an operating pa
 ## Operator Notes / Why Ken Should Care
 {ken_relevance or "- Relevant to Ken's agent systems, AI ops, content/business opportunities, investing, GTM, and personal workflow."}
 
-## Watch Map
-- timestamp unavailable: Skim the section where the speaker connects evals, handoffs, and workflow design.
-
 ## Source/Metadata
 - Title: Test video
 - Transcript words: 1800
@@ -162,3 +159,22 @@ def test_validate_summary_contract_warns_when_ken_relevance_is_generic():
 
     assert result.passed
     assert any("Ken focus area" in warning for warning in result.warnings)
+
+
+def test_validate_summary_contract_does_not_require_watch_map():
+    summary = _summary().replace(
+        "- Timestamp note: Timestamps or chapters were unavailable in the transcript.",
+        "- Timestamp note: Navigation was intentionally omitted from the report.",
+    )
+
+    result = validate_summary_contract(
+        summary.replace(
+            "## Detailed Brief",
+            "- Claim: The summary should remain useful without timestamp navigation. | Evidence: The report carries verdict, takeaways, and operator notes. | Implication: Ken can read the brief without fake Watch Map entries.\n\n## Detailed Brief",
+        ),
+        word_count=1800,
+        duration_seconds=720,
+    )
+
+    assert result.passed
+    assert not any("Watch Map" in warning for warning in result.warnings)

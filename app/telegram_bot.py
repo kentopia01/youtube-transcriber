@@ -532,11 +532,18 @@ async def _resolve_channel_for_persona(
     Case-insensitive. Exact match > prefix > substring.
     Returns ``(channel, persona)`` or ``(None, None)``.
     """
-    import uuid as _uuid
-
     q = query.strip().lower()
     if not q:
         return None, None
+
+    persona_rows, channel_by_id = await _load_channel_persona_index(db)
+    return _match_channel_persona(q, persona_rows, channel_by_id)
+
+
+async def _load_channel_persona_index(
+    db: AsyncSession,
+) -> tuple[list[Persona], dict[str, Channel]]:
+    import uuid as _uuid
 
     persona_rows = (
         await db.execute(
@@ -544,7 +551,7 @@ async def _resolve_channel_for_persona(
         )
     ).scalars().all()
     if not persona_rows:
-        return None, None
+        return [], {}
 
     channels = (
         await db.execute(
@@ -554,6 +561,17 @@ async def _resolve_channel_for_persona(
         )
     ).scalars().all()
     channel_by_id = {str(c.id): c for c in channels}
+    return persona_rows, channel_by_id
+
+
+def _match_channel_persona(
+    query: str,
+    persona_rows: list[Persona],
+    channel_by_id: dict[str, Channel],
+) -> tuple[Channel | None, Persona | None]:
+    q = query.strip().lower()
+    if not q:
+        return None, None
 
     best: tuple[Channel, Persona] | None = None
     best_score = -1
@@ -629,20 +647,36 @@ async def ask_channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
-    # First token is the channel matcher; rest is the question
-    query = args[0]
-    question = " ".join(args[1:]).strip()
-    if not question:
-        await update.message.reply_text("Please include a question after the channel name.")
-        return
-
     db = await _get_db()
     try:
-        channel, persona = await _resolve_channel_for_persona(db, query)
-        if channel is None or persona is None:
-            await update.message.reply_text(
-                f"No channel persona matches '{query}'. Use /channels to see options."
+        persona_rows, channel_by_id = await _load_channel_persona_index(db)
+        # Treat the longest matching prefix as the channel/account name so
+        # multi-word names like "AI Engineer" work naturally.
+        channel = None
+        persona = None
+        query = ""
+        question = ""
+        for split_at in range(len(args) - 1, 0, -1):
+            candidate_query = " ".join(args[:split_at])
+            candidate_channel, candidate_persona = _match_channel_persona(
+                candidate_query, persona_rows, channel_by_id
             )
+            if candidate_channel is not None and candidate_persona is not None:
+                channel = candidate_channel
+                persona = candidate_persona
+                query = candidate_query
+                question = " ".join(args[split_at:]).strip()
+                break
+
+        if channel is None or persona is None:
+            attempted = " ".join(args[:-1]) if len(args) > 1 else " ".join(args)
+            await update.message.reply_text(
+                f"No channel persona matches '{attempted}'. Use /channels to see options."
+            )
+            return
+
+        if not question:
+            await update.message.reply_text("Please include a question after the channel name.")
             return
 
         exemplars = await get_exemplar_chunks(db, persona)
@@ -803,7 +837,9 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ) as client:
         try:
             resp = await client.post(
-                "/api/search", json={"query": query}, headers=_api_headers()
+                "/api/global-search",
+                json={"query": query, "limit": 10},
+                headers=_api_headers(),
             )
         except httpx.HTTPError as exc:
             await update.message.reply_text(f"❌ Search error: {exc}")
@@ -818,7 +854,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"No results for '{query}'.")
         return
 
-    out = [f"🔎 *Results for* '{query}':\n"]
+    out = [f"Results for '{query}':\n"]
     for i, r in enumerate(results, 1):
         title = (r.get("video_title") or "?")[:80]
         ts = ""
@@ -826,8 +862,8 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             s = int(r["start_time"])
             ts = f" @ {s // 60}:{s % 60:02d}"
         snippet = (r.get("chunk_text") or "")[:180].replace("\n", " ")
-        out.append(f"[{i}] *{title}*{ts}\n{snippet}…")
-    await update.message.reply_text("\n\n".join(out), parse_mode="Markdown")
+        out.append(f"[{i}] {title}{ts}\n{snippet}...")
+    await update.message.reply_text("\n\n".join(out))
 
 
 async def ask_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -888,7 +924,7 @@ async def ask_video_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             limit=settings.chat_retrieval_top_k * 3,
             query=question,
             channel_id=match.channel_id,
-            chat_enabled_only=True,
+            chat_enabled_only=False,
         )
         chunks = [c for c in chunks if str(c.get("video_id")) == str(match.id)][
             : settings.chat_retrieval_top_k
@@ -1572,11 +1608,19 @@ def run_bot() -> None:
     app.run_polling()
 
 
-if __name__ == "__main__":
+def _configure_logging() -> None:
     import logging
 
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
+    # Telegram Bot API requests include the bot token in the request URL.
+    # Keep HTTP client internals quiet so tokens do not end up in local logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+if __name__ == "__main__":
+    _configure_logging()
     run_bot()

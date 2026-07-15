@@ -5,6 +5,8 @@ import os
 import pytest
 
 from app.config import (
+    DEFAULT_ANTHROPIC_DIGEST_MODEL,
+    DEFAULT_ANTHROPIC_SUMMARY_MODEL,
     DEFAULT_CHAT_MODEL,
     DEFAULT_CLEANUP_MODEL,
     DEFAULT_DIGEST_MODEL,
@@ -58,6 +60,59 @@ class TestConfigDefaults:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         s = Settings(database_url="x", database_url_sync="x", redis_url="x", _env_file=None)
         assert s.anthropic_api_key == ""
+
+    def test_batch_llm_provider_defaults_use_codex_with_anthropic_fallback(self, monkeypatch):
+        for name in (
+            "SUMMARY_LLM_PROVIDER",
+            "SUMMARY_LLM_BASE_URL",
+            "SUMMARY_LLM_API_KEY",
+            "SUMMARY_LLM_FALLBACK_PROVIDER",
+            "SUMMARY_LLM_FALLBACK_MODEL",
+            "DIGEST_LLM_PROVIDER",
+            "DIGEST_LLM_BASE_URL",
+            "DIGEST_LLM_API_KEY",
+            "DIGEST_LLM_FALLBACK_PROVIDER",
+            "DIGEST_LLM_FALLBACK_MODEL",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x", _env_file=None)
+
+        assert s.summary_llm_provider == "openai_compatible"
+        assert s.summary_llm_base_url == "http://127.0.0.1:8400/v1"
+        assert s.summary_llm_api_key == ""
+        assert s.summary_llm_fallback_provider == "anthropic"
+        assert s.summary_llm_fallback_model == DEFAULT_ANTHROPIC_SUMMARY_MODEL
+        assert s.digest_llm_provider == "openai_compatible"
+        assert s.digest_llm_base_url == "http://127.0.0.1:8400/v1"
+        assert s.digest_llm_api_key == ""
+        assert s.digest_llm_fallback_provider == "anthropic"
+        assert s.digest_llm_fallback_model == DEFAULT_ANTHROPIC_DIGEST_MODEL
+
+    def test_batch_llm_provider_env_overrides(self, monkeypatch):
+        monkeypatch.setenv("SUMMARY_LLM_PROVIDER", "openai_compatible")
+        monkeypatch.setenv("SUMMARY_LLM_BASE_URL", "http://router.local/v1")
+        monkeypatch.setenv("SUMMARY_LLM_API_KEY", "local-summary-key")
+        monkeypatch.setenv("SUMMARY_LLM_FALLBACK_PROVIDER", "anthropic")
+        monkeypatch.setenv("SUMMARY_LLM_FALLBACK_MODEL", "summary-fallback")
+        monkeypatch.setenv("DIGEST_LLM_PROVIDER", "openai_compatible")
+        monkeypatch.setenv("DIGEST_LLM_BASE_URL", "http://router.local/v1")
+        monkeypatch.setenv("DIGEST_LLM_API_KEY", "local-digest-key")
+        monkeypatch.setenv("DIGEST_LLM_FALLBACK_PROVIDER", "anthropic")
+        monkeypatch.setenv("DIGEST_LLM_FALLBACK_MODEL", "digest-fallback")
+
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x", _env_file=None)
+
+        assert s.summary_llm_provider == "openai_compatible"
+        assert s.summary_llm_base_url == "http://router.local/v1"
+        assert s.summary_llm_api_key == "local-summary-key"
+        assert s.summary_llm_fallback_provider == "anthropic"
+        assert s.summary_llm_fallback_model == "summary-fallback"
+        assert s.digest_llm_provider == "openai_compatible"
+        assert s.digest_llm_base_url == "http://router.local/v1"
+        assert s.digest_llm_api_key == "local-digest-key"
+        assert s.digest_llm_fallback_provider == "anthropic"
+        assert s.digest_llm_fallback_model == "digest-fallback"
 
     def test_whisper_model_size_default(self):
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")

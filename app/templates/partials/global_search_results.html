@@ -1,0 +1,69 @@
+{% if results %}
+<div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+    <p class="text-sm text-muted">
+        Found {{ results|length }} results for "{{ query }}" from {{ candidate_count }} fused candidates
+    </p>
+    <div class="flex flex-wrap gap-2">
+        <span class="chip">vector {{ lane_counts.vector }}</span>
+        <span class="chip">keyword {{ lane_counts.keyword }}</span>
+        <span class="chip">summary {{ lane_counts.summary }}</span>
+    </div>
+</div>
+
+<div class="space-y-4">
+    {% for result in results %}
+    <div class="surface">
+        <div class="surface-body">
+            <div class="flex justify-between items-start gap-4">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2 mb-1">
+                        <span class="status-pill {% if result.source_type == 'summary' %}status-completed{% else %}status-running{% endif %}">
+                            <span class="dot"></span>
+                            {{ result.source_type }}
+                        </span>
+                        {% if result.channel_name %}
+                        <span class="text-xs text-muted">{{ result.channel_name }}</span>
+                        {% endif %}
+                    </div>
+                    <h4 class="font-semibold">
+                        <a href="/videos/{{ result.video_id }}" class="link-muted hover:text-[var(--accent)]">{{ result.video_title }}</a>
+                    </h4>
+                    {% if result.start_time is not none %}
+                    <p class="font-mono text-xs text-faint mt-1">
+                        {{ result.start_time|format_timestamp }} - {{ result.end_time|format_timestamp }}
+                        {% if result.youtube_url %}
+                        <a href="{{ result.youtube_url }}" class="link-muted ml-2" target="_blank" rel="noopener">YouTube</a>
+                        {% endif %}
+                    </p>
+                    {% endif %}
+                </div>
+                <span class="status-pill status-running whitespace-nowrap">
+                    <span class="dot"></span>
+                    {{ "%.4f"|format(result.fused_score) }}
+                </span>
+            </div>
+            <p class="text-sm mt-3 leading-relaxed" style="color: var(--text-secondary);">{{ result.evidence_text }}</p>
+            <p class="font-mono text-xs text-faint mt-3">
+                lanes:
+                {% for lane, score in result.score_components.items() %}
+                {{ lane }}={{ "%.4f"|format(score) }}{% if not loop.last %},{% endif %}
+                {% endfor %}
+            </p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% elif query %}
+<div class="surface">
+    <div class="surface-body text-center py-10">
+        <i class="iconoir-search" style="font-size:1.5rem; color: var(--text-tertiary); display:block; margin-bottom:0.5rem;"></i>
+        <h3 class="section-title mb-1">No global results for "{{ query }}"</h3>
+        <p class="text-sm text-muted mt-1 mb-4">Try a concrete term, a named person, or switch the source filter.</p>
+        <div class="flex flex-wrap justify-center gap-2">
+            <a href="/global-search?q=agents" class="chip">try: agents</a>
+            <a href="/global-search?q=pricing" class="chip">try: pricing</a>
+            <a href="/global-search?q=deployment" class="chip">try: deployment</a>
+        </div>
+    </div>
+</div>
+{% endif %}

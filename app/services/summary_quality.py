@@ -22,10 +22,8 @@ REQUIRED_HEADINGS: tuple[str, ...] = (
     "At-a-Glance",
     "Executive Summary",
     "Key Takeaways",
-    "Detailed Brief",
     "Notable Concepts & Terms",
     "Operator Notes / Why Ken Should Care",
-    "Watch Map",
     "Source/Metadata",
 )
 
@@ -62,11 +60,6 @@ OPERATOR_NOTE_HEADINGS: tuple[str, ...] = (
     "Ken relevance",
     "Why it matters to Ken",
 )
-WATCH_MAP_HEADINGS: tuple[str, ...] = (
-    "Watch Map",
-    "Watch verdict",
-    "Verdict",
-)
 SOURCE_METADATA_HEADINGS: tuple[str, ...] = (
     "Source/Metadata",
     "Source Metadata",
@@ -80,7 +73,7 @@ LOW_CONTENT_MIN_KEY_TAKES = 2
 DEEP_BRIEF_WORD_COUNT = 1500
 DEEP_BRIEF_DURATION_SECONDS = 600
 DEEP_MIN_EXECUTIVE_SUMMARY_CHARS = 240
-DEEP_MIN_DETAILED_ITEMS = 3
+DEEP_MIN_DETAILED_ITEMS = 1
 DEEP_MIN_SUMMARY_CHARS = 1400
 
 LOW_CONTENT_PATTERNS: tuple[str, ...] = (
@@ -134,7 +127,6 @@ LOW_RELEVANCE_MARKERS: tuple[str, ...] = (
     "not applicable",
     "no clear relevance",
 )
-
 
 @dataclass(frozen=True)
 class SummaryQualityResult:
@@ -237,7 +229,6 @@ def _required_section_missing(
         "Detailed Brief": DETAILED_BRIEF_HEADINGS,
         "Notable Concepts & Terms": CONCEPT_HEADINGS,
         "Operator Notes / Why Ken Should Care": OPERATOR_NOTE_HEADINGS,
-        "Watch Map": WATCH_MAP_HEADINGS,
         "Source/Metadata": SOURCE_METADATA_HEADINGS,
     }
     return not _has_any_section(sections, aliases_by_required[required_heading], markdown=markdown)
@@ -342,8 +333,7 @@ def validate_summary_contract(
     Hard errors are reserved for summaries that should not be written during
     live backfill by default. The current brief contract is structured around
     the report sections Ken actually reads: at-a-glance, executive summary, key
-    takeaways, detailed brief, concepts, operator notes, watch map, and source
-    metadata.
+    takeaways, detailed brief, concepts, operator notes, and source metadata.
     """
     sections = extract_heading_sections(summary)
     missing = tuple(
@@ -363,7 +353,6 @@ def validate_summary_contract(
     key_takes = _find_any_section(sections, KEY_TAKEAWAY_HEADINGS, markdown=summary)
     detailed_brief = _find_any_section(sections, DETAILED_BRIEF_HEADINGS, markdown=summary)
     operator_notes = _find_any_section(sections, OPERATOR_NOTE_HEADINGS, markdown=summary)
-    watch_map = _find_any_section(sections, WATCH_MAP_HEADINGS, markdown=summary)
 
     key_count = count_bullets(key_takes)
     low_content = _is_explicit_low_content(at_a_glance) or _is_explicit_low_content(executive_summary)
@@ -400,9 +389,9 @@ def validate_summary_contract(
             "Operator notes do not mention a Ken focus area (agent systems, AI ops, content/business, investing, GTM, workflow) or plainly say relevance is low"
         )
 
-    verdict = _find_watch_verdict("\n".join(part for part in [at_a_glance, watch_map] if part))
+    verdict = _find_watch_verdict(at_a_glance)
     if verdict is None:
-        errors.append("At-a-Glance or Watch Map must contain one of: Skip / Skim / Watch fully")
+        errors.append("At-a-Glance must contain one of: Skip / Skim / Watch fully")
 
     executive_summary_chars = len((executive_summary or "").strip())
     detailed_item_count = _count_detailed_items(detailed_brief)
@@ -420,15 +409,6 @@ def validate_summary_contract(
             errors.append(
                 f"Detailed Brief has {detailed_item_count} item(s); expected at least {DEEP_MIN_DETAILED_ITEMS} for long/substantive transcripts"
             )
-        if watch_map and not re.search(r"\b\d{1,2}:\d{2}\b", watch_map) and not re.search(
-            r"\b(?:no|not|unavailable|missing).{0,40}(?:timestamp|chapter)",
-            watch_map,
-            flags=re.IGNORECASE,
-        ):
-            warnings.append(
-                "Watch Map has no timestamp-like notes and does not say timestamps/chapters were unavailable"
-            )
-
     return SummaryQualityResult(
         missing_headings=missing,
         key_take_count=key_count,

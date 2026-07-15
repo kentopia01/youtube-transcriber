@@ -65,7 +65,6 @@ class ReportRenderData:
     detailed_brief_html: str | None
     concepts_html: str | None
     operator_notes_html: str | None
-    watch_map_html: str | None
     source_metadata_html: str | None
     brief_sections: list[ReportSection]
     generated_at: str
@@ -313,10 +312,6 @@ def _operator_notes_html(summary: str | None) -> str | None:
     )
 
 
-def _watch_map_html(summary: str | None) -> str | None:
-    return _section_html(summary, ["Watch Map"]) or _section_html(summary, ["Watch verdict", "Verdict"])
-
-
 def _source_metadata_html(summary: str | None) -> str | None:
     return _section_html(summary, ["Source/Metadata", "Source Metadata", "Metadata"])
 
@@ -378,6 +373,7 @@ def _brief_sections_from_summary(summary: str | None) -> list[ReportSection]:
         "actionable ideas",
         "ken relevance",
         "why it matters to ken",
+        "at a glance",
         "watch verdict",
         "verdict",
         "useful details",
@@ -408,19 +404,84 @@ def _brief_sections_from_summary(summary: str | None) -> list[ReportSection]:
     return sections
 
 
-def build_report_caption(summary: str | None, *, max_chars: int = 700) -> str | None:
-    """Build a short useful Telegram caption from a summary/report markdown."""
-    scan = _scan_from_summary(summary)
-    key_takes = _key_points_from_summary(summary, limit=2)
+def _clean_caption_text(value: str | None) -> str:
+    text = re.sub(r"[#>*_`]", "", value or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    cutoff = value.rfind(".", 0, limit)
+    if cutoff < limit // 2:
+        cutoff = value.rfind(" ", 0, limit)
+    if cutoff < limit // 2:
+        cutoff = limit
+    return value[:cutoff].rstrip(" .") + "..."
+
+
+def _labeled_lines(section: str | None) -> dict[str, str]:
+    labels: dict[str, str] = {}
+    for raw in (section or "").splitlines():
+        line = raw.strip()
+        if line.startswith(("- ", "* ")):
+            line = line[2:].strip()
+        match = re.match(r"([^:]{2,50}):\s+(.+)", line)
+        if match:
+            labels[match.group(1).strip().lower()] = _clean_caption_text(match.group(2))
+    return labels
+
+
+def _operator_action_points(summary: str | None, *, limit: int = 3) -> list[str]:
+    points = bullet_points_from_markdown(
+        _section_content(
+            summary,
+            [
+                "Operator Notes / Why Ken Should Care",
+                "Operator Notes",
+                "Why Ken Should Care",
+                "Ken relevance",
+                "Why it matters to Ken",
+            ],
+        ),
+        limit=limit,
+    )
+    cleaned = [_clean_caption_text(point) for point in points]
+    cleaned = [point for point in cleaned if point]
+    if cleaned:
+        return cleaned[:limit]
+
+    implications: list[str] = []
+    for point in _key_points_from_summary(summary, limit=limit):
+        match = re.search(r"\bImplication:\s*(.+?)(?:\s+\|\s+\w+:|$)", point)
+        text = _clean_caption_text(match.group(1) if match else point)
+        if text:
+            implications.append(text)
+    return implications[:limit]
+
+
+def build_report_caption(summary: str | None, *, max_chars: int = 650) -> str | None:
+    """Build a Telegram-first decision brief from a summary/report markdown."""
+    at_a_glance = _labeled_lines(extract_markdown_section(summary, ["At-a-Glance", "At a Glance"]))
+    verdict = at_a_glance.get("verdict")
+    thesis = at_a_glance.get("core thesis") or _clean_caption_text(first_content_block(summary, max_lines=1))
+    why = at_a_glance.get("why it matters")
+    best_use = at_a_glance.get("best use")
+    actions = _operator_action_points(summary, limit=3)
 
     parts: list[str] = []
-    if scan:
-        scan_text = re.sub(r"\s+", " ", re.sub(r"[#>*_`]", "", scan)).strip()
-        if scan_text:
-            parts.append(scan_text)
-    if key_takes:
-        for point in key_takes:
-            parts.append("• " + re.sub(r"\s+", " ", point).strip())
+    if verdict:
+        parts.append(f"Verdict: {verdict}")
+    if thesis:
+        parts.append("Thesis: " + _truncate_text(thesis, 220))
+    if why:
+        parts.append("Why it matters: " + _truncate_text(why, 220))
+    if actions:
+        parts.append("Do next:")
+        parts.extend("• " + _truncate_text(point, 150) for point in actions)
+    elif best_use:
+        parts.append("Best use: " + _truncate_text(best_use, 180))
 
     text = "\n".join(parts).strip()
     if not text:
@@ -476,7 +537,6 @@ def build_report_render_data(
         detailed_brief_html=_detailed_brief_html(summary_text),
         concepts_html=_concepts_html(summary_text),
         operator_notes_html=_operator_notes_html(summary_text),
-        watch_map_html=_watch_map_html(summary_text),
         source_metadata_html=_source_metadata_html(summary_text),
         brief_sections=_brief_sections_from_summary(summary_text),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
@@ -511,9 +571,6 @@ def render_video_report_markdown(data: ReportRenderData) -> str:
     if data.operator_notes_html:
         lines.extend(["", "## Operator Notes / Why Ken Should Care"])
         lines.append(re.sub(r"<[^>]+>", "", data.operator_notes_html))
-    if data.watch_map_html:
-        lines.extend(["", "## Watch Map"])
-        lines.append(re.sub(r"<[^>]+>", "", data.watch_map_html))
     if data.source_metadata_html:
         lines.extend(["", "## Source/Metadata"])
         lines.append(re.sub(r"<[^>]+>", "", data.source_metadata_html))

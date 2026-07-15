@@ -1,4 +1,5 @@
 import uuid
+from math import isfinite
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -10,6 +11,13 @@ from app.models.summary import Summary
 from app.models.transcription import Transcription
 
 router = APIRouter(prefix="/api/transcriptions", tags=["transcriptions"])
+
+
+def _json_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    return value if isfinite(value) else None
 
 
 @router.get("/{video_id}")
@@ -45,16 +53,16 @@ async def get_transcription(video_id: uuid.UUID, db: AsyncSession = Depends(get_
         "language_detected": transcription.language,
         "model_size": transcription.model_size,
         "word_count": transcription.word_count,
-        "processing_time_seconds": transcription.processing_time_seconds,
+        "processing_time_seconds": _json_float(transcription.processing_time_seconds),
         "speakers": speakers,
         "diarization_enabled": len(speakers) > 0,
         "segments": [
             {
                 "index": s.segment_index,
-                "start": s.start_time,
-                "end": s.end_time,
+                "start": _json_float(s.start_time),
+                "end": _json_float(s.end_time),
                 "text": s.text,
-                "confidence": s.confidence,
+                "confidence": _json_float(s.confidence),
                 "speaker": s.speaker,
             }
             for s in transcription.segments

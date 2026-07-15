@@ -1,0 +1,82 @@
+# T044 - Codex-auth batch LLM migration
+
+## Status
+Implemented; pilot-ready
+
+## Objective
+Route the high-value unattended LLM workloads through a maintained local Codex-auth/OpenAI-compatible route while keeping Anthropic as the safe fallback.
+
+## Why it matters
+The daily/nightly value path is not interactive chat. It is channel or queued transcription work becoming useful summaries, report captions, and daily digest intelligence without operator babysitting. This migration should improve that path without making overnight processing brittle.
+
+## Scope
+- Treat Smart Router readiness as a hard prerequisite, not assumed infrastructure.
+- Use the local Smart Router `codex` profile at `http://127.0.0.1:8400/v1` as the Codex-auth runtime boundary.
+- Add an internal LLM provider adapter that supports the existing Anthropic path and an OpenAI-compatible chat-completions path.
+- Add per-workload provider/base-url/model configuration for summary and digest generation.
+- Keep existing summary/digest behavior on Anthropic by default.
+- Allow the summary path to opt into Codex route for dry-run/backfill evaluation and controlled batch pilot.
+- Preserve LLM usage accounting and budget checks.
+- Add fallback behavior so a Codex-route failure can return to Anthropic during the pilot.
+
+## Out of scope
+- Raw transcription, diarization, embeddings, downloads, queue topology, and global search.
+- UI redesign or chat-first rollout.
+- Copying Codex OAuth tokens into `.env`, `.env.native`, Docker env, logs, or database rows.
+- Broad prompt rewrites unrelated to provider migration.
+- Autonomous production switch for all workloads before dry-run comparison.
+
+## Constraints
+- The Smart Router service must be live and pass `/health`, `/v1/models`, and one Codex-auth completion smoke before the transcriber uses it.
+- The batch pipeline must fail soft where it already fails soft: report/digest side effects must not poison a completed transcription.
+- Anthropic remains the default and rollback must be one config flip.
+- Provider errors must not log secrets, full transcripts, OAuth tokens, or private message bodies.
+- Tests should not depend on live providers unless explicitly marked as opt-in smoke.
+
+## Done criteria
+- Smart Router has a live service path and Codex-auth smoke proof recorded in this task.
+- Summary and digest LLM calls can use either Anthropic or OpenAI-compatible provider config.
+- Existing Anthropic summary/digest tests continue to pass.
+- New adapter tests cover OpenAI-compatible response normalization and fallback behavior.
+- A dry-run summary comparison can generate Codex-route output without DB writes.
+- Rollout notes document env flags, validation, fallback, and rollback.
+
+## Validation
+- PASS: Smart Router build/test and live `codex` completion smoke before transcriber integration.
+- PASS: `py_compile` for changed config, provider, summary, digest, and focused tests.
+- PASS: focused pytest for config, summarization, digest, scan-first/backfill boundaries, and new provider adapter: `76 passed`.
+- PASS: full local pytest suite: `1196 passed, 11 skipped`.
+- PASS: live non-mutating summary smoke through `SUMMARY_LLM_PROVIDER=openai_compatible`, `SUMMARY_MODEL=codex`, local Smart Router. Initial route returned `gpt-5.3-codex-spark`; refreshed Smart Router route now uses `gpt-5.6-terra` for SIMPLE/MEDIUM and `gpt-5.6-sol` for COMPLEX/REASONING.
+- PASS: refreshed 5-sample Codex shadow eval wrote local artifacts under `reports/eval/codex-shadow-20260712-gpt56` with no production summary DB writes. Initial result was 3/5 clean with 2 Watch Map timestamp/chapters-unavailable warnings; follow-up showed those warnings were false positives in the validator. After tightening the validator to accept `timestamp unavailable` and Source/Metadata timestamp notes, the same 5 artifacts validate 5/5 clean.
+- PASS: live non-delivering digest dry run through `DIGEST_LLM_PROVIDER=openai_compatible`, `DIGEST_MODEL=codex`, local Smart Router. Returned `gpt-5.6-sol`, processed 8 completed videos and 5 delivered reports, with no active/pending/retry/manual-review jobs.
+- Required before production switch: run one controlled live video or batch smoke with Codex primary and Anthropic fallback enabled before changing unattended overnight defaults.
+- Required before autonomous rollout: one controlled live video or batch smoke with fallback enabled.
+
+## Rollout
+Pilot only one high-value workload at a time:
+
+1. Confirm Smart Router is running and healthy:
+   - `curl http://127.0.0.1:8400/health`
+   - `curl http://127.0.0.1:8400/v1/models`
+2. For summary pilot:
+   - `SUMMARY_LLM_PROVIDER=openai_compatible`
+   - `SUMMARY_MODEL=codex`
+   - `SUMMARY_LLM_BASE_URL=http://127.0.0.1:8400/v1`
+   - `SUMMARY_LLM_FALLBACK_PROVIDER=anthropic`
+   - `SUMMARY_LLM_FALLBACK_MODEL=claude-sonnet-4-5`
+3. For digest pilot:
+   - `DIGEST_LLM_PROVIDER=openai_compatible`
+   - `DIGEST_MODEL=codex`
+   - `DIGEST_LLM_BASE_URL=http://127.0.0.1:8400/v1`
+   - `DIGEST_LLM_FALLBACK_PROVIDER=anthropic`
+   - `DIGEST_LLM_FALLBACK_MODEL=claude-sonnet-4-5`
+4. Compare 3-5 existing transcript summaries against Anthropic output before flipping unattended production runs.
+5. Run one controlled live video or batch smoke before enabling overnight use.
+
+## Rollback
+Set `SUMMARY_LLM_PROVIDER=anthropic` and `DIGEST_LLM_PROVIDER=anthropic`. Existing `SUMMARY_MODEL`, `DIGEST_MODEL`, and `ANTHROPIC_API_KEY` behavior remains the default path.
+
+## Notes
+- Smart Router recovery proof: launchd service `com.sentryclaw.smart-router` is running on `127.0.0.1:8400`; `/health` and `/v1/models` passed; `model=codex` returned OpenAI-compatible chat-completions JSON. As of the 2026-07-12 model refresh, the Codex profile maps SIMPLE/MEDIUM to `gpt-5.6-terra` and COMPLEX/REASONING to `gpt-5.6-sol`.
+- The transcriber does not read Codex OAuth tokens. It calls the local OpenAI-compatible endpoint only.
+- Link to `docs/PLAN.md` and `docs/CLARIFICATIONS.md` for the broader source-of-truth contract.

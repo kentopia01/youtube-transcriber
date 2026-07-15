@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.embedding import SUMMARY_SPEAKER_LABEL
+from app.services.global_search import GlobalSearchOptions, global_search
 from app.services.search import encode_query, semantic_search
 
 logger = structlog.get_logger()
@@ -53,7 +54,10 @@ SYSTEM_PROMPT = """You answer questions using the provided video transcript exce
 
 
 def _is_summary_chunk(chunk: dict) -> bool:
-    return chunk.get("speaker") == SUMMARY_SPEAKER_LABEL
+    return (
+        chunk.get("speaker") == SUMMARY_SPEAKER_LABEL
+        or chunk.get("source_type") == "summary"
+    )
 
 
 def _format_chunks_for_context(chunks: list[dict]) -> str:
@@ -95,6 +99,23 @@ def _build_messages(
     user_content = f"Context from video transcripts and summaries:\n\n{context_text}\n\nQuestion: {question}"
     messages.append({"role": "user", "content": user_content})
     return messages
+
+
+async def _fallback_semantic_search(
+    db: AsyncSession,
+    *,
+    question: str,
+    query_embedding: list[float],
+    channel_id: uuid.UUID | None,
+) -> list[dict]:
+    return await semantic_search(
+        db,
+        query_embedding=query_embedding,
+        limit=settings.chat_retrieval_top_k,
+        query=question,
+        channel_id=channel_id,
+        chat_enabled_only=False,
+    )
 
 
 def _call_anthropic(
@@ -140,8 +161,8 @@ async def chat_with_context(
         question: The user's question.
         history: List of prior messages [{role, content}, ...].
         db: Async database session.
-        channel_id: Optional channel to scope retrieval to. When set, only
-            chunks from videos belonging to this channel are considered.
+        channel_id: Optional channel to scope retrieval to. When unset, all
+            embedded videos are considered.
         system_prompt: Override the default system prompt (used for persona
             agents).
         exemplar_chunks: Optional list of persona exemplar chunk rows. Rendered
@@ -153,17 +174,36 @@ async def chat_with_context(
     """
     try:
         query_embedding = encode_query(question)
-        chunks = await semantic_search(
-            db,
-            query_embedding=query_embedding,
-            limit=settings.chat_retrieval_top_k,
-            query=question,
-            channel_id=channel_id,
-            chat_enabled_only=True,
-        )
     except Exception as exc:
         logger.warning("search_failed", error=str(exc))
         chunks = []
+    else:
+        try:
+            if not isinstance(db, AsyncSession):
+                raise TypeError("global chat search requires an AsyncSession")
+            search_payload = await global_search(
+                db=db,
+                query=question,
+                query_embedding=query_embedding,
+                options=GlobalSearchOptions(
+                    limit=settings.chat_retrieval_top_k,
+                    channel_id=channel_id,
+                    source_type="all",
+                ),
+            )
+            chunks = search_payload.get("results", [])
+        except Exception as exc:
+            logger.warning("global_chat_search_failed", error=str(exc))
+            try:
+                chunks = await _fallback_semantic_search(
+                    db,
+                    question=question,
+                    query_embedding=query_embedding,
+                    channel_id=channel_id,
+                )
+            except Exception as fallback_exc:
+                logger.warning("search_failed", error=str(fallback_exc))
+                chunks = []
 
     context_text = _format_chunks_for_context(chunks)
     if exemplar_chunks:
@@ -250,4 +290,3 @@ async def chat_with_context(
         "prompt_tokens": llm_result["prompt_tokens"],
         "completion_tokens": llm_result["completion_tokens"],
     }
-

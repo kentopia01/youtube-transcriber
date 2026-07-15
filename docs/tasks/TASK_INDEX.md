@@ -45,6 +45,16 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T034 | Authenticated cookie last resort | planned | SentryClaw | Runbook-only fallback; no login automation or credential storage |
 | T035 | Repo cleanup after download hardening | done | SentryClaw | T026/T027 summary-quality work committed separately; generated OpenClaw workspace files ignored |
 | T036 | Recovered jobs and yt-dlp update | done | SentryClaw | Seven 403 recovery jobs completed; yt-dlp updated to 2026.06.09 in dev/native envs and validated |
+| T037 | Global search source-of-truth docs and task contract | done | SentryClaw | Establish rollout docs for whole-corpus retrieval |
+| T038 | Global search core service | done | SentryClaw | Whole-corpus vector, keyword, and summary-lane retrieval with RRF |
+| T039 | Global search diversity and evidence packing | done | SentryClaw | Dedupe, per-video diversity, and compact evidence snippets |
+| T040 | Global search API and operator UI | done | SentryClaw | Separate `/api/global-search` and `/global-search` surfaces |
+| T041 | Global search chat mode switch | done | SentryClaw | Web chat now defaults to all embedded videos and supports channel/account scoping |
+| T042 | Reranker and query-expansion experiment | planned | SentryClaw | API/local rerank and HyDE/query fusion experiments after v1 |
+| T043 | Global search evaluation benchmark | planned | SentryClaw | Real-query benchmark and latency/quality tuning |
+| T044 | Codex-auth batch LLM migration | pilot-ready | SentryClaw | Smart Router readiness plus summary/digest provider adapter pilot |
+| T045 | Summary delivery polish and Codex default | done | SentryClaw | Telegram-first report caption, Watch Map removal, report de-dupe, Codex-primary summary default with Anthropic fallback validated on five-video dry run |
+| T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

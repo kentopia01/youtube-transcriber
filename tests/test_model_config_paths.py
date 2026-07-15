@@ -67,6 +67,7 @@ def test_llm_paths_reference_canonical_model_settings(relative_path, expected, d
 def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
     from app.services import summarization
 
+    monkeypatch.setattr(settings, "summary_llm_provider", "anthropic")
     monkeypatch.setattr(settings, "summary_model", "summary-canonical")
     monkeypatch.setattr(summarization.anthropic, "Anthropic", lambda api_key: object())
     monkeypatch.setattr(summarization, "_count_tokens", lambda _text: 1)
@@ -75,6 +76,8 @@ def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
 
     def fake_summarize_single(
         client,
+        provider,
+        api_key,
         model,
         text,
         title,
@@ -85,6 +88,8 @@ def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
         output_format="structured",
     ):
         observed["model"] = model
+        observed["provider"] = provider
+        observed["api_key"] = api_key
         observed["text"] = text
         observed["title"] = title
         observed["output_format"] = output_format
@@ -101,11 +106,99 @@ def test_summarization_defaults_to_canonical_summary_model(monkeypatch):
 
     assert observed == {
         "model": "summary-canonical",
+        "provider": "anthropic",
+        "api_key": "api-key",
         "text": "transcript",
         "title": "Title",
         "output_format": "structured",
     }
     assert result["model"] == "summary-canonical"
+
+
+def test_summarization_can_use_openai_compatible_provider(monkeypatch):
+    from app.services import summarization
+
+    monkeypatch.setattr(settings, "summary_llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "summary_llm_base_url", "http://127.0.0.1:8400/v1")
+    monkeypatch.setattr(settings, "summary_llm_api_key", "")
+    monkeypatch.setattr(summarization, "_count_tokens", lambda _text: 1)
+    monkeypatch.setattr(
+        summarization.anthropic,
+        "Anthropic",
+        lambda api_key: pytest.fail("Anthropic should not be constructed for OpenAI-compatible summary"),
+    )
+
+    observed: dict[str, object] = {}
+
+    def fake_generate(**kwargs):
+        observed.update(kwargs)
+        return summarization.LLMTextResponse(
+            content="# Summary\n\nCodex route worked.",
+            model="codex-actual",
+            prompt_tokens=11,
+            completion_tokens=5,
+        )
+
+    monkeypatch.setattr(summarization, "generate_openai_compatible", fake_generate)
+
+    result = summarization.summarize_text(
+        "transcript",
+        video_title="Title",
+        model="codex",
+        record_usage_enabled=False,
+        output_format="markdown",
+    )
+
+    assert observed["base_url"] == "http://127.0.0.1:8400/v1"
+    assert observed["api_key"] == ""
+    assert observed["model"] == "codex"
+    assert observed["max_tokens"] == 12000
+    assert result == {
+        "summary": "# Summary\n\nCodex route worked.",
+        "model": "codex-actual",
+        "prompt_tokens": 11,
+        "completion_tokens": 5,
+    }
+
+
+def test_summarization_falls_back_to_anthropic_when_openai_compatible_fails(monkeypatch):
+    from app.services import summarization
+
+    monkeypatch.setattr(settings, "summary_llm_provider", "openai_compatible")
+    monkeypatch.setattr(settings, "summary_llm_fallback_provider", "anthropic")
+    monkeypatch.setattr(settings, "summary_llm_fallback_model", "claude-fallback")
+    monkeypatch.setattr(summarization, "_count_tokens", lambda _text: 1)
+    monkeypatch.setattr(
+        summarization,
+        "generate_openai_compatible",
+        lambda **_kwargs: (_ for _ in ()).throw(summarization.LLMProviderError("router down")),
+    )
+    monkeypatch.setattr(summarization.anthropic, "Anthropic", lambda api_key: object())
+
+    observed: dict[str, str] = {}
+
+    def fake_anthropic(_client, **kwargs):
+        observed["model"] = kwargs["model"]
+        return SimpleNamespace(
+            content=[SimpleNamespace(text="# Summary\n\nFallback worked.")],
+            model="claude-fallback",
+            usage=SimpleNamespace(input_tokens=7, output_tokens=8),
+        )
+
+    monkeypatch.setattr(summarization, "_call_anthropic_with_retry", fake_anthropic)
+
+    result = summarization.summarize_text(
+        "transcript",
+        video_title="Title",
+        api_key="api-key",
+        model="codex",
+        record_usage_enabled=False,
+        output_format="markdown",
+    )
+
+    assert observed["model"] == "claude-fallback"
+    assert result["summary"] == "# Summary\n\nFallback worked."
+    assert result["model"] == "claude-fallback"
 
 
 def test_persona_derivation_defaults_to_canonical_persona_model(monkeypatch):
@@ -149,6 +242,7 @@ def test_digest_render_defaults_to_canonical_digest_model(monkeypatch):
     from app.services import cost_tracker, digest
 
     monkeypatch.setattr(settings, "digest_model", "digest-canonical")
+    monkeypatch.setattr(settings, "digest_llm_provider", "anthropic")
     monkeypatch.setattr(settings, "anthropic_api_key", "api-key")
     monkeypatch.setattr(cost_tracker, "check_budget", lambda: None)
     monkeypatch.setattr(cost_tracker, "record_usage", lambda *_args, **_kwargs: None)

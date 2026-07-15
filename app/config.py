@@ -3,10 +3,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_CLEANUP_MODEL = "claude-haiku-4-5"
-DEFAULT_SUMMARY_MODEL = "claude-sonnet-4-5"
+DEFAULT_ANTHROPIC_SUMMARY_MODEL = "claude-sonnet-4-5"
+DEFAULT_SUMMARY_MODEL = "codex"
 DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
 DEFAULT_PERSONA_MODEL = "claude-sonnet-4-5"
-DEFAULT_DIGEST_MODEL = "claude-sonnet-4-5"
+DEFAULT_ANTHROPIC_DIGEST_MODEL = "claude-sonnet-4-5"
+DEFAULT_DIGEST_MODEL = "codex"
 
 
 class Settings(BaseSettings):
@@ -100,6 +102,46 @@ class Settings(BaseSettings):
             "anthropic_summary_model",
             "ANTHROPIC_SUMMARY_MODEL",
         ),
+    )
+    summary_llm_provider: str = Field(
+        "openai_compatible",
+        validation_alias=AliasChoices("summary_llm_provider", "SUMMARY_LLM_PROVIDER"),
+    )
+    summary_llm_base_url: str = Field(
+        "http://127.0.0.1:8400/v1",
+        validation_alias=AliasChoices("summary_llm_base_url", "SUMMARY_LLM_BASE_URL"),
+    )
+    summary_llm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("summary_llm_api_key", "SUMMARY_LLM_API_KEY"),
+    )
+    summary_llm_fallback_provider: str = Field(
+        "anthropic",
+        validation_alias=AliasChoices("summary_llm_fallback_provider", "SUMMARY_LLM_FALLBACK_PROVIDER"),
+    )
+    summary_llm_fallback_model: str = Field(
+        DEFAULT_ANTHROPIC_SUMMARY_MODEL,
+        validation_alias=AliasChoices("summary_llm_fallback_model", "SUMMARY_LLM_FALLBACK_MODEL"),
+    )
+    digest_llm_provider: str = Field(
+        "openai_compatible",
+        validation_alias=AliasChoices("digest_llm_provider", "DIGEST_LLM_PROVIDER"),
+    )
+    digest_llm_base_url: str = Field(
+        "http://127.0.0.1:8400/v1",
+        validation_alias=AliasChoices("digest_llm_base_url", "DIGEST_LLM_BASE_URL"),
+    )
+    digest_llm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("digest_llm_api_key", "DIGEST_LLM_API_KEY"),
+    )
+    digest_llm_fallback_provider: str = Field(
+        "anthropic",
+        validation_alias=AliasChoices("digest_llm_fallback_provider", "DIGEST_LLM_FALLBACK_PROVIDER"),
+    )
+    digest_llm_fallback_model: str = Field(
+        DEFAULT_ANTHROPIC_DIGEST_MODEL,
+        validation_alias=AliasChoices("digest_llm_fallback_model", "DIGEST_LLM_FALLBACK_MODEL"),
     )
     chat_max_history: int = 10
     chat_retrieval_top_k: int = 10

@@ -8,7 +8,7 @@ A self-hosted web application that transcribes YouTube videos using Apple Silico
 - **Detect language** automatically from the first 30 seconds
 - **Identify speakers** via pyannote.audio diarization (optional)
 - **Clean transcripts** with Anthropic Haiku — removes filler words while preserving meaning (optional)
-- **Summarize** with Anthropic Sonnet
+- **Summarize and digest** with Codex via local Smart Router, with Anthropic fallback
 - **Search** across all transcribed content using semantic embeddings
 - **Chat** with your transcript library via OpenClaw AI skills
 - **Batch process** entire YouTube channels
@@ -58,7 +58,7 @@ YouTube URL → yt-dlp download
   → Transcription (mlx-whisper large-v3-turbo, Metal GPU)
   → Speaker Diarization (pyannote.audio) [optional]
   → LLM Transcript Cleanup (Anthropic Haiku) [optional]
-  → Summarization (Anthropic Sonnet)
+  → Summarization + digest intelligence (Codex via Smart Router; Anthropic fallback)
   → Semantic Embeddings (nomic-embed-text-v1.5, 768d, speaker-aware chunks)
 ```
 
@@ -68,7 +68,7 @@ YouTube URL → yt-dlp download
 - **Docker Desktop** (for Postgres, Redis, and the web app)
 - **Python 3.12+**
 - **HuggingFace token** — required for speaker diarization (pyannote.audio models)
-- **Anthropic API key** — required for summarization and optional transcript cleanup
+- **Anthropic API key** — required for fallback paths and optional transcript cleanup
 
 ## Installation & Setup
 
@@ -157,10 +157,20 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `HF_TOKEN` | | HuggingFace token for pyannote.audio models |
 | `TRANSCRIPT_CLEANUP_ENABLED` | `false` | Enable LLM-powered filler word removal |
 | `CLEANUP_MODEL` | `claude-haiku-4-5` | Anthropic model for transcript cleanup (`ANTHROPIC_CLEANUP_MODEL` remains a deprecated alias) |
-| `SUMMARY_MODEL` | `claude-sonnet-4-5` | Anthropic model for pipeline summaries, report backfills, and evaluation generation (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias) |
+| `SUMMARY_MODEL` | `codex` | Model for pipeline summaries, report backfills, and evaluation generation; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
 | `CHAT_MODEL` | `claude-haiku-4-5` | Anthropic model for web/Telegram chat (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias) |
 | `PERSONA_MODEL` | `claude-sonnet-4-5` | Anthropic model for persona generation/refresh (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias) |
-| `DIGEST_MODEL` | `claude-sonnet-4-5` | Anthropic model for the overnight/morning digest; old `ANTHROPIC_SUMMARY_MODEL` also still feeds this unless `DIGEST_MODEL` is set |
+| `DIGEST_MODEL` | `codex` | Model for the overnight/morning digest; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `SUMMARY_LLM_PROVIDER` | `openai_compatible` | Summary provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
+| `SUMMARY_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `SUMMARY_LLM_PROVIDER=openai_compatible` |
+| `SUMMARY_LLM_API_KEY` | | Optional bearer token for the summary OpenAI-compatible endpoint; leave empty for local Smart Router |
+| `SUMMARY_LLM_FALLBACK_PROVIDER` | `anthropic` | Summary fallback provider when the Codex route fails |
+| `SUMMARY_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Summary fallback model if the OpenAI-compatible route fails |
+| `DIGEST_LLM_PROVIDER` | `openai_compatible` | Digest provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
+| `DIGEST_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `DIGEST_LLM_PROVIDER=openai_compatible` |
+| `DIGEST_LLM_API_KEY` | | Optional bearer token for the digest OpenAI-compatible endpoint; leave empty for local Smart Router |
+| `DIGEST_LLM_FALLBACK_PROVIDER` | `anthropic` | Digest fallback provider when the Codex route fails |
+| `DIGEST_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Digest fallback model if the OpenAI-compatible route fails |
 | `ANTHROPIC_API_KEY` | | API key for summarization, cleanup, chat, persona, and digest calls |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |

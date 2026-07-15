@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies import get_db
 from app.main import create_app
+from app.routers import global_search as global_search_router
 from app.routers import search as search_router
 
 
@@ -129,6 +130,49 @@ class TestVideoSubmission:
         assert channel.youtube_channel_id == "UC12345"
         assert video.channel_id == channel.id
         assert video.title == "Test Video"
+
+
+class TestTranscriptionEndpoint:
+    def test_transcription_sanitizes_non_finite_floats(self):
+        video_id = uuid.uuid4()
+        transcription = SimpleNamespace(
+            id=uuid.uuid4(),
+            video_id=video_id,
+            full_text="hello world",
+            language="en",
+            model_size="test",
+            word_count=2,
+            processing_time_seconds=float("nan"),
+            segments=[
+                SimpleNamespace(
+                    segment_index=0,
+                    start_time=0.0,
+                    end_time=1.5,
+                    text="hello",
+                    confidence=float("nan"),
+                    speaker="SPEAKER_00",
+                ),
+                SimpleNamespace(
+                    segment_index=1,
+                    start_time=float("nan"),
+                    end_time=float("inf"),
+                    text="world",
+                    confidence=0.9,
+                    speaker=None,
+                ),
+            ],
+        )
+        client = _build_client(StubDB(execute_results=[transcription, None]))
+
+        resp = client.get(f"/api/transcriptions/{video_id}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["processing_time_seconds"] is None
+        assert body["segments"][0]["confidence"] is None
+        assert body["segments"][1]["start"] is None
+        assert body["segments"][1]["end"] is None
+        assert body["segments"][1]["confidence"] == 0.9
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +307,99 @@ class TestSearchEndpoint:
         )
         assert "badge-" not in resp.text
         assert "card-body" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Global search endpoint tests
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalSearchEndpoint:
+    def test_empty_form_query_returns_empty(self):
+        client = _build_client()
+        resp = client.post("/api/global-search", data={"query": ""})
+        assert resp.status_code == 200
+        assert resp.json()["results"] == []
+
+    def test_json_global_search(self, monkeypatch):
+        async def fake_global_search(db, query, query_embedding, options):
+            return {
+                "query": query,
+                "results": [
+                    {
+                        "rank": 1,
+                        "video_id": str(uuid.uuid4()),
+                        "video_title": "Global Result",
+                        "source_type": "transcript",
+                        "evidence_text": "Useful transcript evidence",
+                        "fused_score": 0.03,
+                        "score_components": {"vector": 0.02, "keyword": 0.01},
+                    }
+                ],
+                "candidate_count": 1,
+                "lane_counts": {"vector": 1, "keyword": 1, "summary": 0},
+                "options": {"source_type": options.source_type},
+            }
+
+        monkeypatch.setattr(
+            "app.services.search.encode_query",
+            lambda query, model_cache_dir=None: [0.1] * 768,
+        )
+        monkeypatch.setattr(global_search_router, "run_global_search", fake_global_search)
+
+        client = _build_client()
+        resp = client.post(
+            "/api/global-search",
+            json={"query": "deployment", "source_type": "transcript"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["query"] == "deployment"
+        assert body["results"][0]["video_title"] == "Global Result"
+        assert body["options"]["source_type"] == "transcript"
+
+    def test_htmx_global_search(self, monkeypatch):
+        async def fake_global_search(db, query, query_embedding, options):
+            return {
+                "query": query,
+                "results": [
+                    {
+                        "rank": 1,
+                        "video_id": str(uuid.uuid4()),
+                        "video_title": "HTMX Global Result",
+                        "channel_name": "A Channel",
+                        "source_type": "summary",
+                        "evidence_text": "Summary evidence",
+                        "start_time": None,
+                        "end_time": None,
+                        "youtube_url": None,
+                        "fused_score": 0.0328,
+                        "score_components": {"summary": 0.0328},
+                    }
+                ],
+                "candidate_count": 1,
+                "lane_counts": {"vector": 0, "keyword": 0, "summary": 1},
+                "options": {},
+            }
+
+        monkeypatch.setattr(
+            "app.services.search.encode_query",
+            lambda query, model_cache_dir=None: [0.1] * 768,
+        )
+        monkeypatch.setattr(global_search_router, "run_global_search", fake_global_search)
+
+        client = _build_client()
+        resp = client.post(
+            "/api/global-search",
+            data={"query": "themes", "source_type": "summary"},
+            headers={"HX-Request": "true"},
+        )
+
+        assert resp.status_code == 200
+        assert "HTMX Global Result" in resp.text
+        assert "Summary evidence" in resp.text
+        assert "summary 1" in resp.text
 
 
 # ---------------------------------------------------------------------------

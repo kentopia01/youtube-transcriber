@@ -88,9 +88,6 @@ The strongest useful thread is that AI is not valuable because it adds another d
 - Relevant for agent GTM workflows and internal automation design.
 - Useful for thinking about where agent systems should own tasks versus where humans should stay accountable.
 
-## Watch Map
-- timestamp unavailable: Skim the parts on SDR throughput, proprietary data, and compensation incentives.
-
 ## Source/Metadata
 - Title: The AI Sales Stack
 - Transcript words: 320
@@ -207,7 +204,6 @@ def test_build_report_render_data_is_summary_first():
     assert data.concepts_html is not None
     assert "Proprietary data moat" in data.concepts_html
     assert data.operator_notes_html is not None
-    assert data.watch_map_html is not None
     assert data.key_points == [
         "Claim: AI increases SDR throughput when it removes repetitive prospecting work instead of merely adding another dashboard. | Evidence: The speaker ties useful automation to prospecting workflow removal. | Caveat: The summary does not prove every team has the same workflow. | Implication: Ken should automate around known GTM bottlenecks.",
         "Claim: Proprietary data moats matter because generic automation is easy for competitors to copy. | Evidence: The video contrasts proprietary data with generic tooling. | Caveat: The moat depends on data quality. | Implication: Ken should preserve unique source data in agent GTM workflows.",
@@ -252,7 +248,7 @@ def test_render_video_report_html_is_self_contained():
     assert "Detailed Brief" in html
     assert "Notable Concepts &amp; Terms" in html
     assert "Operator Notes / Why Ken Should Care" in html
-    assert "Watch Map" in html
+    assert "Watch Map" not in html
     assert html.index("At-a-Glance") < html.index("Executive Summary")
     assert html.index("Executive Summary") < html.index("Key Takeaways")
     assert html.index("Key Takeaways") < html.index("Detailed Brief")
@@ -368,8 +364,10 @@ def test_build_report_caption_uses_scan_first_summary():
     caption = build_report_caption(_summary(uuid.uuid4()).content)
 
     assert caption is not None
-    assert "speaker argues AI sales stacks matter" in caption
-    assert "AI increases SDR throughput" in caption
+    assert "Verdict: Skim" in caption
+    assert "Thesis: The speaker argues AI sales stacks matter" in caption
+    assert "Do next:" in caption
+    assert "agent GTM workflows" in caption
     assert "Main Topics" not in caption
 
 

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.routers import agents, channels, chat, jobs, pages, search, subscriptions, transcriptions, videos
+from app.routers import agents, channels, chat, global_search, jobs, pages, search, subscriptions, transcriptions, videos
 from app.routers import llm_usage
 
 structlog.configure(
@@ -91,6 +91,7 @@ def create_app() -> FastAPI:
     application.include_router(videos.router)
     application.include_router(channels.router)
     application.include_router(search.router)
+    application.include_router(global_search.router)
     application.include_router(jobs.router)
     application.include_router(transcriptions.router)
     application.include_router(chat.router)
