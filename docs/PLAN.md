@@ -366,3 +366,15 @@ Implemented posture:
 - Anthropic remains the rollback/fallback path per workflow
 
 Source of truth: `docs/tasks/T047_chat_persona_codex_default.md`.
+
+## Follow-on: T048 subscription watchlist and long-form ingest
+
+T048 keeps the followed-channel list focused on long-form signal and prevents autonomous polling from downloading Shorts/reels/short clips.
+
+Target posture:
+- re-enable or add Ken-requested channels as subscriptions
+- subscription auto-ingest rejects videos shorter than the configured long-form floor
+- manual single-video submissions are unaffected
+- Andrej Karpathy is backfilled with the 30 most recent long-form videos
+
+Source of truth: `docs/tasks/T048_subscription_watchlist_longform.md`.

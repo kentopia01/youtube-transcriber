@@ -1,13 +1,13 @@
-"""Video classification — decides whether a YouTube URL is a "regular video"
-worth ingesting.
+"""Video classification — decides whether a YouTube URL is worth auto-ingesting.
 
 Rejects:
   - YouTube Shorts (duration ≤ ``shorts_max_duration_seconds`` OR ``/shorts/``
     URL path)
+  - Short clips below the configured long-form floor
   - Live streams that are currently live or upcoming (not yet recorded)
 
 Accepts:
-  - Regular uploaded videos of any length
+  - Long-form uploaded videos
   - Recordings of past live streams (``live_status='was_live'``)
 """
 
@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
+
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -33,7 +35,19 @@ class ClassificationResult:
         return self.is_regular
 
 
-def classify_video_info(info: dict[str, Any]) -> ClassificationResult:
+def _duration_seconds(info: dict[str, Any]) -> int | None:
+    duration = info.get("duration")
+    if duration is None:
+        return None
+    try:
+        return int(duration)
+    except (TypeError, ValueError):
+        return None
+
+
+def classify_video_info(
+    info: dict[str, Any], *, min_duration_seconds: int | None = None
+) -> ClassificationResult:
     """Classify a video from its yt-dlp metadata dict.
 
     Only rejects for signals we can verify from the metadata. On any
@@ -43,7 +57,12 @@ def classify_video_info(info: dict[str, Any]) -> ClassificationResult:
     live_status = (info.get("live_status") or "").lower()
     is_live = info.get("is_live")
     url = info.get("webpage_url") or info.get("url") or ""
-    duration = info.get("duration")
+    duration = _duration_seconds(info)
+    long_form_floor = (
+        settings.auto_ingest_min_duration_seconds
+        if min_duration_seconds is None
+        else min_duration_seconds
+    )
 
     if is_live is True or live_status in {"is_live", "is_upcoming"}:
         return ClassificationResult(False, f"live_status={live_status or 'is_live'}")
@@ -51,13 +70,22 @@ def classify_video_info(info: dict[str, Any]) -> ClassificationResult:
     if "/shorts/" in url.lower():
         return ClassificationResult(False, "url contains /shorts/")
 
-    if duration is not None:
-        try:
-            d = int(duration)
-        except (TypeError, ValueError):
-            d = None
-        if d is not None and 0 < d <= SHORTS_MAX_DURATION_SECONDS:
-            return ClassificationResult(False, f"duration {d}s ≤ {SHORTS_MAX_DURATION_SECONDS}s (likely Short)")
+    if duration is not None and 0 < duration <= SHORTS_MAX_DURATION_SECONDS:
+        return ClassificationResult(
+            False,
+            f"duration {duration}s <= {SHORTS_MAX_DURATION_SECONDS}s (likely Short)",
+        )
+
+    if (
+        duration is not None
+        and long_form_floor is not None
+        and long_form_floor > 0
+        and 0 < duration < long_form_floor
+    ):
+        return ClassificationResult(
+            False,
+            f"duration {duration}s < long-form minimum {long_form_floor}s",
+        )
 
     return ClassificationResult(True, None)
 

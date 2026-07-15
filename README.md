@@ -182,6 +182,7 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DIGEST_LLM_FALLBACK_PROVIDER` | `anthropic` | Digest fallback provider when the Codex route fails |
 | `DIGEST_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Digest fallback model if the OpenAI-compatible route fails |
 | `ANTHROPIC_API_KEY` | | API key for summarization, cleanup, chat, persona, and digest calls |
+| `AUTO_INGEST_MIN_DURATION_SECONDS` | `600` | Minimum duration for subscription auto-ingest; filters Shorts/reels/short clips from followed channels, set `0` to disable |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
 | `REDIS_URL` | | Redis URL (Celery broker) |

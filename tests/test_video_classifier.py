@@ -1,4 +1,4 @@
-"""Tests for the regular-video classifier."""
+"""Tests for the subscription auto-ingest video classifier."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ class TestClassifyVideoInfo:
         r = classify_video_info(info)
         assert r.is_regular is False
 
-    def test_61s_treated_as_regular(self):
+    def test_61s_treated_as_short_clip(self):
         info = {
             "duration": 61,
             "webpage_url": "https://www.youtube.com/watch?v=borderline",
@@ -96,6 +96,28 @@ class TestClassifyVideoInfo:
             "live_status": "not_live",
         }
         r = classify_video_info(info)
+        assert r.is_regular is False
+        assert "long-form minimum" in r.reason
+
+    def test_below_long_form_floor_rejected(self):
+        info = {
+            "duration": 300,
+            "webpage_url": "https://www.youtube.com/watch?v=clip",
+            "is_live": False,
+            "live_status": "not_live",
+        }
+        r = classify_video_info(info)
+        assert r.is_regular is False
+        assert "long-form minimum" in r.reason
+
+    def test_long_form_floor_can_be_disabled(self):
+        info = {
+            "duration": 300,
+            "webpage_url": "https://www.youtube.com/watch?v=clip",
+            "is_live": False,
+            "live_status": "not_live",
+        }
+        r = classify_video_info(info, min_duration_seconds=0)
         assert r.is_regular is True
 
     def test_unknown_duration_accepted(self):

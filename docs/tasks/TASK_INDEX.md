@@ -56,6 +56,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T045 | Summary delivery polish and Codex default | done | SentryClaw | Telegram-first report caption, Watch Map removal, report de-dupe, Codex-primary summary default with Anthropic fallback validated on five-video dry run |
 | T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
 | T047 | Chat and persona Codex default | done | SentryClaw | Web/Telegram chat, direct video Q&A, and channel persona generation now use Smart Router Codex with Anthropic fallback |
+| T048 | Subscription watchlist and long-form ingest | done | SentryClaw | Requested channels enabled, long-form auto-ingest floor added, and Andrej Karpathy backlog seeded |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

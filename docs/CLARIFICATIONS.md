@@ -98,3 +98,9 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - The transcriber must not read or store Codex OAuth tokens. It should call a local OpenAI-compatible endpoint.
 - Anthropic remains the explicit fallback/rollback path for migrated workflows.
 - Per-workload provider flags are preferred over switching the whole application at once.
+
+### T048 subscription watchlist and long-form ingest clarifications
+- Subscription auto-ingest is for long-form videos, not Shorts/reels/short clips.
+- The default autonomous duration floor is 600 seconds; set `AUTO_INGEST_MIN_DURATION_SECONDS=0` only if short-form ingest is intentionally desired.
+- Manual single-video submissions remain outside this filter so operators can still transcribe a short clip explicitly.
+- Backlog seeding for newly followed channels should apply the same duration floor before queueing videos.

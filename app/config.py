@@ -239,6 +239,9 @@ class Settings(BaseSettings):
     auto_ingest_daily_cost_cap_usd: float = 4.0
     auto_ingest_poll_hours_default: int = 24
     auto_ingest_max_videos_per_poll_default: int = 3
+    # Subscription auto-ingest is for long-form signal, not Shorts/reels/clips.
+    # Set to 0 to disable the long-form duration floor.
+    auto_ingest_min_duration_seconds: int = 600
 
     # Library compression — a video untouched for N days has its WAV removed.
     # Transcript/summary/embeddings stay in Postgres; chat still works.
