@@ -535,6 +535,30 @@ class TestErrorPage:
         assert "Back to Dashboard" in html
 
 
+class TestVideoDetailRenderingSafety:
+    def test_summary_uses_escaping_first_markdown_renderer(self):
+        video = _make_video()
+        transcription = _make_transcription(video_id=video.id)
+        summary = _make_summary(
+            video_id=video.id,
+            content='## Safe heading\n**Bold** <img src=x onerror="alert(1)">',
+        )
+        db = MockDB(
+            execute_1=video,
+            execute_2=transcription,
+            execute_3=summary,
+            execute_4=None,
+            default=[],
+        )
+
+        response = _build_client(db).get(f"/videos/{video.id}")
+
+        assert response.status_code == 200
+        assert "<strong>Bold</strong>" in response.text
+        assert '<img src=x onerror="alert(1)">' not in response.text
+        assert "&lt;img src=x onerror=\"alert(1)\"&gt;" in response.text
+
+
 # ---------------------------------------------------------------------------
 # Tests: Legacy redirects
 # ---------------------------------------------------------------------------
@@ -846,6 +870,14 @@ class TestChatXSSAndEdgeCases:
         resp = client.get(f"/chat/{sid}")
         html = resp.text
         assert 'onclick="evil()"' not in html
+
+    def test_dynamic_markdown_is_escaped_and_link_sanitized(self):
+        client, sid = self._build_session_with_messages([])
+        html = client.get(f"/chat/{sid}").text
+        assert "const escaped = escapeHTML(text ?? '')" in html
+        assert "sanitizeRenderedMarkdown(marked.parse(escaped))" in html
+        assert "parsed.protocol === 'http:' || parsed.protocol === 'https:'" in html
+        assert "window.renderSafeMarkdown" in html
 
     def test_source_title_xss_escaped(self):
         sources = [{"video_title": "<b onmouseover=alert(1)>evil</b>",

@@ -94,9 +94,9 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
         });
         const data = await resp.json();
         if (resp.ok) {
-            result.innerHTML = '<p class="text-sm text-success">Video queued! <a href="/jobs/' + data.job_id + '" class="link">Track progress</a></p>';
+            result.innerHTML = '<p class="text-sm text-success">Video queued! <a href="/jobs/' + escapeHtml(data.job_id) + '" class="link">Track progress</a></p>';
         } else {
-            result.innerHTML = '<p class="text-sm text-error">' + (data.detail || 'Error') + '</p>';
+            result.innerHTML = '<p class="text-sm text-error">' + escapeHtml(data.detail || 'Error') + '</p>';
         }
     } catch (err) {
         result.innerHTML = '<p class="text-sm text-error">Network error</p>';
@@ -124,14 +124,23 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
             channelId = data.channel_id;
             discoveredVideos = data.videos || [];
             showChannelConfirmDialog(data.channel_name, discoveredVideos);
-            result.innerHTML = '<p class="text-sm text-success">Found ' + discoveredVideos.length + ' videos in ' + data.channel_name + '</p>';
+            result.innerHTML = '<p class="text-sm text-success">Found ' + discoveredVideos.length + ' videos in ' + escapeHtml(data.channel_name || '') + '</p>';
         } else {
-            result.innerHTML = '<p class="text-sm text-error">' + (data.detail || 'Error') + '</p>';
+            result.innerHTML = '<p class="text-sm text-error">' + escapeHtml(data.detail || 'Error') + '</p>';
         }
     } catch (err) {
         result.innerHTML = '<p class="text-sm text-error">Network error</p>';
     }
 });
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
 
 function showChannelConfirmDialog(channelName, videos) {
     document.getElementById('channel-dialog-title').textContent = 'Select Videos from ' + channelName;
@@ -140,9 +149,9 @@ function showChannelConfirmDialog(channelName, videos) {
     const list = document.getElementById('channel-video-list');
     list.innerHTML = videos.map((v, i) => `
         <div class="flex items-center gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
-            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox-field channel-video-cb">
+            <input type="checkbox" id="vid-${i}" value="${escapeHtml(v.video_id)}" checked class="checkbox-field channel-video-cb">
             <label for="vid-${i}" class="flex-1 cursor-pointer">
-                <span class="font-medium text-sm">${v.title}</span>
+                <span class="font-medium text-sm">${escapeHtml(v.title || 'Untitled')}</span>
                 <span class="font-mono text-xs text-faint ml-2">${v.duration ? Math.floor(v.duration / 60) + ':' + String(v.duration % 60).padStart(2, '0') : '--:--'}</span>
             </label>
         </div>
@@ -175,7 +184,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
         if (resp.ok) {
             document.getElementById('channel-confirm-dialog').close();
             document.getElementById('channel-result').innerHTML =
-                '<p class="text-sm text-success">Queued ' + data.total_videos + ' videos in ' + data.total_batches + ' batch(es). <a href="/queue" class="link">View Queue</a></p>';
+                '<p class="text-sm text-success">Queued ' + escapeHtml(data.total_videos) + ' videos in ' + escapeHtml(data.total_batches) + ' batch(es). <a href="/queue" class="link">View Queue</a></p>';
         } else {
             alert(data.detail || 'Error processing videos');
         }

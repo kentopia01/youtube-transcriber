@@ -99,9 +99,50 @@
         gfm: true,
     });
 
-    function renderMarkdown(text) {
-        return marked.parse(text);
+    const MARKDOWN_TAGS = new Set([
+        'P', 'BR', 'STRONG', 'EM', 'CODE', 'PRE', 'UL', 'OL', 'LI',
+        'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'A',
+        'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD'
+    ]);
+
+    function isSafeLink(href) {
+        if (!href) return false;
+        try {
+            const parsed = new URL(href, window.location.origin);
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch (err) {
+            return false;
+        }
     }
+
+    function sanitizeRenderedMarkdown(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        for (const el of Array.from(template.content.querySelectorAll('*'))) {
+            if (!MARKDOWN_TAGS.has(el.tagName)) {
+                el.replaceWith(document.createTextNode(el.textContent || ''));
+                continue;
+            }
+            for (const attr of Array.from(el.attributes)) {
+                const allowed = el.tagName === 'A' && (attr.name === 'href' || attr.name === 'title');
+                if (!allowed) el.removeAttribute(attr.name);
+            }
+            if (el.tagName === 'A') {
+                if (!isSafeLink(el.getAttribute('href'))) {
+                    el.removeAttribute('href');
+                } else {
+                    el.setAttribute('rel', 'noopener noreferrer');
+                }
+            }
+        }
+        return template.innerHTML;
+    }
+
+    function renderMarkdown(text) {
+        const escaped = escapeHTML(text ?? '');
+        return sanitizeRenderedMarkdown(marked.parse(escaped));
+    }
+    window.renderSafeMarkdown = renderMarkdown;
 
     // --- Auto-resize textarea ---
     const input = document.getElementById('chat-input');

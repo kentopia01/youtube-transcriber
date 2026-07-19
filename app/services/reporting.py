@@ -165,6 +165,11 @@ def _markdownish_to_html(text: str | None) -> str:
     return "\n".join(parts)
 
 
+def markdownish_to_safe_html(text: str | None) -> str:
+    """Public escaping-first renderer for persisted/model-authored Markdown."""
+    return _markdownish_to_html(text)
+
+
 def _inline_markdown(text: str) -> str:
     escaped = escape(text, quote=False)
     escaped = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
@@ -666,6 +671,7 @@ __all__ = [
     "build_report_caption",
     "build_report_render_data",
     "generate_video_report",
+    "markdownish_to_safe_html",
     "render_video_report_html",
     "render_video_report_markdown",
 ]

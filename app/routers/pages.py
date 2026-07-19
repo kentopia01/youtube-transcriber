@@ -223,6 +223,11 @@ async def video_detail(request: Request, video_id: uuid.UUID, db: AsyncSession =
         select(Summary).where(Summary.video_id == video_id)
     )
     summary = summary_result.scalar_one_or_none()
+    summary_html = None
+    if summary:
+        from app.services.reporting import markdownish_to_safe_html
+
+        summary_html = markdownish_to_safe_html(summary.content)
 
     latest_job_result = await db.execute(
         select(Job).where(Job.video_id == video_id).order_by(Job.created_at.desc()).limit(1)
@@ -237,6 +242,7 @@ async def video_detail(request: Request, video_id: uuid.UUID, db: AsyncSession =
             "video": video,
             "transcription": transcription,
             "summary": summary,
+            "summary_html": summary_html,
             "latest_job": latest_job,
         },
     )

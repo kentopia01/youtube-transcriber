@@ -228,11 +228,11 @@ document.getElementById('video-form').addEventListener('submit', async (e) => {
         });
         const data = await resp.json();
         if (resp.ok) {
-            result.innerHTML = '<p class="text-sm text-success mt-1">Queued. <a href="/jobs/' + data.job_id + '" class="link">Open job</a></p>';
+            result.innerHTML = '<p class="text-sm text-success mt-1">Queued. <a href="/jobs/' + escapeHtml(data.job_id) + '" class="link">Open job</a></p>';
             document.getElementById('video-url').value = '';
             htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
         } else {
-            result.innerHTML = '<p class="text-sm text-error mt-1">' + (data.detail || 'Error') + '</p>';
+            result.innerHTML = '<p class="text-sm text-error mt-1">' + escapeHtml(data.detail || 'Error') + '</p>';
         }
     } catch (err) {
         result.innerHTML = '<p class="text-sm text-error mt-1">Network error</p>';
@@ -266,7 +266,7 @@ document.getElementById('channel-form').addEventListener('submit', async (e) => 
             showChannelConfirmDialog(data.channel_name, discoveredVideos);
             result.innerHTML = '<p class="text-sm text-success mt-1">Found ' + discoveredVideos.length + ' videos</p>';
         } else {
-            result.innerHTML = '<p class="text-sm text-error mt-1">' + (data.detail || 'Error') + '</p>';
+            result.innerHTML = '<p class="text-sm text-error mt-1">' + escapeHtml(data.detail || 'Error') + '</p>';
         }
     } catch (err) {
         result.innerHTML = '<p class="text-sm text-error mt-1">Network error</p>';
@@ -280,6 +280,15 @@ function escapeHtml(value) {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+}
+
+function safeHttpUrl(value) {
+    try {
+        const parsed = new URL(String(value ?? ''), window.location.origin);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : '';
+    } catch (err) {
+        return '';
+    }
 }
 
 function formatDuration(seconds) {
@@ -298,11 +307,11 @@ function showChannelConfirmDialog(channelName, videos) {
     const list = document.getElementById('channel-video-list');
     list.innerHTML = videos.map((v, i) => `
         <div class="flex items-start gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
-            <input type="checkbox" id="vid-${i}" value="${v.video_id}" checked class="checkbox-field channel-video-cb">
+            <input type="checkbox" id="vid-${i}" value="${escapeHtml(v.video_id)}" checked class="checkbox-field channel-video-cb">
             <label for="vid-${i}" class="flex gap-3 flex-1 cursor-pointer">
                 <span class="rounded-md overflow-hidden shrink-0" style="width: 7rem; height: 3.9rem; background: var(--bg-elevated); border: 1px solid var(--border-default);">
-                    ${v.thumbnail
-                        ? `<img src="${escapeHtml(v.thumbnail)}" alt="${escapeHtml(v.title || 'Video thumbnail')}" style="width: 100%; height: 100%; object-fit: cover;">`
+                    ${safeHttpUrl(v.thumbnail)
+                        ? `<img src="${escapeHtml(safeHttpUrl(v.thumbnail))}" alt="${escapeHtml(v.title || 'Video thumbnail')}" style="width: 100%; height: 100%; object-fit: cover;">`
                         : `<span class="h-full w-full flex items-center justify-center text-xs text-faint">No thumb</span>`}
                 </span>
                 <span class="flex-1 min-w-0">
@@ -310,7 +319,7 @@ function showChannelConfirmDialog(channelName, videos) {
                     <span class="font-mono text-xs text-faint block mt-1">${formatDuration(v.duration)}</span>
                 </span>
             </label>
-            ${v.url ? `<a href="${escapeHtml(v.url)}" target="_blank" rel="noopener" class="link text-xs shrink-0" onclick="event.stopPropagation()">Open</a>` : ''}
+            ${safeHttpUrl(v.url) ? `<a href="${escapeHtml(safeHttpUrl(v.url))}" target="_blank" rel="noopener" class="link text-xs shrink-0" onclick="event.stopPropagation()">Open</a>` : ''}
         </div>
     `).join('');
     document.getElementById('select-all').checked = true;
@@ -337,7 +346,7 @@ document.getElementById('confirm-process-btn').addEventListener('click', async (
         if (resp.ok) {
             document.getElementById('channel-confirm-dialog').close();
             document.getElementById('channel-result').innerHTML =
-                '<p class="text-sm text-success mt-1">Queued ' + data.total_videos + ' videos. <a href="/library" class="link">View Library</a></p>';
+                '<p class="text-sm text-success mt-1">Queued ' + escapeHtml(data.total_videos) + ' videos. <a href="/library" class="link">View Library</a></p>';
             htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
         } else {
             alert(data.detail || 'Error processing videos');

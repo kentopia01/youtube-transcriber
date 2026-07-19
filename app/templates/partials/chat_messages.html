@@ -44,9 +44,9 @@
 <script>
 // Render markdown for server-rendered assistant messages
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof marked !== 'undefined') {
+    if (typeof window.renderSafeMarkdown === 'function') {
         document.querySelectorAll('.chat-md-content').forEach(function(el) {
-            el.innerHTML = marked.parse(el.textContent);
+            el.innerHTML = window.renderSafeMarkdown(el.textContent);
         });
     }
 });
