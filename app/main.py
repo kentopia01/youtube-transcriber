@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     yield
 
 # Paths that skip API key auth
-_AUTH_SKIP_PREFIXES = ("/health", "/static/", "/")
+_AUTH_SKIP_PREFIXES = ("/health", "/static/")
 
 
 def _auth_required(path: str) -> bool:
@@ -58,6 +58,10 @@ def _auth_required(path: str) -> bool:
 
 def create_app() -> FastAPI:
     application = FastAPI(title="YouTube Transcriber", version="0.1.0", lifespan=lifespan)
+
+    @application.get("/health", include_in_schema=False)
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
 
     # API key middleware
     @application.middleware("http")

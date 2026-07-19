@@ -79,3 +79,23 @@ class TestLifespanRunsOnStartup:
             pass
 
         assert calls["n"] == 1
+
+
+class TestApiKeyBoundary:
+    @pytest.mark.parametrize("path", ["/", "/health", "/static/main.css"])
+    def test_public_paths_skip_auth(self, path):
+        assert app_main._auth_required(path) is False
+
+    @pytest.mark.parametrize("path", ["/docs", "/api/videos", "/search", "/global-search"])
+    def test_non_public_paths_require_auth(self, path):
+        assert app_main._auth_required(path) is True
+
+    def test_middleware_enforces_configured_key(self, monkeypatch):
+        monkeypatch.setattr(app_main.settings, "api_key", "local-test-key")
+        monkeypatch.setattr(app_main, "_warm_embedding_model", lambda: None)
+        app = app_main.create_app()
+
+        with TestClient(app) as client:
+            assert client.get("/health").json() == {"status": "ok"}
+            assert client.get("/docs").status_code == 401
+            assert client.get("/docs", headers={"X-API-Key": "local-test-key"}).status_code == 200

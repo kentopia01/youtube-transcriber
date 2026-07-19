@@ -113,10 +113,10 @@ class FakeDB:
 
 
 class TestAccessControl:
-    def test_allowed_when_list_empty(self):
+    def test_denied_when_list_empty(self):
         with patch("app.telegram_bot.settings") as mock_settings:
             mock_settings.telegram_allowed_users = []
-            assert _is_user_allowed(999) is True
+            assert _is_user_allowed(999) is False
 
     def test_allowed_when_in_list(self):
         with patch("app.telegram_bot.settings") as mock_settings:
@@ -550,10 +550,18 @@ class TestCreateBotApplication:
     def test_creates_application_with_token(self):
         with patch("app.telegram_bot.settings") as mock_settings:
             mock_settings.telegram_bot_token = "fake-token:12345"
+            mock_settings.telegram_allowed_users = [123]
             app = create_bot_application()
             # Expected: 23 commands + 1 callback_query + 1 message handler.
             # See _build_command_manifest() in app/telegram_bot.py.
             assert len(app.handlers[0]) == 25
+
+    def test_raises_without_allowlist(self):
+        with patch("app.telegram_bot.settings") as mock_settings:
+            mock_settings.telegram_bot_token = "fake-token:12345"
+            mock_settings.telegram_allowed_users = []
+            with pytest.raises(ValueError, match="TELEGRAM_ALLOWED_USERS"):
+                create_bot_application()
 
 
 class TestBotLock:

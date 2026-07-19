@@ -45,8 +45,6 @@ _lock_handle = None
 
 
 def _is_user_allowed(user_id: int) -> bool:
-    if not settings.telegram_allowed_users:
-        return True
     return user_id in settings.telegram_allowed_users
 
 
@@ -1568,6 +1566,8 @@ async def _cb_persona_refresh(query, channel_id: str) -> None:
 def create_bot_application() -> Application:
     if not settings.telegram_bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN is not configured")
+    if not settings.telegram_allowed_users:
+        raise ValueError("TELEGRAM_ALLOWED_USERS must contain at least one numeric user ID")
 
     app = (
         Application.builder()

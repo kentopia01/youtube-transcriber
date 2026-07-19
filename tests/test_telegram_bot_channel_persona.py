@@ -14,6 +14,11 @@ telegram = pytest.importorskip("telegram")
 from app import telegram_bot  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _authorize_test_user(monkeypatch):
+    monkeypatch.setattr(telegram_bot.settings, "telegram_allowed_users", [1])
+
+
 class _FakeScalars:
     def __init__(self, items):
         self._items = items
