@@ -75,13 +75,23 @@ def test_cleanup_task_uses_service_contract_and_updates_models(monkeypatch):
             {"text": "world", "speaker": "SPEAKER_01"},
         ]
 
-    monkeypatch.setattr(cleanup, "clean_transcript", fake_clean_transcript)
+    monkeypatch.setattr(
+        cleanup,
+        "clean_transcript",
+        lambda segment_payload, api_key, model, **kwargs: (
+            observed.update({"provider": kwargs.get("provider")})
+            or fake_clean_transcript(
+            segment_payload, api_key, model
+            )
+        ),
+    )
 
     result = cleanup.cleanup_transcript_task.run(payload)
 
     assert result == payload
-    assert observed["api_key"] == "api-key"
+    assert observed["api_key"] == ""
     assert observed["model"] == "cleanup-model"
+    assert observed["provider"] == "openai_compatible"
     assert observed["segment_payload"] == [
         {
             "start": 0.0,

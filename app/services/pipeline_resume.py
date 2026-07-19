@@ -49,7 +49,7 @@ def _build_resume_result(video: Video, *, has_embeddings: bool, has_summary: boo
     audio_path = (video.audio_file_path or "").strip()
     has_audio = bool(audio_path and os.path.exists(audio_path))
 
-    diarization_requires_audio = settings.diarization_enabled and bool(settings.hf_token)
+    diarization_requires_audio = settings.inline_diarization_enabled
     selected_stage = select_resume_stage(
         has_embeddings=has_embeddings,
         has_summary=has_summary,

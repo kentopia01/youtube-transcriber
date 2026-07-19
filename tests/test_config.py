@@ -45,6 +45,23 @@ class TestConfigDefaults:
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")
         assert s.diarization_enabled is False
 
+    def test_diarization_mode_defaults_to_deferred(self, monkeypatch):
+        monkeypatch.delenv("DIARIZATION_MODE", raising=False)
+        s = Settings(database_url="x", database_url_sync="x", redis_url="x", _env_file=None)
+        assert s.diarization_mode == "deferred"
+        assert s.inline_diarization_enabled is False
+
+    def test_inline_diarization_requires_enabled_token_and_inline_mode(self):
+        s = Settings(
+            database_url="x",
+            database_url_sync="x",
+            redis_url="x",
+            diarization_enabled=True,
+            diarization_mode="inline",
+            hf_token="hf-token",
+        )
+        assert s.inline_diarization_enabled is True
+
     def test_transcript_cleanup_disabled_by_default(self):
         s = Settings(database_url="x", database_url_sync="x", redis_url="x")
         assert s.transcript_cleanup_enabled is False
@@ -70,6 +87,11 @@ class TestConfigDefaults:
             "SUMMARY_LLM_API_KEY",
             "SUMMARY_LLM_FALLBACK_PROVIDER",
             "SUMMARY_LLM_FALLBACK_MODEL",
+            "CLEANUP_LLM_PROVIDER",
+            "CLEANUP_LLM_BASE_URL",
+            "CLEANUP_LLM_API_KEY",
+            "CLEANUP_LLM_FALLBACK_PROVIDER",
+            "CLEANUP_LLM_FALLBACK_MODEL",
             "CHAT_LLM_PROVIDER",
             "CHAT_LLM_BASE_URL",
             "CHAT_LLM_API_KEY",
@@ -95,6 +117,11 @@ class TestConfigDefaults:
         assert s.summary_llm_api_key == ""
         assert s.summary_llm_fallback_provider == "anthropic"
         assert s.summary_llm_fallback_model == DEFAULT_ANTHROPIC_SUMMARY_MODEL
+        assert s.cleanup_llm_provider == "openai_compatible"
+        assert s.cleanup_llm_base_url == "http://127.0.0.1:8400/v1"
+        assert s.cleanup_llm_api_key == ""
+        assert s.cleanup_llm_fallback_provider == "anthropic"
+        assert s.cleanup_llm_fallback_model == "claude-haiku-4-5"
         assert s.chat_llm_provider == "openai_compatible"
         assert s.chat_llm_base_url == "http://127.0.0.1:8400/v1"
         assert s.chat_llm_api_key == ""
@@ -230,6 +257,11 @@ class TestCanonicalModelSettings:
         assert s.chat_model == DEFAULT_CHAT_MODEL
         assert s.persona_model == DEFAULT_PERSONA_MODEL
         assert s.digest_model == DEFAULT_DIGEST_MODEL
+        assert s.cleanup_model == "yt-cleanup"
+        assert s.summary_model == "yt-summary"
+        assert s.chat_model == "yt-chat"
+        assert s.persona_model == "yt-persona"
+        assert s.digest_model == "yt-digest"
         assert s.anthropic_cleanup_model == DEFAULT_CLEANUP_MODEL
         assert s.anthropic_summary_model == DEFAULT_SUMMARY_MODEL
         assert s.anthropic_chat_model == DEFAULT_CHAT_MODEL

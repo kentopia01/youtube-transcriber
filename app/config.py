@@ -2,15 +2,16 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-DEFAULT_CLEANUP_MODEL = "claude-haiku-4-5"
+DEFAULT_ANTHROPIC_CLEANUP_MODEL = "claude-haiku-4-5"
+DEFAULT_CLEANUP_MODEL = "yt-cleanup"
 DEFAULT_ANTHROPIC_SUMMARY_MODEL = "claude-sonnet-4-5"
-DEFAULT_SUMMARY_MODEL = "codex"
+DEFAULT_SUMMARY_MODEL = "yt-summary"
 DEFAULT_ANTHROPIC_CHAT_MODEL = "claude-haiku-4-5"
-DEFAULT_CHAT_MODEL = "codex"
+DEFAULT_CHAT_MODEL = "yt-chat"
 DEFAULT_ANTHROPIC_PERSONA_MODEL = "claude-sonnet-4-5"
-DEFAULT_PERSONA_MODEL = "codex"
+DEFAULT_PERSONA_MODEL = "yt-persona"
 DEFAULT_ANTHROPIC_DIGEST_MODEL = "claude-sonnet-4-5"
-DEFAULT_DIGEST_MODEL = "codex"
+DEFAULT_DIGEST_MODEL = "yt-digest"
 
 
 class Settings(BaseSettings):
@@ -45,9 +46,21 @@ class Settings(BaseSettings):
 
     # Pipeline toggles
     diarization_enabled: bool = False
+    diarization_mode: str = Field(
+        "deferred",
+        validation_alias=AliasChoices("diarization_mode", "DIARIZATION_MODE"),
+    )
     transcript_cleanup_enabled: bool = False
 
-    # Canonical Anthropic model settings. Use these env vars for new config.
+    @property
+    def inline_diarization_enabled(self) -> bool:
+        return (
+            self.diarization_enabled
+            and bool(self.hf_token)
+            and (self.diarization_mode or "").strip().lower() == "inline"
+        )
+
+    # Canonical model settings. Use these env vars for new config.
     # Deprecated ANTHROPIC_*_MODEL env vars remain supported as aliases below.
     cleanup_model: str = Field(
         DEFAULT_CLEANUP_MODEL,
@@ -108,6 +121,26 @@ class Settings(BaseSettings):
     summary_llm_provider: str = Field(
         "openai_compatible",
         validation_alias=AliasChoices("summary_llm_provider", "SUMMARY_LLM_PROVIDER"),
+    )
+    cleanup_llm_provider: str = Field(
+        "openai_compatible",
+        validation_alias=AliasChoices("cleanup_llm_provider", "CLEANUP_LLM_PROVIDER"),
+    )
+    cleanup_llm_base_url: str = Field(
+        "http://127.0.0.1:8400/v1",
+        validation_alias=AliasChoices("cleanup_llm_base_url", "CLEANUP_LLM_BASE_URL"),
+    )
+    cleanup_llm_api_key: str = Field(
+        "",
+        validation_alias=AliasChoices("cleanup_llm_api_key", "CLEANUP_LLM_API_KEY"),
+    )
+    cleanup_llm_fallback_provider: str = Field(
+        "anthropic",
+        validation_alias=AliasChoices("cleanup_llm_fallback_provider", "CLEANUP_LLM_FALLBACK_PROVIDER"),
+    )
+    cleanup_llm_fallback_model: str = Field(
+        DEFAULT_ANTHROPIC_CLEANUP_MODEL,
+        validation_alias=AliasChoices("cleanup_llm_fallback_model", "CLEANUP_LLM_FALLBACK_MODEL"),
     )
     summary_llm_base_url: str = Field(
         "http://127.0.0.1:8400/v1",
@@ -216,7 +249,7 @@ class Settings(BaseSettings):
     persona_exemplar_count: int = 5
 
     # Per-video duration limit
-    max_video_duration_minutes: int = 120
+    max_video_duration_minutes: int = 250
 
     # Phase 3 recovery guardrails
     pipeline_manual_review_after_failures: int = 2
@@ -232,8 +265,8 @@ class Settings(BaseSettings):
     pipeline_stale_timeout_summarize_minutes: int = 60
     pipeline_stale_timeout_embed_minutes: int = 60
 
-    # Daily LLM budget cap (USD)
-    daily_llm_budget_usd: float = 5.0
+    # Daily LLM budget cap (USD). Set to 0 to disable.
+    daily_llm_budget_usd: float = 0.0
 
     # Autonomous work budgets — prevent auto-ingest from blowing the overall cap.
     auto_ingest_daily_cost_cap_usd: float = 4.0

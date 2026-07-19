@@ -31,6 +31,11 @@ def source_for_attempt_reason(reason: str | None) -> str | None:
 
 # Cost per million tokens (input, output) by model prefix
 _RATES: dict[str, tuple[float, float]] = {
+    # Local Smart Router / Codex auth path. These are not billed through the
+    # Anthropic API budget that this tracker was originally built around.
+    "codex": (0.0, 0.0),
+    "yt": (0.0, 0.0),
+    "gpt-5.6": (0.0, 0.0),
     "claude-haiku-4-5": (0.80, 4.00),
     "claude-haiku-4-20250514": (0.80, 4.00),
     "claude-haiku-4-5-20251001": (0.80, 4.00),
@@ -54,9 +59,17 @@ class BudgetExceededError(Exception):
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost for an Anthropic API call."""
-    rate_in, rate_out = _RATES.get(model, (3.00, 15.00))
+    """Estimate USD cost for a tracked LLM call."""
+    rate_in, rate_out = _rate_for_model(model)
     return (input_tokens * rate_in + output_tokens * rate_out) / 1_000_000
+
+
+def _rate_for_model(model: str) -> tuple[float, float]:
+    normalized = model or ""
+    for prefix, rates in _RATES.items():
+        if normalized == prefix or normalized.startswith(f"{prefix}-"):
+            return rates
+    return (3.00, 15.00)
 
 
 def record_usage(

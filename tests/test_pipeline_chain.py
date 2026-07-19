@@ -7,6 +7,12 @@ from celery import Celery
 from app.tasks import pipeline
 
 
+def _set_diarization_mode(monkeypatch, *, enabled: bool, mode: str, token: str = "hf-token"):
+    monkeypatch.setattr(pipeline.settings, "diarization_enabled", enabled)
+    monkeypatch.setattr(pipeline.settings, "diarization_mode", mode)
+    monkeypatch.setattr(pipeline.settings, "hf_token", token)
+
+
 class _FakeSig:
     def __init__(self, name, args, immutable=False):
         self.name = name
@@ -24,6 +30,7 @@ class TestPipelineChain:
 
     def test_full_pipeline_includes_all_v2_steps(self, monkeypatch):
         """Pipeline should include all 6 steps: download, transcribe, diarize, cleanup, summarize, embed."""
+        _set_diarization_mode(monkeypatch, enabled=True, mode="inline")
         captured_parts = []
 
         def fake_signature(name, args=None, app=None, immutable=False):
@@ -56,6 +63,7 @@ class TestPipelineChain:
 
     def test_pipeline_step_order(self, monkeypatch):
         """Verify steps are in the correct dependency order."""
+        _set_diarization_mode(monkeypatch, enabled=True, mode="inline")
         step_order = []
 
         def fake_signature(name, args=None, app=None, immutable=False):
@@ -79,6 +87,7 @@ class TestPipelineChain:
 
     def test_pipeline_passes_payload_to_each_stage(self, monkeypatch):
         """Each stage gets the same explicit payload so routing keeps the exact attempt identity."""
+        _set_diarization_mode(monkeypatch, enabled=True, mode="deferred")
         calls = []
 
         def fake_signature(name, args=None, app=None, immutable=False):
@@ -130,6 +139,8 @@ class TestPipelineChain:
         ]
 
     def test_pipeline_returns_async_result_id(self, monkeypatch):
+        _set_diarization_mode(monkeypatch, enabled=False, mode="deferred", token="")
+
         def fake_signature(name, args=None, app=None, immutable=False):
             return _FakeSig(name, args, immutable=immutable)
 
@@ -204,7 +215,8 @@ class TestPipelineFromPartialChain:
 class TestPipelineStepSkipping:
     """Test that diarize/cleanup tasks properly skip when disabled."""
 
-    def test_pipeline_always_has_six_steps(self, monkeypatch):
+    def test_pipeline_skips_inline_diarize_when_deferred(self, monkeypatch):
+        _set_diarization_mode(monkeypatch, enabled=True, mode="deferred")
         captured = []
 
         def fake_signature(name, args=None, app=None, immutable=False):
@@ -222,6 +234,37 @@ class TestPipelineStepSkipping:
         monkeypatch.setattr(pipeline, "chain", fake_chain)
 
         pipeline.run_pipeline("v1", job_id="job-1")
-        assert len(captured) == 6
-        assert [p.name for p in captured].count("tasks.diarize_and_align") == 1
+        assert [p.name for p in captured] == [
+            "tasks.download_audio",
+            "tasks.transcribe_audio",
+            "tasks.cleanup_transcript",
+            "tasks.summarize_transcription",
+            "tasks.generate_embeddings",
+        ]
+        assert [p.queue for p in captured] == ["audio", "audio", "post", "post", "post"]
+        assert [p.name for p in captured].count("tasks.diarize_and_align") == 0
         assert [p.name for p in captured].count("tasks.cleanup_transcript") == 1
+
+    def test_resume_from_transcribe_skips_diarize_in_deferred_mode(self, monkeypatch):
+        _set_diarization_mode(monkeypatch, enabled=True, mode="deferred")
+        captured = []
+
+        def fake_signature(name, args=None, app=None, immutable=False):
+            captured.append(name)
+            return _FakeSig(name, args, immutable=immutable)
+
+        class FakeChain:
+            def apply_async(self):
+                return SimpleNamespace(id="x")
+
+        monkeypatch.setattr(pipeline, "signature", fake_signature)
+        monkeypatch.setattr(pipeline, "chain", lambda *p: FakeChain())
+
+        pipeline.run_pipeline_from("v1", start_from="tasks.transcribe_audio", job_id="job-1")
+
+        assert captured == [
+            "tasks.transcribe_audio",
+            "tasks.cleanup_transcript",
+            "tasks.summarize_transcription",
+            "tasks.generate_embeddings",
+        ]

@@ -21,6 +21,12 @@ class TestEstimateCost:
         cost = estimate_cost("claude-sonnet-4-5", 1_000_000, 1_000_000)
         assert cost == pytest.approx(18.00)  # $3.00 + $15.00
 
+    def test_codex_route_rates_are_zero(self):
+        assert estimate_cost("codex", 1_000_000, 1_000_000) == 0.0
+        assert estimate_cost("yt-summary", 1_000_000, 1_000_000) == 0.0
+        assert estimate_cost("yt-cleanup", 1_000_000, 1_000_000) == 0.0
+        assert estimate_cost("gpt-5.6-terra", 1_000_000, 1_000_000) == 0.0
+
     def test_unknown_model_defaults_to_sonnet_rates(self):
         cost = estimate_cost("claude-unknown-model", 1_000_000, 1_000_000)
         assert cost == pytest.approx(18.00)

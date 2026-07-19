@@ -1,6 +1,5 @@
 """LLM-powered transcript cleanup service.
 
-Replaces the regex-based filler word removal with Anthropic Haiku API calls.
 Speaker-aware cleanup that preserves meaning while improving readability.
 Chunked processing for long transcripts.
 """
@@ -13,6 +12,7 @@ import anthropic
 import structlog
 import tiktoken
 
+from app.services.llm_provider import LLMProviderError, generate_openai_compatible
 from app.services.provider_retry import provider_api_retry
 
 logger = structlog.get_logger()
@@ -44,12 +44,18 @@ def clean_transcript(
     segments: list[dict],
     api_key: str,
     model: str = "claude-haiku-4-5",
+    *,
+    provider: str = "anthropic",
+    base_url: str = "",
+    fallback_provider: str = "anthropic",
+    fallback_api_key: str = "",
+    fallback_model: str = "claude-haiku-4-5",
 ) -> list[dict]:
     """Clean transcript segments using an LLM.
 
     Args:
         segments: List of dicts with at least {"text": str, "speaker": str | None}
-        api_key: Anthropic API key.
+        api_key: Provider API key, if required.
         model: Model to use for cleanup.
 
     Returns:
@@ -58,7 +64,8 @@ def clean_transcript(
     if not segments:
         return segments
 
-    if not api_key:
+    provider_name = provider.strip().lower()
+    if provider_name == "anthropic" and not api_key:
         logger.warn("transcript_cleanup_skipped", reason="No API key provided")
         return segments
 
@@ -80,17 +87,25 @@ def clean_transcript(
 
     logger.info(
         "transcript_cleanup_starting",
+        provider=provider_name,
         model=model,
         segments=len(segments),
         tokens=token_count,
     )
 
+    llm_options = {
+        "provider": provider_name,
+        "base_url": base_url,
+        "fallback_provider": fallback_provider,
+        "fallback_api_key": fallback_api_key,
+        "fallback_model": fallback_model,
+    }
     if token_count <= MAX_TOKENS_SINGLE:
         # Single request
-        cleaned_text = _call_llm(full_text, api_key, model)
+        cleaned_text = _call_llm(full_text, api_key, model, **llm_options)
     else:
         # Chunked processing
-        cleaned_text = _chunked_cleanup(labeled_lines, api_key, model, enc)
+        cleaned_text = _chunked_cleanup(labeled_lines, api_key, model, enc, **llm_options)
 
     # Map cleaned text back to segments
     cleaned_segments = _map_cleaned_to_segments(cleaned_text, segments)
@@ -99,11 +114,53 @@ def clean_transcript(
     return cleaned_segments
 
 
-def _call_llm(text: str, api_key: str, model: str) -> str:
-    """Send text to Anthropic API for cleanup."""
-    from app.services.cost_tracker import BudgetExceededError, check_budget, record_usage
+def _call_llm(
+    text: str,
+    api_key: str,
+    model: str,
+    *,
+    provider: str = "anthropic",
+    base_url: str = "",
+    fallback_provider: str = "anthropic",
+    fallback_api_key: str = "",
+    fallback_model: str = "claude-haiku-4-5",
+) -> str:
+    """Send text to the configured LLM provider for cleanup."""
+    from app.services.cost_tracker import check_budget, record_usage
 
     check_budget()
+
+    provider_name = provider.strip().lower()
+    if provider_name in {"openai_compatible", "openai-compatible", "openai"}:
+        try:
+            response = generate_openai_compatible(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                system=CLEANUP_PROMPT,
+                messages=[{"role": "user", "content": text}],
+                max_tokens=8192,
+            )
+            record_usage(response.model, response.prompt_tokens, response.completion_tokens)
+            return response.content
+        except LLMProviderError as exc:
+            if fallback_provider.strip().lower() != "anthropic" or not fallback_api_key:
+                raise
+            logger.warning(
+                "cleanup_llm_fallback_to_anthropic",
+                error=str(exc),
+                fallback_model=fallback_model,
+            )
+            return _call_anthropic(text, fallback_api_key, fallback_model)
+
+    if provider_name != "anthropic":
+        raise ValueError(f"Unsupported cleanup LLM provider: {provider}")
+
+    return _call_anthropic(text, api_key, model)
+
+
+def _call_anthropic(text: str, api_key: str, model: str) -> str:
+    from app.services.cost_tracker import record_usage
 
     client = anthropic.Anthropic(api_key=api_key)
 
@@ -125,6 +182,7 @@ def _chunked_cleanup(
     api_key: str,
     model: str,
     enc,
+    **llm_options,
 ) -> str:
     """Process transcript in chunks with overlap, running chunks in parallel."""
     chunks = _build_chunks(lines, enc)
@@ -136,6 +194,8 @@ def _chunked_cleanup(
     def _clean_one(idx_chunk: tuple[int, list[str]]) -> tuple[int, str]:
         idx, chunk = idx_chunk
         logger.info("cleaning_chunk", chunk=idx + 1, total=len(chunks))
+        if llm_options:
+            return idx, _call_llm("\n".join(chunk), api_key, model, **llm_options)
         return idx, _call_llm("\n".join(chunk), api_key, model)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:

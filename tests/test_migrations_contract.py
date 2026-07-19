@@ -520,7 +520,6 @@ def test_video_dismissal_fields_are_backed_by_migration_contract():
     assert list(dismiss_index.args[2]) == ["dismissed_at"]
     assert "dismissed_at IS NULL" in str(dismiss_index.kwargs.get("postgresql_where"))
 
-
 def test_video_reports_migration_declares_table_uniqueness_and_delivery_index():
     calls = _record_upgrade("017")
     create_table_calls = [call for call in calls if call.name == "create_table" and call.args[0] == "video_reports"]

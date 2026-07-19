@@ -20,6 +20,14 @@ set +a
 # Ensure Homebrew CLI tools are visible under launchd, especially ffmpeg/ffprobe for yt-dlp.
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
+# TorchCodec 0.7 matches the native Torch 2.8 runtime and needs FFmpeg 4-7
+# shared libraries. Keep the host's default FFmpeg CLI on PATH while exposing
+# the keg-only FFmpeg 7 libraries to the Python worker process.
+TORCHCODEC_FFMPEG_LIB="${TORCHCODEC_FFMPEG_LIB:-/opt/homebrew/opt/ffmpeg@7/lib}"
+if [[ -d "$TORCHCODEC_FFMPEG_LIB" ]]; then
+    export DYLD_LIBRARY_PATH="$TORCHCODEC_FFMPEG_LIB${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+fi
+
 # Ensure data and log directories exist
 mkdir -p data/audio data/models /tmp/yt-worker
 

@@ -6,8 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.services import transcript_cleanup
+from app.services.llm_provider import LLMProviderError, LLMTextResponse
 from app.services.transcript_cleanup import (
     _build_chunks,
+    _call_llm,
     _chunked_cleanup,
     _map_cleaned_to_segments,
     clean_transcript,
@@ -118,6 +121,75 @@ class TestCleanTranscript:
         assert "[SPEAKER_00]" in call_text
         # Result should have the label stripped
         assert result[0]["text"] == "Hello there"
+
+    def test_openai_compatible_cleanup_uses_codex_route(self, monkeypatch):
+        observed = {}
+
+        def fake_generate(**kwargs):
+            observed.update(kwargs)
+            return LLMTextResponse(
+                content="Clean text",
+                model="gpt-5.6-terra",
+                prompt_tokens=12,
+                completion_tokens=3,
+            )
+
+        monkeypatch.setattr(transcript_cleanup, "generate_openai_compatible", fake_generate)
+        monkeypatch.setattr(transcript_cleanup, "_call_anthropic", lambda *_args, **_kwargs: pytest.fail("Anthropic should not be used"))
+        monkeypatch.setattr(transcript_cleanup, "check_budget", lambda: None, raising=False)
+        monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
+        monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *_args, **_kwargs: None)
+
+        result = _call_llm(
+            "Raw text",
+            api_key="",
+            model="codex",
+            provider="openai_compatible",
+            base_url="http://127.0.0.1:8400/v1",
+            fallback_provider="anthropic",
+            fallback_api_key="anthropic-key",
+            fallback_model="claude-haiku-4-5",
+        )
+
+        assert result == "Clean text"
+        assert observed["model"] == "codex"
+        assert observed["api_key"] == ""
+        assert observed["base_url"] == "http://127.0.0.1:8400/v1"
+
+    def test_openai_compatible_cleanup_falls_back_with_anthropic_key(self, monkeypatch):
+        monkeypatch.setattr(
+            transcript_cleanup,
+            "generate_openai_compatible",
+            lambda **_kwargs: (_ for _ in ()).throw(LLMProviderError("router down")),
+        )
+        monkeypatch.setattr("app.services.cost_tracker.check_budget", lambda: None)
+        monkeypatch.setattr("app.services.cost_tracker.record_usage", lambda *_args, **_kwargs: None)
+
+        observed = {}
+
+        def fake_anthropic(text, api_key, model):
+            observed.update({"text": text, "api_key": api_key, "model": model})
+            return "Fallback clean"
+
+        monkeypatch.setattr(transcript_cleanup, "_call_anthropic", fake_anthropic)
+
+        result = _call_llm(
+            "Raw text",
+            api_key="",
+            model="codex",
+            provider="openai_compatible",
+            base_url="http://127.0.0.1:8400/v1",
+            fallback_provider="anthropic",
+            fallback_api_key="anthropic-key",
+            fallback_model="claude-haiku-4-5",
+        )
+
+        assert result == "Fallback clean"
+        assert observed == {
+            "text": "Raw text",
+            "api_key": "anthropic-key",
+            "model": "claude-haiku-4-5",
+        }
 
 
 class TestChunkedCleanupParallel:

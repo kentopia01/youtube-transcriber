@@ -1,6 +1,5 @@
 """Celery task for LLM-powered transcript cleanup.
 
-Sends transcript through Anthropic Haiku for cleanup/correction.
 Runs after diarization (if enabled) or after transcription (if diarization disabled).
 """
 
@@ -29,7 +28,8 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
     if not settings.transcript_cleanup_enabled:
         return payload
 
-    if not settings.anthropic_api_key:
+    provider = settings.cleanup_llm_provider.strip().lower()
+    if provider == "anthropic" and not settings.anthropic_api_key:
         import structlog
 
         structlog.get_logger().warn(
@@ -63,7 +63,7 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
             lifecycle_status="running",
             current_stage=PIPELINE_STAGE_CLEANUP,
             progress_pct=70.0,
-            progress_message="Cleaning transcript with Haiku…",
+            progress_message=f"Cleaning transcript with {settings.cleanup_model}…",
         )
         db.commit()
 
@@ -80,8 +80,17 @@ def cleanup_transcript_task(self, payload: dict[str, str] | str) -> dict[str, st
             ]
             cleaned_segments = clean_transcript(
                 segment_payload,
-                api_key=settings.anthropic_api_key,
+                api_key=(
+                    settings.anthropic_api_key
+                    if provider == "anthropic"
+                    else settings.cleanup_llm_api_key
+                ),
                 model=settings.cleanup_model,
+                provider=settings.cleanup_llm_provider,
+                base_url=settings.cleanup_llm_base_url,
+                fallback_provider=settings.cleanup_llm_fallback_provider,
+                fallback_api_key=settings.anthropic_api_key,
+                fallback_model=settings.cleanup_llm_fallback_model,
             )
 
             for segment_model, cleaned in zip(transcription.segments, cleaned_segments):

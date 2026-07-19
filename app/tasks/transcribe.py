@@ -1,14 +1,18 @@
 import uuid
+from datetime import datetime, timezone
 from math import isfinite
+from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
 import structlog
+from app.models.job import Job
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
+from app.services.diarization_decision import decide_diarization_usefulness
 from app.services.pipeline_recovery import record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_TRANSCRIBE
 from app.services.transcription import transcribe_audio
@@ -33,6 +37,25 @@ def _finite_float(value, field: str) -> float:
     if not isfinite(value):
         raise ValueError(f"{field} must be finite")
     return value
+
+
+def _record_diarization_decision(video: Video, result: dict[str, Any], *, job: Job | None = None):
+    decision = decide_diarization_usefulness(
+        title=video.title,
+        description=video.description,
+        channel_name=video.channel.name if video.channel else None,
+        transcript_text=result["text"],
+        segment_texts=[
+            str(seg.get("text") or "")
+            for seg in result.get("segments", [])
+        ],
+    )
+    if job is not None:
+        metadata = dict(job.last_artifact_check_result or {})
+        metadata["diarization_decision"] = decision.as_dict()
+        metadata["diarization_decision_at"] = datetime.now(timezone.utc).isoformat()
+        job.last_artifact_check_result = metadata
+    return decision
 
 
 @celery.task(bind=True, name="tasks.transcribe_audio")
@@ -120,6 +143,8 @@ def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str]
                 )
                 db.add(segment)
 
+            diarization_decision = _record_diarization_decision(video, result, job=job)
+
             video.status = "transcribed"
             update_pipeline_job(
                 job,
@@ -135,6 +160,14 @@ def transcribe_audio_task(self, payload: dict[str, str] | str) -> dict[str, str]
             # Keep audio on disk for retryable execution.
             # Cleanup is intentionally deferred so resume planning can trust artifacts.
             _logger.info("audio_file_retained_for_retry", path=video.audio_file_path)
+            _logger.info(
+                "diarization_decision_recorded",
+                video_id=str(video.id),
+                decision=diarization_decision.decision,
+                speaker_profile=diarization_decision.speaker_profile,
+                speaker_labels_value=diarization_decision.speaker_labels_value,
+                confidence=diarization_decision.confidence,
+            )
 
             return payload
 

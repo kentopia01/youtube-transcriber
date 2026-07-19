@@ -6,6 +6,9 @@ from app.tasks import batch_progress, pipeline
 
 
 def test_run_pipeline_builds_expected_chain(monkeypatch):
+    monkeypatch.setattr(pipeline.settings, "diarization_enabled", True)
+    monkeypatch.setattr(pipeline.settings, "diarization_mode", "deferred")
+    monkeypatch.setattr(pipeline.settings, "hf_token", "hf-token")
     calls = []
 
     class FakeSig:
@@ -31,12 +34,11 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
         assert [part.name for part in parts] == [
             "tasks.download_audio",
             "tasks.transcribe_audio",
-            "tasks.diarize_and_align",
             "tasks.cleanup_transcript",
             "tasks.summarize_transcription",
             "tasks.generate_embeddings",
         ]
-        assert [part.queue for part in parts] == ["audio", "audio", "diarize", "post", "post", "post"]
+        assert [part.queue for part in parts] == ["audio", "audio", "post", "post", "post"]
         return FakeChain()
 
     monkeypatch.setattr(pipeline, "signature", fake_signature)
@@ -48,7 +50,6 @@ def test_run_pipeline_builds_expected_chain(monkeypatch):
     assert [c[0] for c in calls] == [
         "tasks.download_audio",
         "tasks.transcribe_audio",
-        "tasks.diarize_and_align",
         "tasks.cleanup_transcript",
         "tasks.summarize_transcription",
         "tasks.generate_embeddings",

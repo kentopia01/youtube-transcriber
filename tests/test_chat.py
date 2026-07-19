@@ -1008,7 +1008,7 @@ class TestAnthropicErrorHandling:
         await chat_with_context("question", [], db)
 
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "codex"  # chat_model default
+        assert call_args[2] == "yt-chat"  # chat_model default
         assert "video transcript" in call_args[0].lower()
 
     @pytest.mark.asyncio
@@ -1980,7 +1980,7 @@ class TestQAClawRound8:
         # _call_anthropic(system, messages, model) — verify it was called
         mock_llm.assert_called_once()
         call_args = mock_llm.call_args[0]
-        assert call_args[2] == "codex"  # chat_model default
+        assert call_args[2] == "yt-chat"  # chat_model default
 
 
 # ---------------------------------------------------------------------------
