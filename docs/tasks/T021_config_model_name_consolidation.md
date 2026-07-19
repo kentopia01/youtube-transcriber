@@ -87,11 +87,11 @@ Canonical model settings now live in `app.config.Settings` with per-use-case nam
 
 | Use case | Canonical setting / env var | Default | Deprecated alias support |
 |---|---|---|---|
-| Transcript cleanup | `cleanup_model` / `CLEANUP_MODEL` | `claude-haiku-4-5` | `anthropic_cleanup_model` property + `ANTHROPIC_CLEANUP_MODEL` env |
-| Pipeline summaries, report backfill, eval generation | `summary_model` / `SUMMARY_MODEL` | `claude-sonnet-4-5` | `anthropic_summary_model` property + `ANTHROPIC_SUMMARY_MODEL` env |
-| Web/Telegram chat | `chat_model` / `CHAT_MODEL` | `claude-haiku-4-5` | `anthropic_chat_model` property + `ANTHROPIC_CHAT_MODEL` env |
-| Persona generation/refresh | `persona_model` / `PERSONA_MODEL` | `claude-sonnet-4-5` | `anthropic_persona_model` property + `ANTHROPIC_PERSONA_MODEL` env |
-| Morning digest | `digest_model` / `DIGEST_MODEL` | `claude-sonnet-4-5` | `ANTHROPIC_SUMMARY_MODEL` env still feeds digest unless `DIGEST_MODEL` is set |
+| Transcript cleanup | `cleanup_model` / `CLEANUP_MODEL` | `codex` | `anthropic_cleanup_model` property + `ANTHROPIC_CLEANUP_MODEL` env |
+| Pipeline summaries, report backfill, eval generation | `summary_model` / `SUMMARY_MODEL` | `codex` | `anthropic_summary_model` property + `ANTHROPIC_SUMMARY_MODEL` env |
+| Web/Telegram chat | `chat_model` / `CHAT_MODEL` | `codex` | `anthropic_chat_model` property + `ANTHROPIC_CHAT_MODEL` env |
+| Persona generation/refresh | `persona_model` / `PERSONA_MODEL` | `codex` | `anthropic_persona_model` property + `ANTHROPIC_PERSONA_MODEL` env |
+| Morning digest | `digest_model` / `DIGEST_MODEL` | `codex` | `ANTHROPIC_SUMMARY_MODEL` env still feeds digest unless `DIGEST_MODEL` is set |
 
 No separate `report_model` was added because report rendering does not make a fresh LLM call; report backfill/evaluation generation uses `summary_model`.
 

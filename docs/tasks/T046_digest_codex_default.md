@@ -4,7 +4,7 @@
 Done
 
 ## Objective
-Switch morning/daily digest generation to the local Smart Router Codex route by default, with Anthropic as fallback.
+Switch morning/daily digest generation to the local Smart Router YouTube digest profile by default, with Anthropic as fallback.
 
 ## Why it matters
 Digest is part of the unattended YouTube intelligence path Ken actually reads. Leaving it on a different primary model after summary promotion creates split behavior across the overnight workflow.
@@ -12,7 +12,7 @@ Digest is part of the unattended YouTube intelligence path Ken actually reads. L
 ## Scope
 - Change digest defaults to:
   - `DIGEST_LLM_PROVIDER=openai_compatible`
-  - `DIGEST_MODEL=codex`
+  - `DIGEST_MODEL=yt-digest`
   - `DIGEST_LLM_BASE_URL=http://127.0.0.1:8400/v1`
   - `DIGEST_LLM_FALLBACK_PROVIDER=anthropic`
   - `DIGEST_LLM_FALLBACK_MODEL=claude-sonnet-4-5`

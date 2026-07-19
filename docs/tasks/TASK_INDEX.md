@@ -57,6 +57,14 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
 | T047 | Chat and persona Codex default | done | SentryClaw | Web/Telegram chat, direct video Q&A, and channel persona generation now use Smart Router Codex with Anthropic fallback |
 | T048 | Subscription watchlist and long-form ingest | done | SentryClaw | Requested channels enabled, long-form auto-ingest floor added, and Andrej Karpathy backlog seeded |
+| T049 | Recipient lanes and scoped digests | planned-gated | SentryClaw / BuildClaw / QAClaw | Lightweight shared-processing lanes; implementation blocked until current catch-up pipeline fully drains and Ken reopens build |
+| T050 | Codex workload router profiles | done | SentryClaw | Keep YouTube LLM workloads on Codex/OAuth while splitting cleanup/summary/digest/chat/persona across workload-specific Smart Router profiles; live profiles and both model-name forms validated |
+| T051 | Catch-up runner hardening | done | SentryClaw | Keep unattended backlog release moving through future premieres/unavailable candidates |
+| T052 | Summary-first conditional diarization | done | SentryClaw | Skip expensive inline diarization by default; preserve explicit inline/operator diarization path |
+| T053 | Diarization usefulness detector | done | SentryClaw | Records cheap post-ASR speaker-label usefulness decisions without re-adding diarization to the critical path; quiet-queue worker rollout validated |
+| T054 | Native audio dependency baseline | done | SentryClaw | TorchCodec/Torch/Python compatibility pinned, keg-only FFmpeg 7 libraries supplied, and healthy worker rollout validated |
+| T055 | Local trust boundary | done | SentryClaw | Loopback-only Docker bindings, fail-closed Telegram allowlist enforcement, and live service health validated |
+| T056 | Rendering safety | done | SentryClaw | Persisted summaries, chat Markdown, API messages, and discovered metadata now render through escaping and protocol guardrails |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

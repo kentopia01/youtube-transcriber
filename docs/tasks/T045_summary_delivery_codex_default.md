@@ -11,9 +11,9 @@ Make per-video summaries useful in the first Telegram surface, remove the Watch 
 - Keep the full HTML/markdown report as the attached appendix.
 - Remove the Watch Map section from the summary contract, quality validator, HTML report, markdown report, and tests.
 - Tighten Detailed Brief behavior so it acts as extra detail rather than a second pass over Key Takeaways.
-- Change summary defaults to use the local Smart Router Codex route:
+- Change summary defaults to use the local Smart Router YouTube summary profile:
   - `SUMMARY_LLM_PROVIDER=openai_compatible`
-  - `SUMMARY_MODEL=codex`
+  - `SUMMARY_MODEL=yt-summary`
   - `SUMMARY_LLM_BASE_URL=http://127.0.0.1:8400/v1`
   - `SUMMARY_LLM_FALLBACK_PROVIDER=anthropic`
   - `SUMMARY_LLM_FALLBACK_MODEL=claude-sonnet-4-5`

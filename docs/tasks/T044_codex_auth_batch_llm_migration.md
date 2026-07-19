@@ -11,7 +11,7 @@ The daily/nightly value path is not interactive chat. It is channel or queued tr
 
 ## Scope
 - Treat Smart Router readiness as a hard prerequisite, not assumed infrastructure.
-- Use the local Smart Router `codex` profile at `http://127.0.0.1:8400/v1` as the Codex-auth runtime boundary.
+- Use local Smart Router Codex-backed profiles at `http://127.0.0.1:8400/v1` as the Codex-auth runtime boundary.
 - Add an internal LLM provider adapter that supports the existing Anthropic path and an OpenAI-compatible chat-completions path.
 - Add per-workload provider/base-url/model configuration for summary and digest generation.
 - Keep existing summary/digest behavior on Anthropic by default.
@@ -60,13 +60,13 @@ Pilot only one high-value workload at a time:
    - `curl http://127.0.0.1:8400/v1/models`
 2. For summary pilot:
    - `SUMMARY_LLM_PROVIDER=openai_compatible`
-   - `SUMMARY_MODEL=codex`
+   - `SUMMARY_MODEL=yt-summary`
    - `SUMMARY_LLM_BASE_URL=http://127.0.0.1:8400/v1`
    - `SUMMARY_LLM_FALLBACK_PROVIDER=anthropic`
    - `SUMMARY_LLM_FALLBACK_MODEL=claude-sonnet-4-5`
 3. For digest pilot:
    - `DIGEST_LLM_PROVIDER=openai_compatible`
-   - `DIGEST_MODEL=codex`
+   - `DIGEST_MODEL=yt-digest`
    - `DIGEST_LLM_BASE_URL=http://127.0.0.1:8400/v1`
    - `DIGEST_LLM_FALLBACK_PROVIDER=anthropic`
    - `DIGEST_LLM_FALLBACK_MODEL=claude-sonnet-4-5`
@@ -78,5 +78,6 @@ Set `SUMMARY_LLM_PROVIDER=anthropic` and `DIGEST_LLM_PROVIDER=anthropic`. Existi
 
 ## Notes
 - Smart Router recovery proof: launchd service `com.sentryclaw.smart-router` is running on `127.0.0.1:8400`; `/health` and `/v1/models` passed; `model=codex` returned OpenAI-compatible chat-completions JSON. As of the 2026-07-12 model refresh, the Codex profile maps SIMPLE/MEDIUM to `gpt-5.6-terra` and COMPLEX/REASONING to `gpt-5.6-sol`.
+- T050 supersedes the generic `codex` defaults with workload-specific Codex profiles: `yt-cleanup`, `yt-summary`, `yt-digest`, `yt-chat`, and `yt-persona`.
 - The transcriber does not read Codex OAuth tokens. It calls the local OpenAI-compatible endpoint only.
 - Link to `docs/PLAN.md` and `docs/CLARIFICATIONS.md` for the broader source-of-truth contract.

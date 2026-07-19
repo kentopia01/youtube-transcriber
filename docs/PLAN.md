@@ -367,6 +367,17 @@ Implemented posture:
 
 Source of truth: `docs/tasks/T047_chat_persona_codex_default.md`.
 
+## Completed follow-on: cleanup Codex default
+
+Transcript cleanup now follows the same Codex-primary posture as the rest of the LLM pipeline.
+
+Implemented posture:
+- cleanup defaults use Smart Router Codex with Anthropic fallback
+- rollback stays one config flip: `CLEANUP_LLM_PROVIDER=anthropic`
+- native post worker and Docker web both load cleanup provider settings
+
+Source of truth: live config and focused cleanup/config tests.
+
 ## Follow-on: T048 subscription watchlist and long-form ingest
 
 T048 keeps the followed-channel list focused on long-form signal and prevents autonomous polling from downloading Shorts/reels/short clips.
@@ -378,3 +389,51 @@ Target posture:
 - Andrej Karpathy is backfilled with the 30 most recent long-form videos
 
 Source of truth: `docs/tasks/T048_subscription_watchlist_longform.md`.
+
+## Current throughput work: T051/T052
+
+The next speed-up pass keeps the local M4/16GB topology conservative and focuses on removing avoidable stalls.
+
+Target posture:
+- the catch-up runner skips bad submit candidates and continues releasing the rest of the batch
+- runner state records skipped candidates for later review
+- first-pass ingest skips inline diarization by default so transcript cleanup, summaries, embeddings, and reports finish sooner
+- explicit inline/operator diarization remains available when speaker labels matter
+
+Source of truth: `docs/tasks/T051_catchup_runner_hardening.md` and `docs/tasks/T052_summary_first_conditional_diarization.md`.
+
+## Current release hygiene: T054 native audio dependency baseline
+
+T054 resolves the native worker's declared-but-missing TorchCodec dependency while preserving the current Torch 2.8 / Python 3.13 stack and the host's default FFmpeg 8 CLI.
+
+Target posture:
+- pin TorchCodec to the release family compatible with Torch 2.8
+- supply versioned FFmpeg shared libraries for TorchCodec without replacing the default FFmpeg binary
+- keep the torchaudio fallback and existing diarization behavior intact
+- require clean dependency metadata, successful imports, focused tests, and healthy queue coverage
+
+Source of truth: `docs/tasks/T054_native_audio_dependency_baseline.md`.
+
+## Current security remediation: T055 local trust boundary
+
+T055 aligns service exposure with the actual operating model: web access is local to the Mac mini, while Telegram is the only external user ingress and is restricted to an explicit numeric allowlist.
+
+Target posture:
+- publish web, Postgres, and Redis only on host loopback
+- keep optional API-key enforcement correct for every non-public route
+- fail closed when the Telegram allowlist is empty
+- require both the bot token and at least one allowed numeric user before polling starts
+
+Source of truth: `docs/tasks/T055_local_trust_boundary.md`.
+
+## Current security remediation: T056 rendering safety
+
+T056 closes executable HTML injection paths in the local operator UI while preserving Markdown presentation and the existing report pipeline.
+
+Target posture:
+- route persisted summary content through an escaping-first renderer
+- treat model chat output as untrusted before and after Markdown parsing
+- build API status and channel discovery content from text nodes or escaped values
+- allow only HTTP(S) links in dynamically rendered external metadata
+
+Source of truth: `docs/tasks/T056_rendering_safety.md`.

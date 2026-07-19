@@ -7,8 +7,7 @@ A self-hosted web application that transcribes YouTube videos using Apple Silico
 - **Transcribe** YouTube videos using MLX Whisper on Apple Silicon Metal
 - **Detect language** automatically from the first 30 seconds
 - **Identify speakers** via pyannote.audio diarization (optional)
-- **Clean transcripts** with Anthropic Haiku — removes filler words while preserving meaning (optional)
-- **Summarize, digest, chat, and persona updates** with Codex via local Smart Router, with Anthropic fallback
+- **Clean transcripts, summarize, digest, chat, and persona updates** with Codex via local Smart Router, with Anthropic fallback
 - **Search** across all transcribed content using semantic embeddings
 - **Chat** with your transcript library via OpenClaw AI skills
 - **Batch process** entire YouTube channels
@@ -57,7 +56,7 @@ YouTube URL → yt-dlp download
   → Language Detection (mlx-whisper tiny, first 30s)
   → Transcription (mlx-whisper large-v3-turbo, Metal GPU)
   → Speaker Diarization (pyannote.audio) [optional]
-  → LLM Transcript Cleanup (Anthropic Haiku) [optional]
+  → LLM Transcript Cleanup (Codex via Smart Router; Anthropic fallback) [optional]
   → Summarization + digest/chat/persona intelligence (Codex via Smart Router; Anthropic fallback)
   → Semantic Embeddings (nomic-embed-text-v1.5, 768d, speaker-aware chunks)
 ```
@@ -68,7 +67,7 @@ YouTube URL → yt-dlp download
 - **Docker Desktop** (for Postgres, Redis, and the web app)
 - **Python 3.12+**
 - **HuggingFace token** — required for speaker diarization (pyannote.audio models)
-- **Anthropic API key** — required for fallback paths and optional transcript cleanup
+- **Anthropic API key** — optional; required only for configured Anthropic fallback/rollback paths
 
 ## Installation & Setup
 
@@ -96,8 +95,13 @@ This starts Postgres (port 5432), Redis (port 6379), and the web app (port 8000)
 python3.13 -m venv .venv-native
 source .venv-native/bin/activate
 
-# Install dependencies
-pip install mlx-whisper pyannote.audio whisperx "celery[redis]" \
+# TorchCodec 0.7 is the compatible release for Torch 2.8. Keep FFmpeg 7
+# keg-only for its shared libraries; the normal ffmpeg command remains v8.
+brew install ffmpeg@7
+
+# Install dependencies with the native audio compatibility set pinned
+pip install "torch==2.8.0" "torchaudio==2.8.0" "torchcodec==0.7.*" \
+  mlx-whisper pyannote.audio whisperx "celery[redis]" \
   sqlalchemy psycopg2-binary anthropic sentence-transformers \
   tiktoken yt-dlp structlog pydantic-settings pgvector alembic
 
@@ -154,13 +158,19 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `WHISPER_DEVICE` | `cpu` | Device for faster-whisper (`cpu` or `cuda`) |
 | `WHISPER_COMPUTE_TYPE` | `int8` | Compute type for faster-whisper |
 | `DIARIZATION_ENABLED` | `false` | Enable speaker diarization (requires `HF_TOKEN`) |
+| `DIARIZATION_MODE` | `deferred` | `deferred` skips speaker labeling in the first-pass pipeline; `inline` runs diarization before cleanup/summary |
 | `HF_TOKEN` | | HuggingFace token for pyannote.audio models |
 | `TRANSCRIPT_CLEANUP_ENABLED` | `false` | Enable LLM-powered filler word removal |
-| `CLEANUP_MODEL` | `claude-haiku-4-5` | Anthropic model for transcript cleanup (`ANTHROPIC_CLEANUP_MODEL` remains a deprecated alias) |
-| `SUMMARY_MODEL` | `codex` | Model for pipeline summaries, report backfills, and evaluation generation; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
-| `CHAT_MODEL` | `codex` | Model for web/Telegram chat and direct video Q&A; default routes through local Smart Router Codex auth (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
-| `PERSONA_MODEL` | `codex` | Model for persona generation/refresh; default routes through local Smart Router Codex auth (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
-| `DIGEST_MODEL` | `codex` | Model for the overnight/morning digest; default routes through local Smart Router Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `CLEANUP_MODEL` | `yt-cleanup` | Smart Router profile for transcript cleanup; routes through local Codex auth with a cheaper cleanup-focused tier (`ANTHROPIC_CLEANUP_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `CLEANUP_LLM_PROVIDER` | `openai_compatible` | Cleanup provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
+| `CLEANUP_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `CLEANUP_LLM_PROVIDER=openai_compatible` |
+| `CLEANUP_LLM_API_KEY` | | Optional bearer token for the cleanup OpenAI-compatible endpoint; leave empty for local Smart Router |
+| `CLEANUP_LLM_FALLBACK_PROVIDER` | `anthropic` | Cleanup fallback provider when the Codex route fails |
+| `CLEANUP_LLM_FALLBACK_MODEL` | `claude-haiku-4-5` | Cleanup fallback model if the OpenAI-compatible route fails |
+| `SUMMARY_MODEL` | `yt-summary` | Smart Router profile for pipeline summaries, report backfills, and evaluation generation; routes through local Codex auth and reserves Sol for fallback/escalation (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `CHAT_MODEL` | `yt-chat` | Smart Router profile for web/Telegram chat and direct video Q&A; default routes through local Codex auth (`ANTHROPIC_CHAT_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `PERSONA_MODEL` | `yt-persona` | Smart Router profile for persona generation/refresh; default routes through local Codex auth (`ANTHROPIC_PERSONA_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
+| `DIGEST_MODEL` | `yt-digest` | Smart Router profile for the overnight/morning digest; default routes through local Codex auth (`ANTHROPIC_SUMMARY_MODEL` remains a deprecated alias for rollback/manual Anthropic runs) |
 | `SUMMARY_LLM_PROVIDER` | `openai_compatible` | Summary provider: `openai_compatible` for the local Smart Router/Codex-auth route, or `anthropic` for rollback/manual Anthropic runs |
 | `SUMMARY_LLM_BASE_URL` | `http://127.0.0.1:8400/v1` | OpenAI-compatible base URL used only when `SUMMARY_LLM_PROVIDER=openai_compatible` |
 | `SUMMARY_LLM_API_KEY` | | Optional bearer token for the summary OpenAI-compatible endpoint; leave empty for local Smart Router |
@@ -181,7 +191,7 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DIGEST_LLM_API_KEY` | | Optional bearer token for the digest OpenAI-compatible endpoint; leave empty for local Smart Router |
 | `DIGEST_LLM_FALLBACK_PROVIDER` | `anthropic` | Digest fallback provider when the Codex route fails |
 | `DIGEST_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Digest fallback model if the OpenAI-compatible route fails |
-| `ANTHROPIC_API_KEY` | | API key for summarization, cleanup, chat, persona, and digest calls |
+| `ANTHROPIC_API_KEY` | | API key for Anthropic fallback/rollback calls |
 | `AUTO_INGEST_MIN_DURATION_SECONDS` | `600` | Minimum duration for subscription auto-ingest; filters Shorts/reels/short clips from followed channels, set `0` to disable |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
@@ -192,7 +202,7 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `CHUNK_MAX_TOKENS` | `400` | Maximum chunk size in tokens |
 | `SEARCH_MODE` | `hybrid` | Search strategy: `vector`, `hybrid`, or `keyword` |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token from BotFather |
-| `TELEGRAM_ALLOWED_USERS` | | Comma-separated list of allowed Telegram user IDs (empty = allow all) |
+| `TELEGRAM_ALLOWED_USERS` | | JSON list of allowed numeric Telegram user IDs; the bot refuses to start when empty |
 | `DATABASE_URL_NATIVE` | `postgresql+asyncpg://...@localhost:5432/transcriber` | Async Postgres URL for native processes (Telegram bot) |
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 
@@ -307,7 +317,7 @@ Chat with your transcript library via Telegram. The bot shares the same database
 2. Add to your `.env`:
    ```
    TELEGRAM_BOT_TOKEN=your-bot-token-here
-   TELEGRAM_ALLOWED_USERS=123456789,987654321  # optional: comma-separated Telegram user IDs
+   TELEGRAM_ALLOWED_USERS=[123456789,987654321]  # required JSON list of numeric Telegram user IDs
    DATABASE_URL=postgresql+asyncpg://transcriber:transcriber@localhost:5432/transcriber
    ```
 3. Run the bot:
@@ -346,7 +356,7 @@ The pipeline probes the first 30 seconds of audio with `mlx-whisper tiny` to det
 
 ### Speaker Diarization
 
-When `DIARIZATION_ENABLED=true` and `HF_TOKEN` is set:
+When `DIARIZATION_ENABLED=true`, `DIARIZATION_MODE=inline`, and `HF_TOKEN` is set:
 1. **pyannote.audio** segments the audio into speaker turns
 2. **whisperX** aligns word-level timestamps
 3. A majority-vote algorithm assigns each transcript segment to the speaker who talks most during that segment
@@ -354,13 +364,15 @@ When `DIARIZATION_ENABLED=true` and `HF_TOKEN` is set:
 
 Speaker diarization adds ~1x realtime overhead (runs on CPU).
 
+The default `DIARIZATION_MODE=deferred` skips this stage during first-pass ingest so cleanup, summaries, embeddings, and reports complete sooner.
+
 ### LLM Transcript Cleanup
 
-When `TRANSCRIPT_CLEANUP_ENABLED=true` and `ANTHROPIC_API_KEY` is set:
-- Sends transcript segments through Anthropic Haiku
+When `TRANSCRIPT_CLEANUP_ENABLED=true`:
+- Sends transcript segments through the configured cleanup provider, Codex via Smart Router by default
 - Removes filler words (um, uh, you know, basically, etc.)
 - Preserves meaning, timing, and speaker labels
-- Non-fatal: if the API call fails, the pipeline continues with the original text
+- Anthropic is available as fallback/rollback when `ANTHROPIC_API_KEY` is set
 - Adds ~10-15 seconds per video
 
 ### Semantic Embeddings

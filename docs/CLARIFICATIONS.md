@@ -98,9 +98,39 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - The transcriber must not read or store Codex OAuth tokens. It should call a local OpenAI-compatible endpoint.
 - Anthropic remains the explicit fallback/rollback path for migrated workflows.
 - Per-workload provider flags are preferred over switching the whole application at once.
+- T050 keeps the default YouTube LLM path Codex/OAuth-only, but uses workload-specific Smart Router profiles instead of generic `codex` everywhere.
 
 ### T048 subscription watchlist and long-form ingest clarifications
 - Subscription auto-ingest is for long-form videos, not Shorts/reels/short clips.
 - The default autonomous duration floor is 600 seconds; set `AUTO_INGEST_MIN_DURATION_SECONDS=0` only if short-form ingest is intentionally desired.
 - Manual single-video submissions remain outside this filter so operators can still transcribe a short clip explicitly.
 - Backlog seeding for newly followed channels should apply the same duration floor before queueing videos.
+
+### T049 recipient lanes and scoped digest clarifications
+- This is a lightweight shared-processing lane model, not full multi-tenant isolation and not a separate instance per user.
+- Shared global videos, transcripts, summaries, jobs, embeddings, and reports are acceptable.
+- Recipient-facing channel configuration and digest delivery must be scoped by lane.
+- Do not reuse the existing global `channel_subscriptions` table for restricted-user subscribe/unsubscribe; add lane-scoped subscription state instead.
+- Every user, including Ken, should have a personal digest lane.
+- Ken's personal digest should include only Ken-lane items.
+- Ken's Telegram identity should also have admin/operator capability across every lane for monitoring and troubleshooting.
+- Restricted users should only see and use `/start`, `/help`, `/subscribe`, `/unsubscribe`, `/subscriptions`, and optionally `/digest`.
+- Search/chat/RAG/job/report/notify/admin commands should remain admin-only and hidden from the simple restricted help/menu.
+- Implementation is gated until the current catch-up pipeline has fully drained and Ken explicitly reopens this work.
+
+### T051/T052 throughput clarifications
+- The immediate throughput goal is faster completed intelligence, not perfect speaker labels on first pass.
+- Catch-up release should continue through scheduled premieres, unavailable videos, and isolated submit failures, while still stopping for fresh real pipeline blockers.
+- On Ken's local M4/16GB host, do not increase heavy-stage concurrency as the first speed lever.
+- Default to summary-first ingest: transcribe, cleanup, summarize, embed, and report before diarization.
+- Keep inline diarization available by config for videos where speaker labels are worth the extra runtime.
+- Remote GPU or hosted diarization remains a later design spike after stage timing data.
+
+### T053 diarization usefulness detector clarifications
+- Keep summary-first as the default; speaker labeling must not block first-pass cleanup, summary, embedding, or report delivery.
+- The detector should run after transcription and be much cheaper than full diarization.
+- Use deterministic metadata/transcript heuristics for v1 rather than an LLM or full audio diarization probe.
+- Store the decision structurally on the video so later workers/admin tools can inspect it without parsing progress messages.
+- Do not automatically enqueue deferred diarization in T053; first collect decision quality and keep explicit/operator-triggered diarization available.
+- Likely solo lectures, coding tutorials, demos, and monologues should default to skipping diarization.
+- Interviews, podcasts, panels, debates, fireside chats, guest conversations, and Q&A-heavy formats should be marked as worth deferred diarization.
