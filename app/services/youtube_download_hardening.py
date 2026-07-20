@@ -28,6 +28,7 @@ from app.services.pipeline_observability import ATTEMPT_REASON_OPERATOR_ACTION
 from app.services.pipeline_recovery import get_retry_block_reason
 from app.services.pipeline_resume import detect_resume_point_sync
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED
+from app.services.runtime_config import resolve_sync_database_url
 from app.tasks.pipeline import run_pipeline_from
 
 AUTH_COOKIE_NAMES = {
@@ -414,15 +415,7 @@ def retry_download_403_failures(
 
 
 def resolve_db_url_sync(project_root: Path) -> str:
-    explicit = os.environ.get("DATABASE_URL_SYNC")
-    if explicit:
-        return explicit
-    native_env = project_root / ".env.native"
-    if native_env.exists():
-        for line in native_env.read_text().splitlines():
-            if line.startswith("DATABASE_URL_SYNC="):
-                return line.split("=", 1)[1].strip()
-    return settings.database_url_sync
+    return resolve_sync_database_url(project_root, fallback=settings.database_url_sync)
 
 
 def create_native_sync_engine(project_root: Path):

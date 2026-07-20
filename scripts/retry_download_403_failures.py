@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -16,18 +15,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def _load_native_env() -> None:
-    native_env = PROJECT_ROOT / ".env.native"
-    if not native_env.exists():
-        return
-    for line in native_env.read_text().splitlines():
-        if not line or line.lstrip().startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+from app.services.runtime_config import load_native_env
 
-
-_load_native_env()
+load_native_env(PROJECT_ROOT)
 
 from app.services.youtube_download_hardening import create_native_sync_engine, retry_download_403_failures
 

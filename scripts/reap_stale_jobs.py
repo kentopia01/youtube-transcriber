@@ -9,7 +9,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -30,22 +29,12 @@ from app.services.pipeline_recovery import (
     is_pipeline_job_stale,
     record_pipeline_failure,
 )
-
-def _resolve_db_url_sync() -> str:
-    explicit = os.environ.get("DATABASE_URL_SYNC")
-    if explicit:
-        return explicit
-
-    native_env = PROJECT_ROOT / ".env.native"
-    if native_env.exists():
-        for line in native_env.read_text().splitlines():
-            if line.startswith("DATABASE_URL_SYNC="):
-                return line.split("=", 1)[1].strip()
-
-    return settings.database_url_sync
+from app.services.runtime_config import resolve_sync_database_url
 
 
-sync_engine = create_engine(_resolve_db_url_sync())
+sync_engine = create_engine(
+    resolve_sync_database_url(PROJECT_ROOT, fallback=settings.database_url_sync)
+)
 
 
 def reap_stale_jobs(dry_run: bool, timeout_hours: float | None = None):

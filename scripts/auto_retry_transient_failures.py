@@ -9,7 +9,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -22,26 +21,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
+from app.services.runtime_config import resolve_sync_database_url
 from app.services.transient_auto_retry import (
     DEFAULT_LIMIT,
     DEFAULT_MAX_AGE_HOURS,
     retry_transient_failures,
 )
-
-
-def _resolve_db_url_sync() -> str:
-    explicit = os.environ.get("DATABASE_URL_SYNC")
-    if explicit:
-        return explicit
-
-    native_env = PROJECT_ROOT / ".env.native"
-    if native_env.exists():
-        for line in native_env.read_text().splitlines():
-            if line.startswith("DATABASE_URL_SYNC="):
-                return line.split("=", 1)[1].strip()
-
-    return settings.database_url_sync
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Retry transient cleanup/summarize provider failures")
@@ -55,7 +40,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    engine = create_engine(_resolve_db_url_sync())
+    engine = create_engine(
+        resolve_sync_database_url(PROJECT_ROOT, fallback=settings.database_url_sync)
+    )
     with Session(engine) as db:
         decisions = retry_transient_failures(
             db,

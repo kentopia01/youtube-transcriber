@@ -461,40 +461,10 @@ def write_eval_outputs(
     return [index_path, *written]
 
 
-def _parse_env_file_value(path: Path, key: str) -> str | None:
-    if not path.exists():
-        return None
-    for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        name, value = line.split("=", 1)
-        if name.strip() == key:
-            return value.strip().strip('"').strip("'")
-    return None
-
-
-def _syncify_db_url(url: str) -> str:
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-
-
 def resolve_db_url_sync(explicit: str | None = None) -> str:
-    if explicit:
-        return _syncify_db_url(explicit)
-    if os.environ.get("DATABASE_URL_SYNC"):
-        return _syncify_db_url(os.environ["DATABASE_URL_SYNC"])
-    if os.environ.get("DATABASE_URL_NATIVE"):
-        return _syncify_db_url(os.environ["DATABASE_URL_NATIVE"])
+    from app.services.runtime_config import resolve_sync_database_url
 
-    native_env = PROJECT_ROOT / ".env.native"
-    for key in ("DATABASE_URL_SYNC", "DATABASE_URL_NATIVE", "DATABASE_URL"):
-        value = _parse_env_file_value(native_env, key)
-        if value:
-            return _syncify_db_url(value)
-
-    from app.config import settings
-
-    return _syncify_db_url(settings.database_url_sync)
+    return resolve_sync_database_url(PROJECT_ROOT, explicit=explicit)
 
 
 def load_candidates_from_db(
