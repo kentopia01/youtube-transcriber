@@ -117,6 +117,8 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Restricted users should only see and use `/start`, `/help`, `/subscribe`, `/unsubscribe`, `/subscriptions`, and optionally `/digest`.
 - Search/chat/RAG/job/report/notify/admin commands should remain admin-only and hidden from the simple restricted help/menu.
 - Implementation is gated until the current catch-up pipeline has fully drained and Ken explicitly reopens this work.
+- T057 is intentionally smaller than T049: while both current allowlisted users are trusted full-access operators, existing push notifications fan out to both and global notification preferences remain acceptable.
+- Reopen T049 before adding any user who needs restricted commands, different subscriptions, private digest scope, or per-recipient notification preferences.
 
 ### T051/T052 throughput clarifications
 - The immediate throughput goal is faster completed intelligence, not perfect speaker labels on first pass.

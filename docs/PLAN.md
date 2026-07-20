@@ -437,3 +437,16 @@ Target posture:
 - allow only HTTP(S) links in dynamically rendered external metadata
 
 Source of truth: `docs/tasks/T056_rendering_safety.md`.
+
+## Current Telegram delivery work: T057 allowlisted notification fanout
+
+T057 matches the current two-user trust model without prematurely building the
+scoped-recipient architecture in T049.
+
+Target posture:
+- all unique numeric allowlist entries receive shared operator notifications
+- one recipient failure does not block delivery to the other recipient
+- dedupe is tracked per recipient so partial retries do not duplicate successes
+- notification controls remain global while both users have the same access
+
+Source of truth: `docs/tasks/T057_allowlisted_notification_fanout.md`.

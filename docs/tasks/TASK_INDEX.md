@@ -50,8 +50,8 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T039 | Global search diversity and evidence packing | done | SentryClaw | Dedupe, per-video diversity, and compact evidence snippets |
 | T040 | Global search API and operator UI | done | SentryClaw | Separate `/api/global-search` and `/global-search` surfaces |
 | T041 | Global search chat mode switch | done | SentryClaw | Web chat now defaults to all embedded videos and supports channel/account scoping |
-| T042 | Reranker and query-expansion experiment | planned | SentryClaw | API/local rerank and HyDE/query fusion experiments after v1 |
-| T043 | Global search evaluation benchmark | planned | SentryClaw | Real-query benchmark and latency/quality tuning |
+| T042 | Reranker and query-expansion experiment | deferred-evidence | SentryClaw | Reopen at 30 real queries, sub-90% hit rate, or three recurring miss patterns |
+| T043 | Global search evaluation benchmark | done-seed | SentryClaw | Read-only 12-query baseline; enrich manually with anonymized real operator queries |
 | T044 | Codex-auth batch LLM migration | pilot-ready | SentryClaw | Smart Router readiness plus summary/digest provider adapter pilot |
 | T045 | Summary delivery polish and Codex default | done | SentryClaw | Telegram-first report caption, Watch Map removal, report de-dupe, Codex-primary summary default with Anthropic fallback validated on five-video dry run |
 | T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
@@ -65,6 +65,8 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T054 | Native audio dependency baseline | done | SentryClaw | TorchCodec/Torch/Python compatibility pinned, keg-only FFmpeg 7 libraries supplied, and healthy worker rollout validated |
 | T055 | Local trust boundary | done | SentryClaw | Loopback-only Docker bindings, fail-closed Telegram allowlist enforcement, and live service health validated |
 | T056 | Rendering safety | done | SentryClaw | Persisted summaries, chat Markdown, API messages, and discovered metadata now render through escaping and protocol guardrails |
+| T057 | Allowlisted Telegram notification fanout | done | SentryClaw | Shared trusted-operator notifications fan out with per-recipient failure isolation and dedupe |
+| T058 | Runtime bootstrap consolidation | done | SentryClaw | Centralized copied native env loading and sync database URL precedence |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.
