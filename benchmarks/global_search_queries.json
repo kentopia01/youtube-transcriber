@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "description": "Operator-style seed queries for the local YouTube corpus. Add anonymized real queries as they become available.",
+  "queries": [
+    {
+      "id": "name-vanta-cacioppo",
+      "category": "name",
+      "query": "What does Christina Cacioppo say about compliance versus security?",
+      "expected_video_ids": ["lPtn-TVi97Q"]
+    },
+    {
+      "id": "name-fiona-fung",
+      "category": "name",
+      "query": "Fiona Fung on what happens after coding is solved",
+      "expected_video_ids": ["Ybrl4FYM57c"]
+    },
+    {
+      "id": "name-bret-taylor",
+      "category": "name",
+      "query": "Bret Taylor on AI agents and outcome based pricing",
+      "expected_video_ids": ["n4E4xNYCkYM"]
+    },
+    {
+      "id": "technical-context-engine",
+      "category": "technical_term",
+      "query": "context engine that saves time and tokens",
+      "expected_video_ids": ["5ID22ACI7IM"]
+    },
+    {
+      "id": "technical-prediction-markets",
+      "category": "technical_term",
+      "query": "prediction markets lawsuit against the CFTC",
+      "expected_video_ids": ["LsNmBcDCsq0"]
+    },
+    {
+      "id": "technical-export-controls",
+      "category": "technical_term",
+      "query": "how export controls helped China and why power is the AI bottleneck",
+      "expected_video_ids": ["OxFyVcO1Yow"]
+    },
+    {
+      "id": "theme-founder-led-brands",
+      "category": "broad_theme",
+      "query": "founder led brands replacing traditional marketing",
+      "expected_video_ids": ["16mZBotVrXM"]
+    },
+    {
+      "id": "theme-compliance-trigger",
+      "category": "broad_theme",
+      "query": "why SOC 2 compliance is the buying trigger for startups",
+      "expected_video_ids": ["lPtn-TVi97Q"]
+    },
+    {
+      "id": "vague-coding-solved",
+      "category": "vague_question",
+      "query": "what happens when coding is no longer the hard part?",
+      "expected_video_ids": ["Ybrl4FYM57c"]
+    },
+    {
+      "id": "vague-token-maxing",
+      "category": "vague_question",
+      "query": "why is token maxing failing enterprise AI companies?",
+      "expected_video_ids": ["UkERw3cBEAo"]
+    },
+    {
+      "id": "summary-model-landscape",
+      "category": "summary_style",
+      "query": "Compare OpenAI Anthropic and open source models and explain the coming AI ROI reckoning",
+      "expected_video_ids": ["lgo_QbgV198"]
+    },
+    {
+      "id": "summary-weird-businesses",
+      "category": "summary_style",
+      "query": "Summarize the three weird businesses making ten to thirty million dollars",
+      "expected_video_ids": ["OXgqzF382o8"]
+    }
+  ]
+}

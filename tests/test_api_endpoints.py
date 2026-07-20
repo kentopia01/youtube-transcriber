@@ -350,7 +350,14 @@ class TestGlobalSearchEndpoint:
         client = _build_client()
         resp = client.post(
             "/api/global-search",
-            json={"query": "deployment", "source_type": "transcript"},
+            json={
+                "query": "deployment",
+                "source_type": "transcript",
+                "candidate_limit": 40,
+                "summary_limit": 10,
+                "per_video_limit": 2,
+                "rrf_k": 30,
+            },
         )
 
         assert resp.status_code == 200
@@ -358,6 +365,44 @@ class TestGlobalSearchEndpoint:
         assert body["query"] == "deployment"
         assert body["results"][0]["video_title"] == "Global Result"
         assert body["options"]["source_type"] == "transcript"
+
+    def test_json_global_search_passes_benchmark_tuning_knobs(self, monkeypatch):
+        captured = {}
+
+        async def fake_global_search(db, query, query_embedding, options):
+            captured["options"] = options
+            return {
+                "query": query,
+                "results": [],
+                "candidate_count": 0,
+                "lane_counts": {"vector": 0, "keyword": 0, "summary": 0},
+                "options": {},
+            }
+
+        monkeypatch.setattr(
+            "app.services.search.encode_query",
+            lambda query, model_cache_dir=None: [0.1] * 768,
+        )
+        monkeypatch.setattr(global_search_router, "run_global_search", fake_global_search)
+
+        client = _build_client()
+        resp = client.post(
+            "/api/global-search",
+            json={
+                "query": "deployment",
+                "candidate_limit": 40,
+                "summary_limit": 10,
+                "per_video_limit": 2,
+                "rrf_k": 30,
+            },
+        )
+
+        assert resp.status_code == 200
+        options = captured["options"]
+        assert options.candidate_limit == 40
+        assert options.summary_limit == 10
+        assert options.per_video_limit == 2
+        assert options.rrf_k == 30
 
     def test_htmx_global_search(self, monkeypatch):
         async def fake_global_search(db, query, query_embedding, options):

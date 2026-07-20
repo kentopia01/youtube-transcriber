@@ -9,6 +9,8 @@ from app.services.global_search import (
     DEFAULT_CANDIDATE_LIMIT,
     DEFAULT_LIMIT,
     DEFAULT_PER_VIDEO_LIMIT,
+    DEFAULT_RRF_K,
+    DEFAULT_SUMMARY_LIMIT,
     GlobalSearchOptions,
     global_search as run_global_search,
 )
@@ -43,7 +45,9 @@ async def global_search(
     channel_id: str = Form(None),
     limit: str = Form(None),
     candidate_limit: str = Form(None),
+    summary_limit: str = Form(None),
     per_video_limit: str = Form(None),
+    rrf_k: str = Form(None),
 ):
     """Search every ingested transcript/summary chunk, independent of chat scope."""
     if query is None:
@@ -56,7 +60,9 @@ async def global_search(
         channel_id = body.get("channel_id", channel_id)
         limit = body.get("limit", limit)
         candidate_limit = body.get("candidate_limit", candidate_limit)
+        summary_limit = body.get("summary_limit", summary_limit)
         per_video_limit = body.get("per_video_limit", per_video_limit)
+        rrf_k = body.get("rrf_k", rrf_k)
 
     query = (query or "").strip()
     if not query:
@@ -87,9 +93,11 @@ async def global_search(
     options = GlobalSearchOptions(
         limit=_parse_int(limit, DEFAULT_LIMIT),
         candidate_limit=_parse_int(candidate_limit, DEFAULT_CANDIDATE_LIMIT),
+        summary_limit=_parse_int(summary_limit, DEFAULT_SUMMARY_LIMIT),
         per_video_limit=_parse_int(per_video_limit, DEFAULT_PER_VIDEO_LIMIT),
         channel_id=_parse_channel_id(channel_id),
         source_type=source_type or "all",
+        rrf_k=_parse_int(rrf_k, DEFAULT_RRF_K),
     )
     payload = await run_global_search(
         db=db,

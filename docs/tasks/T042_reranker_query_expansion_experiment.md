@@ -1,7 +1,7 @@
 # T042: Reranker and Query Expansion Experiment
 
 ## Status
-Planned
+Deferred pending evidence
 
 ## Goal
 Evaluate whether reranking and query expansion improve Ken's real global-search queries enough to justify extra cost.
@@ -23,3 +23,10 @@ Evaluate whether reranking and query expansion improve Ken's real global-search 
 
 ## Validation
 - Compare baseline global search against reranked/query-expanded variants on a fixed query set.
+
+## Decision gate (2026-07-20)
+T043's seed benchmark reached a 91.7% hit rate with one ambiguous miss and found no
+quality gain from larger candidate pools. Do not add reranking or HyDE/query-expansion
+cost yet. Reopen this experiment after the benchmark contains at least 30 anonymized
+real operator queries, or when a repeatable run falls below 90% hit rate or shows at
+least three recurring miss patterns.
