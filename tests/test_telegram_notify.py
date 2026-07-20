@@ -153,6 +153,72 @@ The speaker argues GPT-5.5 is best used as an execution model when another model
 
 
 class TestNotifyDispatch:
+    def test_sends_to_each_unique_allowlisted_recipient(self, monkeypatch):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "telegram_allowed_users", [101, 202, 101])
+        recipients = []
+
+        def fake_post(url, data=None, timeout=None):
+            recipients.append(data["chat_id"])
+            return MagicMock(ok=True)
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        ok = telegram_notify.notify("video.completed", {
+            "video_id": "vid-fanout", "title": "Ep", "duration": 60, "speakers": 2,
+        })
+
+        assert ok is True
+        assert recipients == [101, 202]
+
+    def test_partial_failure_retries_only_failed_recipient(self, monkeypatch):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "telegram_allowed_users", [101, 202])
+        recipients = []
+        failed_once = {101}
+
+        def fake_post(url, data=None, timeout=None):
+            chat_id = data["chat_id"]
+            recipients.append(chat_id)
+            if chat_id in failed_once:
+                failed_once.remove(chat_id)
+                raise RuntimeError("temporary recipient failure")
+            return MagicMock(ok=True)
+
+        monkeypatch.setattr("requests.post", fake_post)
+        payload = {
+            "video_id": "vid-partial", "title": "Ep", "duration": 60, "speakers": 2,
+        }
+
+        assert telegram_notify.notify("video.completed", payload) is True
+        assert telegram_notify.notify("video.completed", payload) is True
+        assert recipients == [101, 202, 101]
+
+    def test_document_delivery_fans_out_with_a_fresh_file_handle(self, monkeypatch, tmp_path):
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "telegram_allowed_users", [101, 202])
+        report = tmp_path / "report.html"
+        report.write_text("<html>fanout</html>")
+        deliveries = []
+
+        def fake_post(url, data=None, files=None, timeout=None):
+            deliveries.append((data["chat_id"], files["document"][1].read()))
+            return MagicMock(ok=True)
+
+        monkeypatch.setattr("requests.post", fake_post)
+
+        ok = telegram_notify.notify("video.report_ready", {
+            "video_id": "vid-doc-fanout",
+            "title": "Ep",
+            "report_path": str(report),
+        })
+
+        assert ok is True
+        assert deliveries == [(101, b"<html>fanout</html>"), (202, b"<html>fanout</html>")]
+
     def test_sends_payload_for_video_completed(self, monkeypatch):
         captured = {}
 

@@ -89,12 +89,19 @@ def _should_send(event_type: str) -> bool:
     return event_type not in state.get("muted_events", [])
 
 
-def _primary_chat_id() -> int | None:
-    """Return the first allowlisted user id (solo-user bot)."""
-    users = settings.telegram_allowed_users or []
-    if not users:
-        return None
-    return int(users[0])
+def _notification_chat_ids() -> list[int]:
+    """Return each unique allowlisted Telegram recipient in configured order."""
+    recipients = []
+    seen: set[int] = set()
+    for user_id in settings.telegram_allowed_users or []:
+        try:
+            chat_id = int(user_id)
+        except (TypeError, ValueError):
+            continue
+        if chat_id not in seen:
+            seen.add(chat_id)
+            recipients.append(chat_id)
+    return recipients
 
 
 def _dedupe_cleanup_locked(now: float) -> None:
@@ -306,7 +313,9 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
     Never raises. Silent no-op when the event is muted, the bot isn't
     configured, the allowlist is empty, or dedupe kicks in. Safe to call
     from any context (sync Celery task, async router, cron). Returns True
-    when a send was attempted successfully, otherwise False.
+    when at least one recipient accepts the send, otherwise False. Dedupe is
+    recipient-specific so a partial failure can be retried without duplicating
+    delivery to recipients that already succeeded.
     """
     entity_context: dict[str, str] = {}
     try:
@@ -346,10 +355,11 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
             return False
 
         dedupe_key = str(rendered.get("dedupe_key") or event_type)
-        if not _dedupe_reserve(event_type, dedupe_key):
+        chat_ids = _notification_chat_ids()
+        if not chat_ids:
             logger.debug(
-                "telegram_notify_deduped",
-                boundary="telegram_notify.dedupe",
+                "telegram_notify_no_user",
+                boundary="telegram_notify.resolve_recipient",
                 category=SIDE_EFFECT_BEST_EFFORT,
                 event_type=event_type,
                 dedupe_key=dedupe_key,
@@ -358,60 +368,62 @@ def notify(event_type: str, payload: dict | None = None) -> bool:
             )
             return False
 
-        sent = False
-        try:
-            chat_id = _primary_chat_id()
-            if chat_id is None:
+        any_sent = False
+        for chat_id in chat_ids:
+            recipient_dedupe_key = f"{dedupe_key}:{chat_id}"
+            if not _dedupe_reserve(event_type, recipient_dedupe_key):
                 logger.debug(
-                    "telegram_notify_no_user",
-                    boundary="telegram_notify.resolve_recipient",
+                    "telegram_notify_deduped",
+                    boundary="telegram_notify.dedupe",
                     category=SIDE_EFFECT_BEST_EFFORT,
                     event_type=event_type,
                     dedupe_key=dedupe_key,
                     outcome="suppressed",
                     **entity_context,
                 )
-                return False
+                continue
 
-            if rendered.get("document_path"):
-                sent = _send_document(
-                    chat_id,
-                    rendered["text"],
-                    rendered["document_path"],
-                    filename=rendered.get("document_filename"),
-                    mime_type=rendered.get("document_mime_type"),
-                    reply_markup=rendered.get("reply_markup"),
-                    parse_mode=rendered.get("parse_mode", "Markdown"),
-                    event_type=event_type,
-                    dedupe_key=dedupe_key,
-                    entity_context=entity_context,
-                )
-                return sent
-
-            sent = _send(
-                chat_id,
-                rendered["text"],
-                reply_markup=rendered.get("reply_markup"),
-                parse_mode=rendered.get("parse_mode", "Markdown"),
-                event_type=event_type,
-                dedupe_key=dedupe_key,
-                entity_context=entity_context,
-            )
-            return sent
-        finally:
+            sent = False
             try:
-                _dedupe_finish(event_type, dedupe_key, sent=sent)
-            except Exception as exc:  # noqa: BLE001 — dedupe accounting must not affect callers
-                logger.warning(
-                    "telegram_notify_dedupe_finish_failed",
-                    boundary="telegram_notify.dedupe",
-                    category=SIDE_EFFECT_BEST_EFFORT,
-                    event_type=event_type,
-                    dedupe_key=dedupe_key,
-                    outcome="caller_continued",
-                    **entity_context,
-                    **_exception_fields(exc),
-                )
+                if rendered.get("document_path"):
+                    sent = _send_document(
+                        chat_id,
+                        rendered["text"],
+                        rendered["document_path"],
+                        filename=rendered.get("document_filename"),
+                        mime_type=rendered.get("document_mime_type"),
+                        reply_markup=rendered.get("reply_markup"),
+                        parse_mode=rendered.get("parse_mode", "Markdown"),
+                        event_type=event_type,
+                        dedupe_key=dedupe_key,
+                        entity_context=entity_context,
+                    )
+                else:
+                    sent = _send(
+                        chat_id,
+                        rendered["text"],
+                        reply_markup=rendered.get("reply_markup"),
+                        parse_mode=rendered.get("parse_mode", "Markdown"),
+                        event_type=event_type,
+                        dedupe_key=dedupe_key,
+                        entity_context=entity_context,
+                    )
+                any_sent = any_sent or sent
+            finally:
+                try:
+                    _dedupe_finish(event_type, recipient_dedupe_key, sent=sent)
+                except Exception as exc:  # noqa: BLE001 — dedupe accounting must not affect callers
+                    logger.warning(
+                        "telegram_notify_dedupe_finish_failed",
+                        boundary="telegram_notify.dedupe",
+                        category=SIDE_EFFECT_BEST_EFFORT,
+                        event_type=event_type,
+                        dedupe_key=dedupe_key,
+                        outcome="caller_continued",
+                        **entity_context,
+                        **_exception_fields(exc),
+                    )
+        return any_sent
     except Exception as exc:  # noqa: BLE001 — absolute safety net
         logger.warning(
             "telegram_notify_failed",
