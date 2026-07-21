@@ -51,8 +51,8 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T040 | Global search API and operator UI | done | SentryClaw | Separate `/api/global-search` and `/global-search` surfaces |
 | T041 | Global search chat mode switch | done | SentryClaw | Web chat now defaults to all embedded videos and supports channel/account scoping |
 | T042 | Reranker and query-expansion experiment | deferred-evidence | SentryClaw | Reopen at 30 real queries, sub-90% hit rate, or three recurring miss patterns |
-| T043 | Global search evaluation benchmark | done-seed | SentryClaw | Read-only 12-query baseline; enrich manually with anonymized real operator queries |
-| T044 | Codex-auth batch LLM migration | pilot-ready | SentryClaw | Smart Router readiness plus summary/digest provider adapter pilot |
+| T043 | Global search evaluation benchmark | done | SentryClaw | Read-only 12-query seed baseline; enrich manually with anonymized real operator queries |
+| T044 | Codex-auth batch LLM migration | done | SentryClaw | Production-proven Codex-primary workloads with Smart Router and Anthropic fallback |
 | T045 | Summary delivery polish and Codex default | done | SentryClaw | Telegram-first report caption, Watch Map removal, report de-dupe, Codex-primary summary default with Anthropic fallback validated on five-video dry run |
 | T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
 | T047 | Chat and persona Codex default | done | SentryClaw | Web/Telegram chat, direct video Q&A, and channel persona generation now use Smart Router Codex with Anthropic fallback |
@@ -67,6 +67,9 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T056 | Rendering safety | done | SentryClaw | Persisted summaries, chat Markdown, API messages, and discovered metadata now render through escaping and protocol guardrails |
 | T057 | Allowlisted Telegram notification fanout | done | SentryClaw | Shared trusted-operator notifications fan out with per-recipient failure isolation and dedupe |
 | T058 | Runtime bootstrap consolidation | done | SentryClaw | Centralized copied native env loading and sync database URL precedence |
+| T059 | Post-roadmap operational closeout | done | SentryClaw | Reconciled live production evidence, roadmap status, and gated residual work |
+| T060 | yt-dlp dependency floor | done | SentryClaw | Project/test environments aligned to the T036 validated 2026.06.09 baseline |
+| T061 | Historical stale download recovery | planned-approval | SentryClaw | Review and recover 22 April stale-download failures in bounded batches only after approval |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

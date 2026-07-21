@@ -136,3 +136,10 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Do not automatically enqueue deferred diarization in T053; first collect decision quality and keep explicit/operator-triggered diarization available.
 - Likely solo lectures, coding tutorials, demos, and monologues should default to skipping diarization.
 - Interviews, podcasts, panels, debates, fireside chats, guest conversations, and Q&A-heavy formats should be marked as worth deferred diarization.
+
+### T061 historical stale download recovery clarifications
+- The 22 visible stale-reaped download jobs are historical unresolved items, not current worker failures.
+- Do not bulk enqueue them merely because the current queue is empty.
+- First review availability, duration, duplication, and current usefulness; then release only approved items in bounded batches.
+- Preserve historical failed attempts and use the shared attempt factory for any retry.
+- The separate 609-minute duration-limit failure remains intentionally excluded unless the duration policy changes explicitly.

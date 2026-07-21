@@ -2,9 +2,26 @@
 
 ## Current status
 
-The YouTube Transcriber pipeline has completed the stabilization, delivery-quality, remediation, and final default full-suite validation arc through T025.
+As of 2026-07-21, the YouTube Transcriber has completed the stabilization,
+delivery-quality, search, Codex routing, throughput, local-security, notification,
+and runtime-consolidation roadmap through T058. The latest default validation is
+green at `1243 passed, 12 skipped`.
 
-## Active follow-on: Global corpus search
+No ungated feature build is currently required. The remaining roadmap entries are
+evidence- or product-gated:
+- T034 only if public YouTube downloads begin failing again;
+- T042 after at least 30 anonymized real search queries or repeatable quality misses;
+- T049 before adding users who need restricted permissions or private digest scope.
+
+T059 is the operational/source-of-truth closeout for this completed roadmap. T060
+aligns the declared yt-dlp dependency floor with the already validated production
+runtime.
+
+T061 records 22 genuine historical stale-download failures discovered during
+closeout. It is an operator-approved recovery task, not an automatic bulk retry:
+availability review and bounded release must happen before queue mutation.
+
+## Completed follow-on: Global corpus search
 
 Goal: add a first-class operator search path across every ingested video, transcript chunk, and summary chunk without replacing the current Postgres/pgvector storage layer.
 
@@ -63,9 +80,10 @@ Completed:
 - T026: brief quality repair and report depth gate
 - T027: summary quality gate hotfix
 
-The prior full default validation baseline is green: `1157 passed, 11 skipped`; skipped tests are opt-in smoke/e2e tests. T026 added focused brief-quality validation after that baseline.
+The historical pre-search full default validation baseline was `1157 passed, 11 skipped`.
+The current baseline is `1243 passed, 12 skipped`; skipped tests are opt-in smoke/e2e tests.
 
-## Current verified reality
+## Historical verified reality
 
 As of 2026-05-12, the repo is in a validated local default-test state after the T017-T025 remediation pass:
 - queue routing exists in code and tasks are routed into `audio`, `diarize`, and `post`
