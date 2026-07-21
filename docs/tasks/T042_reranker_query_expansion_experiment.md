@@ -30,3 +30,8 @@ quality gain from larger candidate pools. Do not add reranking or HyDE/query-exp
 cost yet. Reopen this experiment after the benchmark contains at least 30 anonymized
 real operator queries, or when a repeatable run falls below 90% hit rate or shows at
 least three recurring miss patterns.
+
+Gate review on 2026-07-21 found 31 historical user chat prompts, but only 12 have
+stored source evidence and they are Chat/RAG prompts rather than manually reviewed
+Global Search labels. They are useful future annotation candidates, but they do not
+satisfy the 30-query gate. T042 remains deferred.

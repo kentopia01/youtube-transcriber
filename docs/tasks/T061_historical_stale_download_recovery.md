@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned — operator approval required
+In progress — final bounded recovery batch
 
 ## Objective
 
@@ -17,6 +17,10 @@ retrying videos that are no longer available or useful.
 - None is in manual review.
 - A separate visible failure is an intentional 609-minute duration-limit rejection and is not part of this recovery set.
 - The current queue is empty and recent unattended pipeline jobs complete cleanly.
+- Metadata probing categorized 11 items as short-form and 11 as available
+  long-form. One long-form item is an older duplicate of a fixed-audio re-upload.
+- Six approved long-form retries have passed download and five are fully complete;
+  the final four non-duplicate candidates are queued as a bounded release.
 
 ## Proposed Sequence
 

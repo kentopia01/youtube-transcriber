@@ -31,6 +31,10 @@ Create a small repeatable benchmark for global corpus search quality and latency
 - Lean, diverse, and deep variants did not improve labeled quality. The diverse variant increased mean distinct videos from 8.2 to 11.7 without a meaningful latency penalty, but the seed set is too small to change production defaults confidently.
 - T042 is deferred: one ambiguous miss in a seed set does not justify a reranker or query-expansion dependency. Reopen after at least 30 anonymized real operator queries or a repeatable sub-90% hit rate.
 - The committed queries are corpus-grounded operator-style seeds, not captured production telemetry. Continue adding anonymized real queries manually.
+- A 2026-07-21 read-only evidence review found 31 historical Chat/RAG prompts, of
+  which 12 have stored source evidence. Because these are not yet manually reviewed
+  Global Search relevance labels, the benchmark remains at 12 labeled queries and
+  T042's evidence gate remains closed.
 
 ## Validation evidence
 - `.venv314/bin/pytest -q tests/test_global_search_eval_script.py tests/test_global_search_service.py tests/test_api_endpoints.py -k 'global_search or benchmark or ranked_video or score_query or markdown_report or committed_query or repetitions'` — 18 passed.

@@ -1,9 +1,9 @@
 # T049 - Recipient Lanes and Scoped Digests
 
 ## Status
-Planned, gated.
+Approved for build; waiting for T061 recovery queue to drain.
 
-Implementation must not start until the current YouTube catch-up pipeline has fully drained and Ken explicitly reopens this task for build.
+Implementation must not start until the current YouTube catch-up pipeline has fully drained. Ken reopened this task for build on 2026-07-21; the queue-drain gate remains active.
 
 ## Objective
 Add lightweight recipient lanes so multiple Telegram users can configure their own YouTube channel digest lists while sharing the existing transcript processing library.
@@ -26,6 +26,12 @@ Recipient lanes give the right middle ground:
 - The Telegram command manifest currently includes owner/operator commands such as `/submit`, `/queue`, `/search`, chat/persona commands, RAG toggles, `/dismiss`, `/cost`, and `/notify`.
 
 ## Product Contract
+### Current two-user rollout
+- `@kentopiadev` and `@shqng` are both trusted full-access admin/operators.
+- Each gets a separate personal lane for subscriptions and digest delivery.
+- Implement and test the restricted role for future recipients, but do not reduce
+  either current account's command access during rollout.
+
 ### Restricted lane users
 Allowed commands:
 - `/start` - short welcome
@@ -43,8 +49,10 @@ If a restricted user manually types a hidden command, return a short "not availa
 ### Ken personal lane
 Ken has a normal recipient lane. Ken's personal digest must include only Ken-lane items.
 
-### Ken admin capability
-Ken's Telegram user should also have admin/operator capability across all lanes.
+### Admin capability
+Admin Telegram users have operator capability across all lanes. Both current
+allowlisted users are admins; the architecture must not assume there can only be
+one admin.
 
 Admin commands:
 - `/admin_help` - list admin-only commands
@@ -216,7 +224,7 @@ Do not send per-video completion/report notifications to restricted users by def
 - Restricted lane user receives only their own digest.
 - Restricted lane user cannot use search, chat, queue, retry, RAG, notification, report, or admin commands.
 - Ken's personal digest contains only Ken-lane content.
-- Ken can monitor and troubleshoot all lanes through admin commands.
+- Both current trusted operators retain full admin commands and can monitor all lanes.
 - Lane poller attaches existing completed/active global videos to a lane without duplicating work.
 - Lane digest tests prove cross-lane content does not leak into recipient digests.
 - Existing owner/operator tests remain green.
@@ -235,4 +243,10 @@ Do not send per-video completion/report notifications to restricted users by def
 
 ## Notes
 - Related context: `docs/CLARIFICATIONS.md`, `docs/tasks/T048_subscription_watchlist_longform.md`.
-- The initial production lane setup will need the other recipient's Telegram user ID/chat ID.
+- Initial trusted operators are `5815973193` (`@kentopiadev`) and `39026195`
+  (`@shqng`); both retain full admin/operator capability in the current operating
+  model while receiving separate personal lanes.
+- As of 2026-07-21, only `5815973193` has a recorded private bot session.
+  `39026195` is allowlisted but must send `/start` before Telegram permits outbound
+  digest/report delivery. Keep that lane's `telegram_chat_id` nullable until first
+  contact rather than assuming delivery is available.

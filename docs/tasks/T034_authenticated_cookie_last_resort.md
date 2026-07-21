@@ -1,7 +1,7 @@
 # T034 - Authenticated Cookie Last Resort
 
 ## Status
-Planned
+Planned contingency — evidence gate not met
 
 ## Objective
 Define the fallback path for videos that truly require authenticated YouTube access.
@@ -22,3 +22,7 @@ Define the fallback path for videos that truly require authenticated YouTube acc
 
 ## Validation
 - Manual runbook only; implementation deferred until evidence requires it.
+- 2026-07-21 T061 recovery validation passed every attempted public-video
+  download; where cookie-backed requests returned 403, the existing one-time
+  cookie-free fallback succeeded. There is no current evidence requiring
+  authenticated cookies.
