@@ -1,6 +1,6 @@
 # YouTube Transcriber
 
-A self-hosted web application that transcribes YouTube videos using Apple Silicon GPU acceleration, with optional speaker diarization and AI-powered transcript cleanup. Search, summarize, and chat with your transcribed content.
+A self-hosted web application that transcribes YouTube videos using Apple Silicon GPU acceleration, with optional speaker diarization and Codex-powered intelligence through a local Smart Router. Search, summarize, and chat with your transcribed content, with Anthropic retained as fallback.
 
 ## What It Does
 
@@ -103,7 +103,7 @@ brew install ffmpeg@7
 pip install "torch==2.8.0" "torchaudio==2.8.0" "torchcodec==0.7.*" \
   mlx-whisper pyannote.audio whisperx "celery[redis]" \
   sqlalchemy psycopg2-binary anthropic sentence-transformers \
-  tiktoken yt-dlp structlog pydantic-settings pgvector alembic
+  tiktoken "yt-dlp>=2026.6.9" structlog pydantic-settings pgvector alembic
 
 # Copy and configure native worker env
 cp .env.example .env.native
