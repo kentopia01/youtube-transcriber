@@ -881,6 +881,7 @@ details.collapsible > .details-body {
    ============================================================ */
 .pagination {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     gap: 0.25rem;

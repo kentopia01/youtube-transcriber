@@ -2,7 +2,7 @@
 
 ## Status
 
-Done — read-only/live and isolated matrix
+Done — read-only/live, browser/responsive, and isolated matrix
 
 ## Objective
 
@@ -16,13 +16,14 @@ enqueue jobs or mutate production data.
 - Legacy redirects and HTMX partials.
 - Existing dynamic video, channel, persona/channel-chat, job, and transcription views.
 - Read-only chat-session, subscription, LLM-usage, search, and global-search APIs.
-- A coverage matrix separating live-read, isolated-mutating, Telegram, worker, and deferred browser-interaction evidence.
+- Desktop/mobile browser navigation, tab, menu, sidebar, Search, and Global Search interactions.
+- A coverage matrix separating live-read, browser, isolated-mutating, Telegram, and worker evidence.
 
 ## Out of Scope
 
 - Submitting a real video as part of routine smoke QA.
 - Retrying/cancelling live jobs, editing subscriptions, toggling records, or sending live chat/Telegram messages.
-- Pixel-perfect browser QA without a browser automation runtime.
+- Pixel-diff visual-regression baselines.
 - T049 lane implementation itself.
 
 ## Acceptance
@@ -39,5 +40,7 @@ enqueue jobs or mutate production data.
 - Focused script, feature-smoke, and template suite: 78 passed.
 - Dynamic checks discovered real video, channel/persona, and job IDs from rendered pages.
 - Search and Global Search executed read-only live queries successfully.
+- Playwright browser matrix: 20/20 at 1440x900 and 390x844.
+- Browser QA found and closed a real mobile pagination overflow by allowing pagination controls to wrap.
 - Coverage and intentional gaps are recorded in `docs/evaluations/feature_area_qa_2026-07-21.md`.
 - Full-suite validation is part of the final combined release gate after the remaining tasks.
