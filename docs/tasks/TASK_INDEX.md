@@ -70,6 +70,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T059 | Post-roadmap operational closeout | done | SentryClaw | Reconciled live production evidence, roadmap status, and gated residual work |
 | T060 | yt-dlp dependency floor | done | SentryClaw | Project/test environments aligned to the T036 validated 2026.06.09 baseline |
 | T061 | Historical stale download recovery | planned-approval | SentryClaw | Review and recover 22 April stale-download failures in bounded batches only after approval |
+| T062 | Feature-area QA matrix | done | SentryClaw | 26/26 read-only live checks plus explicit isolated/mutating/browser coverage boundaries |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.
