@@ -40,14 +40,3 @@
     {% endif %}
 </div>
 {% endfor %}
-
-<script>
-// Render markdown for server-rendered assistant messages
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof window.renderSafeMarkdown === 'function') {
-        document.querySelectorAll('.chat-md-content').forEach(function(el) {
-            el.innerHTML = window.renderSafeMarkdown(el.textContent);
-        });
-    }
-});
-</script>

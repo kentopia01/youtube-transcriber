@@ -30,6 +30,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 from app.models.channel import Channel
 from app.models.channel_subscription import ChannelSubscription
+from app.models.job import Job, PIPELINE_ACTIVE_STATUSES
+from app.models.lane_subscription import LaneSubscription
+from app.models.lane_video_item import LaneVideoItem
+from app.models.video import Video
 from app.services.cost_tracker import auto_ingest_budget_remaining
 from app.services.pipeline_observability import ATTEMPT_REASON_AUTO_INGEST
 from app.services.subscriptions import (
@@ -189,12 +193,173 @@ async def _process_one_subscription(
     return result
 
 
+async def _attach_or_submit_lane_entry(
+    db,
+    sub: LaneSubscription,
+    entry: FeedEntry,
+) -> str:
+    """Attach shared work to a lane, submitting only when no reusable work exists."""
+    existing_item = (
+        await db.execute(
+            select(LaneVideoItem).where(
+                LaneVideoItem.lane_id == sub.lane_id,
+                LaneVideoItem.video_id
+                == select(Video.id)
+                .where(Video.youtube_video_id == entry.video_id)
+                .scalar_subquery(),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_item is not None:
+        return "already_attached"
+
+    video = (
+        await db.execute(
+            select(Video).where(Video.youtube_video_id == entry.video_id)
+        )
+    ).scalar_one_or_none()
+    active_job = None
+    if video is not None:
+        active_job = (
+            await db.execute(
+                select(Job)
+                .where(
+                    Job.video_id == video.id,
+                    Job.job_type == "pipeline",
+                    Job.status.in_(PIPELINE_ACTIVE_STATUSES),
+                )
+                .order_by(Job.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    if video is not None and (video.status == "completed" or active_job is not None):
+        item = LaneVideoItem(
+            lane_id=sub.lane_id,
+            video_id=video.id,
+            lane_subscription_id=sub.id,
+            processing_job_id=active_job.id if active_job is not None else None,
+            source="lane_poll",
+        )
+        db.add(item)
+        await db.commit()
+        return "attached_existing"
+
+    submitted = await _submit_video(entry.url)
+    video_id = submitted.get("video_id")
+    job_id = submitted.get("job_id")
+    if not video_id:
+        raise RuntimeError("submit response omitted video_id")
+    video = await db.get(Video, uuid.UUID(str(video_id)))
+    if video is None:
+        raise RuntimeError(f"submitted video {video_id} was not found")
+    if job_id:
+        await _tag_job_as_auto_ingest(db, str(job_id))
+    db.add(
+        LaneVideoItem(
+            lane_id=sub.lane_id,
+            video_id=video.id,
+            lane_subscription_id=sub.id,
+            processing_job_id=uuid.UUID(str(job_id)) if job_id else None,
+            source="lane_poll",
+        )
+    )
+    await db.commit()
+    return "submitted"
+
+
+async def _process_one_lane_subscription(
+    db,
+    sub: LaneSubscription,
+) -> dict[str, Any]:
+    result = {
+        "lane_id": str(sub.lane_id),
+        "subscription_id": str(sub.id),
+        "channel_name": None,
+        "new_videos_found": 0,
+        "submitted": 0,
+        "attached_existing": 0,
+        "already_attached": 0,
+        "skipped_reason": None,
+    }
+    channel = sub.channel or await db.get(Channel, sub.channel_id)
+    result["channel_name"] = channel.name if channel else None
+    if channel is None or not channel.youtube_channel_id:
+        mark_poll_failure(sub, reason="channel missing youtube_channel_id")
+        result["skipped_reason"] = "missing_youtube_channel_id"
+        await db.commit()
+        return result
+
+    try:
+        entries = await fetch_channel_feed(channel.youtube_channel_id)
+    except SubscriptionError as exc:
+        mark_poll_failure(sub, reason=str(exc))
+        result["skipped_reason"] = f"rss_error: {exc}"
+        await db.commit()
+        return result
+
+    new_entries = diff_new_videos(entries, list(sub.last_seen_video_ids or []))
+    result["new_videos_found"] = len(new_entries)
+    if not new_entries:
+        mark_poll_success(sub, new_ids=[])
+        await db.commit()
+        return result
+
+    reset_daily_counter_if_needed(sub)
+    remaining_today = max(
+        0,
+        sub.max_videos_per_poll - (sub.videos_ingested_today or 0),
+    )
+    to_process = new_entries[:remaining_today]
+    processed_ids: list[str] = []
+    rejected_ids: list[str] = []
+
+    for entry in to_process:
+        try:
+            from app.services.video_classifier import classify_video_url
+
+            classification = classify_video_url(entry.url)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "lane_ingest_classifier_error",
+                lane_id=str(sub.lane_id),
+                video_id=entry.video_id,
+                error=str(exc),
+            )
+            from app.services.video_classifier import ClassificationResult
+
+            classification = ClassificationResult(True, None)
+
+        if not classification.is_regular:
+            rejected_ids.append(entry.video_id)
+            continue
+
+        try:
+            disposition = await _attach_or_submit_lane_entry(db, sub, entry)
+        except Exception as exc:  # noqa: BLE001
+            mark_poll_failure(
+                sub,
+                reason=f"lane attach/submit failed for {entry.video_id}: {exc}",
+            )
+            result["skipped_reason"] = f"submit_error: {exc}"
+            await db.commit()
+            return result
+        result[disposition] += 1
+        processed_ids.append(entry.video_id)
+        sub.videos_ingested_today = (sub.videos_ingested_today or 0) + 1
+
+    mark_poll_success(sub, new_ids=processed_ids + rejected_ids)
+    await db.commit()
+    return result
+
+
 async def _run_poll() -> dict[str, Any]:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
     total_ingested = 0
     stats: list[dict[str, Any]] = []
+    lane_stats: list[dict[str, Any]] = []
     soft_cap_crossed = False  # notify once per run when auto-ingest spend
                               # crosses the soft cap. Polling continues.
 
@@ -226,6 +391,20 @@ async def _run_poll() -> dict[str, Any]:
                 s = await _process_one_subscription(db, sub, budget_remaining=1e9)
                 stats.append(s)
                 total_ingested += int(s.get("ingested") or 0)
+
+            lane_subscriptions = (
+                await db.execute(
+                    select(LaneSubscription).order_by(
+                        LaneSubscription.last_polled_at.asc().nullsfirst()
+                    )
+                )
+            ).scalars().all()
+            for lane_subscription in lane_subscriptions:
+                if not is_due_for_poll(lane_subscription):
+                    continue
+                lane_stats.append(
+                    await _process_one_lane_subscription(db, lane_subscription)
+                )
     finally:
         await engine.dispose()
 
@@ -234,6 +413,8 @@ async def _run_poll() -> dict[str, Any]:
         "total_ingested": total_ingested,
         "soft_cap_crossed": soft_cap_crossed,
         "details": stats,
+        "processed_lane_subscriptions": len(lane_stats),
+        "lane_details": lane_stats,
     }
     logger.info("poll_subscriptions_done", **{k: v for k, v in result.items() if k != "details"})
 

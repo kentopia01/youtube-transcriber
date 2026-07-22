@@ -51,6 +51,26 @@ class _DbStub:
         return None
 
 
+class _LaneDbStub(_DbStub):
+    def __init__(self, execute_values, *, get_value=None):
+        super().__init__()
+        self.execute_values = list(execute_values)
+        self.get_value = get_value
+        self.added = []
+
+    async def execute(self, statement):
+        value = self.execute_values.pop(0)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = value
+        return result
+
+    async def get(self, model, key):
+        return self.get_value
+
+    def add(self, value):
+        self.added.append(value)
+
+
 class TestProcessOneSubscription:
     @pytest.mark.asyncio
     async def test_no_new_videos_marks_poll_and_exits(self, monkeypatch):
@@ -214,6 +234,89 @@ class TestProcessOneSubscription:
         await poll_module._process_one_subscription(db, sub, budget_remaining=10.0)
         assert sub.enabled is False
         assert "Auto-disabled" in (sub.disabled_reason or "")
+
+
+class TestLaneSharedProcessingAttach:
+    def _lane_sub(self):
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            lane_id=uuid.uuid4(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_completed_global_video_attaches_without_submit(self, monkeypatch):
+        video = SimpleNamespace(id=uuid.uuid4(), status="completed")
+        db = _LaneDbStub([None, video, None])
+        submit = AsyncMock()
+        monkeypatch.setattr(poll_module, "_submit_video", submit)
+
+        disposition = await poll_module._attach_or_submit_lane_entry(
+            db,
+            self._lane_sub(),
+            FeedEntry("completed01", "title", "url", None),
+        )
+
+        assert disposition == "attached_existing"
+        submit.assert_not_awaited()
+        assert len(db.added) == 1
+        assert db.added[0].video_id == video.id
+
+    @pytest.mark.asyncio
+    async def test_active_global_video_attaches_to_existing_job(self, monkeypatch):
+        video = SimpleNamespace(id=uuid.uuid4(), status="processing")
+        job = SimpleNamespace(id=uuid.uuid4(), status="running")
+        db = _LaneDbStub([None, video, job])
+        submit = AsyncMock()
+        monkeypatch.setattr(poll_module, "_submit_video", submit)
+
+        disposition = await poll_module._attach_or_submit_lane_entry(
+            db,
+            self._lane_sub(),
+            FeedEntry("active00001", "title", "url", None),
+        )
+
+        assert disposition == "attached_existing"
+        submit.assert_not_awaited()
+        assert db.added[0].processing_job_id == job.id
+
+    @pytest.mark.asyncio
+    async def test_new_video_submits_once_and_records_lane_item(self, monkeypatch):
+        video = SimpleNamespace(id=uuid.uuid4(), status="processing")
+        job_id = uuid.uuid4()
+        db = _LaneDbStub([None, None], get_value=video)
+        submit = AsyncMock(
+            return_value={"video_id": str(video.id), "job_id": str(job_id)}
+        )
+        tag = AsyncMock()
+        monkeypatch.setattr(poll_module, "_submit_video", submit)
+        monkeypatch.setattr(poll_module, "_tag_job_as_auto_ingest", tag)
+
+        disposition = await poll_module._attach_or_submit_lane_entry(
+            db,
+            self._lane_sub(),
+            FeedEntry("newvideo001", "title", "https://youtube.test/new", None),
+        )
+
+        assert disposition == "submitted"
+        submit.assert_awaited_once_with("https://youtube.test/new")
+        tag.assert_awaited_once_with(db, str(job_id))
+        assert db.added[0].processing_job_id == job_id
+
+    @pytest.mark.asyncio
+    async def test_existing_lane_item_is_idempotent(self, monkeypatch):
+        db = _LaneDbStub([SimpleNamespace(id=uuid.uuid4())])
+        submit = AsyncMock()
+        monkeypatch.setattr(poll_module, "_submit_video", submit)
+
+        disposition = await poll_module._attach_or_submit_lane_entry(
+            db,
+            self._lane_sub(),
+            FeedEntry("already00001", "title", "url", None),
+        )
+
+        assert disposition == "already_attached"
+        submit.assert_not_awaited()
+        assert db.added == []
 
 
 class TestCostTracker:

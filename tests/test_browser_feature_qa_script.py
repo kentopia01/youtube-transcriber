@@ -1,14 +1,15 @@
 from scripts.qa_browser_feature_areas import BrowserCheck, PAGE_SPECS, VIEWPORTS, _same_origin, render_markdown
 
 
-def test_browser_matrix_covers_every_operator_navigation_area_at_two_viewports():
+def test_browser_matrix_covers_both_workspaces_at_two_viewports():
     assert {area for area, _path, _selector, _marker in PAGE_SPECS} == {
-        "Dashboard",
+        "Reader home",
+        "Operations dashboard",
         "Queue",
         "Library",
         "Chat",
-        "Search",
-        "Global Search",
+        "Research",
+        "Highlights notebook",
     }
     assert VIEWPORTS == {
         "desktop": {"width": 1440, "height": 900},

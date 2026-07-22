@@ -29,12 +29,14 @@ def _candidate(candidate_id, video_id, text, score=0.01, source_type="transcript
 
 def test_global_options_are_bounded():
     channel_id = uuid.uuid4()
+    video_id = uuid.uuid4()
     opts = GlobalSearchOptions(
         limit=999,
         candidate_limit=999,
         summary_limit=999,
         per_video_limit=999,
         channel_id=channel_id,
+        video_id=video_id,
         source_type="bad",
         rrf_k=0,
     ).normalized()
@@ -44,6 +46,7 @@ def test_global_options_are_bounded():
     assert opts.summary_limit == 250
     assert opts.per_video_limit == 50
     assert opts.channel_id == channel_id
+    assert opts.video_id == video_id
     assert opts.source_type == "all"
     assert opts.rrf_k == 1
 
@@ -55,6 +58,14 @@ def test_build_global_where_clause_source_filters():
 
     clause, _ = _build_global_where_clause(source_type="transcript")
     assert "ec.speaker IS NULL" in clause
+
+
+def test_build_global_where_clause_enforces_exact_video_scope():
+    video_id = uuid.uuid4()
+    clause, params = _build_global_where_clause(video_id=video_id)
+
+    assert "v.id = :video_id" in clause
+    assert params["video_id"] == str(video_id)
 
 
 def test_row_to_candidate_marks_summary_and_youtube_url():

@@ -1,0 +1,12 @@
+[class^="iconoir-"], [class*=" iconoir-"] { display: inline-block; width: 1em; text-align: center; font-style: normal; line-height: 1; }
+[class^="iconoir-"]::before, [class*=" iconoir-"]::before { content: "·"; }
+.iconoir-home-simple::before { content: "⌂"; }.iconoir-book::before,.iconoir-book-stack::before,.iconoir-page::before { content: "▤"; }
+.iconoir-search::before { content: "⌕"; }.iconoir-chat-bubble::before { content: "◌"; }.iconoir-bookmark::before { content: "◆"; }
+.iconoir-settings::before { content: "⚙"; }.iconoir-dashboard::before { content: "⌘"; }.iconoir-list::before { content: "☷"; }
+.iconoir-menu::before { content: "☰"; }.iconoir-plus::before { content: "+"; }.iconoir-xmark::before { content: "×"; }
+.iconoir-play-solid::before { content: "▶"; }.iconoir-arrow-right::before,.iconoir-nav-arrow-right::before { content: "→"; }
+.iconoir-arrow-left::before { content: "←"; }.iconoir-nav-arrow-down::before { content: "⌄"; }.iconoir-open-new-window::before { content: "↗"; }
+.iconoir-check::before,.iconoir-clipboard-check::before { content: "✓"; }.iconoir-warning-triangle::before { content: "△"; }
+.iconoir-info-circle::before { content: "ⓘ"; }.iconoir-clock::before { content: "◷"; }.iconoir-refresh::before,.iconoir-refresh-double::before { content: "↻"; }
+.iconoir-video-camera::before { content: "▻"; }.iconoir-community::before,.iconoir-user::before { content: "◉"; }.iconoir-microphone::before { content: "♩"; }
+.iconoir-brain::before,.iconoir-spark::before,.iconoir-sparks::before { content: "✦"; }.iconoir-send::before { content: "➤"; }.iconoir-trash::before { content: "⌫"; }.iconoir-view-grid::before { content: "▦"; }

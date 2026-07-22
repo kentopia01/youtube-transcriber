@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block body_class %}workspace-reader{% endblock %}
+
+{% block workspace_styles %}
+<link rel="stylesheet" href="/static/css/reader.css?v=20260721">
+{% endblock %}
+
+{% block workspace_nav %}
+{% set current_path = request.url.path if request.url.path is defined else '' %}
+<nav class="top-nav reader-top-nav" aria-label="Reader navigation">
+    <div class="top-nav-inner">
+        <a href="/" class="nav-brand" aria-label="Reader home">
+            <span class="nav-brand-icon"><i class="iconoir-book" aria-hidden="true"></i></span>
+            Transcript Reader
+        </a>
+
+        <div class="nav-links">
+            <a href="/" class="nav-link {% if current_path == '/' %}is-active{% endif %}"
+               {% if current_path == '/' %}aria-current="page"{% endif %}>
+                <i class="iconoir-home-simple" aria-hidden="true"></i> Home
+            </a>
+            <a href="/read" class="nav-link {% if current_path.startswith('/read') %}is-active{% endif %}"
+               {% if current_path.startswith('/read') %}aria-current="page"{% endif %}>
+                <i class="iconoir-book-stack" aria-hidden="true"></i> Library
+            </a>
+            <a href="/search" class="nav-link {% if current_path == '/search' or current_path.startswith('/chat') %}is-active{% endif %}"
+               {% if current_path == '/search' or current_path.startswith('/chat') %}aria-current="page"{% endif %}>
+                <i class="iconoir-search" aria-hidden="true"></i> Research
+            </a>
+            <a href="/read/highlights" class="nav-link {% if current_path == '/read/highlights' %}is-active{% endif %}">
+                <i class="iconoir-bookmark" aria-hidden="true"></i> Highlights
+            </a>
+        </div>
+
+        <div class="nav-actions">
+            <div class="workspace-switch" role="group" aria-label="Workspace switcher">
+                <a href="/" class="workspace-switch-link is-active" aria-current="page">Reader</a>
+                <a href="/ops" class="workspace-switch-link">Operations</a>
+            </div>
+        </div>
+
+        <button type="button" class="nav-mobile-toggle"
+                onclick="toggleWorkspaceNav(this, 'reader-mobile-nav')"
+                aria-label="Open Reader navigation" aria-controls="reader-mobile-nav" aria-expanded="false">
+            <i class="iconoir-menu" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <div id="reader-mobile-nav" class="mobile-nav">
+        <a href="/" class="nav-link {% if current_path == '/' %}is-active{% endif %}">Home</a>
+        <a href="/read" class="nav-link {% if current_path.startswith('/read') %}is-active{% endif %}">Library</a>
+        <a href="/search" class="nav-link {% if current_path == '/search' or current_path.startswith('/chat') %}is-active{% endif %}">Research</a>
+        <a href="/read/highlights" class="nav-link {% if current_path == '/read/highlights' %}is-active{% endif %}">Highlights</a>
+        <a href="/ops" class="workspace-mobile-link">Switch to Operations</a>
+    </div>
+</nav>
+{% endblock %}
+
+{% block workspace_footer %}
+<footer class="reader-footer">Your transcript library · one shared platform</footer>
+{% endblock %}

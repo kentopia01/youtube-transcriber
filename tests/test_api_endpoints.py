@@ -404,6 +404,27 @@ class TestGlobalSearchEndpoint:
         assert options.per_video_limit == 2
         assert options.rrf_k == 30
 
+    def test_json_global_search_passes_exact_video_scope(self, monkeypatch):
+        captured = {}
+        video_id = uuid.uuid4()
+
+        async def fake_global_search(db, query, query_embedding, options):
+            captured["options"] = options
+            return {"query": query, "results": [], "candidate_count": 0, "lane_counts": {}}
+
+        monkeypatch.setattr(
+            "app.services.search.encode_query",
+            lambda query, model_cache_dir=None: [0.1] * 768,
+        )
+        monkeypatch.setattr(global_search_router, "run_global_search", fake_global_search)
+
+        response = _build_client().post(
+            "/api/global-search", json={"query": "scope", "video_id": str(video_id)}
+        )
+
+        assert response.status_code == 200
+        assert captured["options"].video_id == video_id
+
     def test_htmx_global_search(self, monkeypatch):
         async def fake_global_search(db, query, query_embedding, options):
             return {

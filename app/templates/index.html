@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "operations_base.html" %}
 
-{% block title %}Dashboard - YouTube Transcriber{% endblock %}
+{% block title %}Operations Overview - YouTube Transcriber{% endblock %}
 
 {% block content %}
 <!-- Hero Section with Bracket Accents -->
@@ -14,13 +14,14 @@
                     Queue a source once, monitor progress in real time, and recover failures from one screen.
                 </p>
             </div>
-            <div class="status-pill status-completed self-start lg:self-auto">
+            <div class="status-pill status-{{ operations.queue_health.css_status }} self-start lg:self-auto"
+                 title="{{ operations.queue_health.detail }}">
                 <span class="dot"></span>
-                Queue Online
+                {{ operations.queue_health.label }}
             </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="proof-chip"><i class="iconoir-microphone" style="font-size:0.9rem; color: var(--accent);"></i> Faster-whisper pipeline</div>
+            <div class="proof-chip"><i class="iconoir-microphone" style="font-size:0.9rem; color: var(--accent);"></i> {{ operations.runtime.transcription_label }}</div>
             <div class="proof-chip"><i class="iconoir-refresh-double" style="font-size:0.9rem; color: var(--accent);"></i> Retry-safe queue controls</div>
             <div class="proof-chip"><i class="iconoir-search" style="font-size:0.9rem; color: var(--accent);"></i> Search-ready output store</div>
         </div>
@@ -46,10 +47,26 @@
     </div>
     <div class="stat-card">
         <p class="stat-label">Active Jobs</p>
-        <p class="stat-value text-warning">{{ active_jobs|length }}</p>
-        <p class="stat-desc">Running or queued</p>
+        <p class="stat-value text-warning">{{ operations.counts.in_flight_jobs }}</p>
+        <p class="stat-desc">{{ operations.counts.active_jobs }} running · {{ operations.counts.pending_jobs }} waiting</p>
     </div>
 </div>
+
+{% if operations.warning_count %}
+<div class="notice notice-warning mb-8" role="status">
+    <i class="iconoir-warning-triangle" aria-hidden="true"></i>
+    <div>
+        <p class="font-medium">Operations needs attention</p>
+        <p class="text-sm">
+            {{ operations.counts.failed_visible_jobs }} visible failed job{{ "s" if operations.counts.failed_visible_jobs != 1 }},
+            {{ operations.batch_warnings|length }} stale batch warning{{ "s" if operations.batch_warnings|length != 1 }},
+            {{ operations.counts.report_delivery_warnings }} report delivery warning{{ "s" if operations.counts.report_delivery_warnings != 1 }}, and
+            {{ operations.counts.subscription_warnings }} subscription warning{{ "s" if operations.counts.subscription_warnings != 1 }}.
+            <a href="/ops/queue" class="link">Review the queue</a>.
+        </p>
+    </div>
+</div>
+{% endif %}
 
 <!-- Chat with Library -->
 <div class="surface mb-8">
@@ -59,6 +76,7 @@
             <h2 class="section-title">Chat with Library</h2>
         </div>
         <form id="quick-search-form" class="flex gap-2">
+            <label class="sr-only" for="quick-search-input">Ask the transcript library</label>
             <input type="text" id="quick-search-input" name="q"
                    placeholder="Ask a question about your videos..."
                    class="input-field flex-1" autocomplete="off">
@@ -74,7 +92,7 @@
     <!-- Left column: forms -->
     <div class="xl:col-span-5 space-y-6">
         <!-- Single Video Form -->
-        <div class="surface accent-top">
+        <div id="submit-video" class="surface accent-top">
             <div class="surface-body">
                 <h2 class="section-title mb-1">Queue A Single Video</h2>
                 <p class="text-sm mb-4" style="color: var(--text-secondary);">Primary path: submit one URL and start processing immediately.</p>
@@ -132,8 +150,8 @@
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <h2 class="section-title">Live Queue Overview</h2>
                 </div>
-                <div id="queue-content"
-                     hx-get="/queue"
+                <div id="queue-content" aria-live="polite" aria-atomic="false"
+                     hx-get="/ops/queue"
                      hx-trigger="load delay:3s"
                      hx-target="#queue-content"
                      hx-swap="innerHTML">
@@ -149,10 +167,10 @@
     <div class="surface-body">
         <div class="flex items-center justify-between mb-4">
             <h2 class="section-title">Recent Jobs</h2>
-            <a href="/queue" class="btn btn-ghost btn-sm">View Queue <i class="iconoir-arrow-right" style="font-size:0.85rem"></i></a>
+            <a href="/ops/queue" class="btn btn-ghost btn-sm">View Queue <i class="iconoir-arrow-right" style="font-size:0.85rem"></i></a>
         </div>
         <div class="overflow-x-auto">
-            <table class="data-table">
+            <table class="data-table recent-jobs-table">
                 <thead>
                     <tr>
                         <th>Job</th>
@@ -162,8 +180,8 @@
                         <th class="text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="recent-jobs-body"
-                       hx-get="/partials/recent-jobs"
+                <tbody id="recent-jobs-body" aria-live="polite" aria-atomic="false"
+                       hx-get="/ops/partials/recent-jobs"
                        hx-trigger="load delay:5s"
                        hx-target="#recent-jobs-body"
                        hx-swap="innerHTML">
@@ -175,12 +193,12 @@
 </div>
 
 <!-- Channel Confirm Dialog -->
-<dialog id="channel-confirm-dialog" class="modal-dialog">
+<dialog id="channel-confirm-dialog" class="modal-dialog" aria-labelledby="channel-dialog-title">
     <div class="modal-content">
         <div class="modal-header">
             <h3 id="channel-dialog-title" class="section-title">Select Videos to Process</h3>
-            <button class="modal-close" onclick="document.getElementById('channel-confirm-dialog').close()">
-                <i class="iconoir-xmark"></i>
+            <button type="button" class="modal-close" onclick="document.getElementById('channel-confirm-dialog').close()" aria-label="Close channel selection">
+                <i class="iconoir-xmark" aria-hidden="true"></i>
             </button>
         </div>
         <div class="modal-body">
@@ -205,158 +223,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-// Chat with Library launcher
-document.getElementById('quick-search-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const q = document.getElementById('quick-search-input').value.trim();
-    if (q) window.location.href = '/search?q=' + encodeURIComponent(q);
-});
-
-// Video submission
-document.getElementById('video-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const url = document.getElementById('video-url').value;
-    const result = document.getElementById('video-result');
-    result.innerHTML = '<span class="spinner spinner-sm"></span>';
-
-    try {
-        const resp = await fetch('/api/videos', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url})
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            result.innerHTML = '<p class="text-sm text-success mt-1">Queued. <a href="/jobs/' + escapeHtml(data.job_id) + '" class="link">Open job</a></p>';
-            document.getElementById('video-url').value = '';
-            htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
-        } else {
-            result.innerHTML = '<p class="text-sm text-error mt-1">' + escapeHtml(data.detail || 'Error') + '</p>';
-        }
-    } catch (err) {
-        result.innerHTML = '<p class="text-sm text-error mt-1">Network error</p>';
-    }
-});
-
-// Channel submission
-let channelId = null;
-let discoveredVideos = [];
-
-document.getElementById('channel-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const url = document.getElementById('channel-url').value;
-    const result = document.getElementById('channel-result');
-    result.innerHTML = '<span class="spinner spinner-sm"></span> <span class="text-sm">Discovering...</span>';
-
-    try {
-        const resp = await fetch('/api/channels', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url})
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            channelId = data.channel_id;
-            discoveredVideos = data.videos || [];
-            if (!discoveredVideos.length) {
-                result.innerHTML = '<p class="text-sm text-warning mt-1">No videos found for that channel.</p>';
-                return;
-            }
-            showChannelConfirmDialog(data.channel_name, discoveredVideos);
-            result.innerHTML = '<p class="text-sm text-success mt-1">Found ' + discoveredVideos.length + ' videos</p>';
-        } else {
-            result.innerHTML = '<p class="text-sm text-error mt-1">' + escapeHtml(data.detail || 'Error') + '</p>';
-        }
-    } catch (err) {
-        result.innerHTML = '<p class="text-sm text-error mt-1">Network error</p>';
-    }
-});
-
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-}
-
-function safeHttpUrl(value) {
-    try {
-        const parsed = new URL(String(value ?? ''), window.location.origin);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : '';
-    } catch (err) {
-        return '';
-    }
-}
-
-function formatDuration(seconds) {
-    if (typeof seconds !== 'number') return '--:--';
-    const total = Math.max(0, Math.floor(seconds));
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const secs = total % 60;
-    if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    return `${minutes}:${String(secs).padStart(2, '0')}`;
-}
-
-function showChannelConfirmDialog(channelName, videos) {
-    document.getElementById('channel-dialog-title').textContent = 'Select Videos from ' + channelName;
-    document.getElementById('video-count').textContent = videos.length;
-    const list = document.getElementById('channel-video-list');
-    list.innerHTML = videos.map((v, i) => `
-        <div class="flex items-start gap-3 px-4 py-3" style="border-bottom: 1px solid var(--border-muted);">
-            <input type="checkbox" id="vid-${i}" value="${escapeHtml(v.video_id)}" checked class="checkbox-field channel-video-cb">
-            <label for="vid-${i}" class="flex gap-3 flex-1 cursor-pointer">
-                <span class="rounded-md overflow-hidden shrink-0" style="width: 7rem; height: 3.9rem; background: var(--bg-elevated); border: 1px solid var(--border-default);">
-                    ${safeHttpUrl(v.thumbnail)
-                        ? `<img src="${escapeHtml(safeHttpUrl(v.thumbnail))}" alt="${escapeHtml(v.title || 'Video thumbnail')}" style="width: 100%; height: 100%; object-fit: cover;">`
-                        : `<span class="h-full w-full flex items-center justify-center text-xs text-faint">No thumb</span>`}
-                </span>
-                <span class="flex-1 min-w-0">
-                    <span class="font-medium text-sm block leading-snug">${escapeHtml(v.title || 'Untitled')}</span>
-                    <span class="font-mono text-xs text-faint block mt-1">${formatDuration(v.duration)}</span>
-                </span>
-            </label>
-            ${safeHttpUrl(v.url) ? `<a href="${escapeHtml(safeHttpUrl(v.url))}" target="_blank" rel="noopener" class="link text-xs shrink-0" onclick="event.stopPropagation()">Open</a>` : ''}
-        </div>
-    `).join('');
-    document.getElementById('select-all').checked = true;
-    document.getElementById('channel-confirm-dialog').showModal();
-}
-
-document.getElementById('select-all').addEventListener('change', (e) => {
-    document.querySelectorAll('.channel-video-cb').forEach(cb => cb.checked = e.target.checked);
-});
-
-document.getElementById('confirm-process-btn').addEventListener('click', async () => {
-    const selected = Array.from(document.querySelectorAll('.channel-video-cb:checked')).map(cb => cb.value);
-    if (!selected.length) { alert('Select at least one video'); return; }
-    const btn = document.getElementById('confirm-process-btn');
-    btn.classList.add('is-loading');
-    btn.disabled = true;
-    try {
-        const resp = await fetch(`/api/channels/${channelId}/process`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({video_ids: selected})
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            document.getElementById('channel-confirm-dialog').close();
-            document.getElementById('channel-result').innerHTML =
-                '<p class="text-sm text-success mt-1">Queued ' + escapeHtml(data.total_videos) + ' videos. <a href="/library" class="link">View Library</a></p>';
-            htmx.ajax('GET', '/queue', {target: '#queue-content', swap: 'innerHTML'});
-        } else {
-            alert(data.detail || 'Error processing videos');
-        }
-    } catch (err) {
-        alert('Network error');
-    } finally {
-        btn.classList.remove('is-loading');
-        btn.disabled = false;
-    }
-});
-</script>
+<script src="/static/js/submission.js?v=20260721"></script>
 {% endblock %}

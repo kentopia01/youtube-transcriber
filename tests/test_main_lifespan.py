@@ -66,16 +66,29 @@ class TestWarmEmbeddingModel:
 
 
 class TestLifespanRunsOnStartup:
-    def test_lifespan_warms_model(self, monkeypatch):
+    def test_lifespan_is_lazy_by_default(self, monkeypatch):
         calls = {"n": 0}
 
         def fake_warm():
             calls["n"] += 1
 
         monkeypatch.setattr(app_main, "_warm_embedding_model", fake_warm)
+        monkeypatch.setattr(app_main.settings, "warm_embedding_model", False)
 
         app = app_main.create_app()
         with TestClient(app):
+            pass
+
+        assert calls["n"] == 0
+
+    def test_lifespan_can_warm_model_when_explicitly_enabled(self, monkeypatch):
+        calls = {"n": 0}
+        monkeypatch.setattr(
+            app_main, "_warm_embedding_model", lambda: calls.__setitem__("n", calls["n"] + 1)
+        )
+        monkeypatch.setattr(app_main.settings, "warm_embedding_model", True)
+
+        with TestClient(app_main.create_app()):
             pass
 
         assert calls["n"] == 1

@@ -1,0 +1,136 @@
+{% extends "reader_base.html" %}
+
+{% block title %}{{ video.title }} · Reader{% endblock %}
+{% block main_class %}reader-document-shell{% endblock %}
+{% block workspace_styles %}
+{{ super() }}
+<link rel="stylesheet" href="/static/css/reader-document.css?v=20260721">
+{% endblock %}
+
+{% block content %}
+<div class="reader-document" id="reader-document"
+     data-video-id="{{ video.id }}"
+     data-state-url="/api/reader/videos/{{ video.id }}/state"
+     data-resume-anchor="{{ reader_state.resume_block_anchor or '' }}"
+     data-progress="{{ reader_state.progress_pct }}">
+    <div class="reader-progress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ reader_state.progress_pct|round|int }}"><span id="reader-progress-bar" style="width: {{ reader_state.progress_pct }}%"></span></div>
+
+    <header class="reader-document-head">
+        <nav class="reader-breadcrumb" aria-label="Breadcrumb">
+            <a href="/read">Library</a><span aria-hidden="true">/</span>
+            <a href="/read/{{ video.id }}/details">Details</a>
+        </nav>
+        <p class="reader-source">{{ video.channel.name if video.channel else 'Transcript' }}</p>
+        <h1>{{ video.title }}</h1>
+        <div class="reader-document-meta">
+            <span>{{ transcription.word_count or 0 }} words</span>
+            <span>{{ estimated_reading_minutes }} min read</span>
+            <a href="{{ video.url }}" target="_blank" rel="noopener">Watch video</a>
+        </div>
+    </header>
+
+    <div class="reader-layout">
+        <aside class="reader-outline" aria-label="Transcript outline">
+            <p class="reader-panel-label">Outline</p>
+            <nav id="reader-outline-links">
+                {% for item in outline %}
+                <a href="#{{ item.anchor }}"><span>{{ item.start_time|format_timestamp }}</span>{{ item.label }}</a>
+                {% endfor %}
+            </nav>
+        </aside>
+
+        <article class="reader-article" aria-label="Transcript" tabindex="-1">
+            {% for block in blocks %}
+            <section class="reader-block" id="{{ block.anchor }}" data-index="{{ block.index }}" data-start="{{ block.start_time }}">
+                <a class="reader-timestamp" href="https://www.youtube.com/watch?v={{ video.youtube_video_id }}&t={{ block.start_time|int }}s"
+                   target="_blank" rel="noopener" aria-label="Watch at {{ block.start_time|format_timestamp }}">
+                    {{ block.start_time|format_timestamp }}
+                </a>
+                <div>
+                    {% if block.speaker %}<p class="reader-speaker">{{ block.speaker }}</p>{% endif %}
+                    <p class="reader-copy">{{ block.text }}</p>
+                </div>
+            </section>
+            {% endfor %}
+        </article>
+
+        <dialog id="reader-tools" class="reader-tools" aria-labelledby="reader-tools-title">
+            <div class="reader-tools-head">
+                <h2 id="reader-tools-title">Reading tools</h2>
+                <button type="button" class="reader-tools-close" data-close-tools aria-label="Close reading tools">×</button>
+            </div>
+            <label class="reader-search-label" for="reader-search">Find in transcript</label>
+            <div class="reader-search-row">
+                <input id="reader-search" type="search" placeholder="Search this transcript" autocomplete="off">
+                <button type="button" data-search-next aria-label="Next match">↓</button>
+            </div>
+            <p id="reader-search-status" class="reader-tool-status" aria-live="polite">Type to find a passage</p>
+
+            <fieldset class="reader-setting-group">
+                <legend>Appearance</legend>
+                <div class="reader-theme-options">
+                    {% for theme in ['light', 'paper', 'sepia', 'dark'] %}
+                    <button type="button" data-reader-theme="{{ theme }}">{{ theme|capitalize }}</button>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            <div class="reader-setting-grid">
+                <label>Text size
+                    <select data-setting="fontSize">
+                        <option value="17">Small</option><option value="19" selected>Medium</option><option value="22">Large</option><option value="25">Extra large</option>
+                    </select>
+                </label>
+                <label>Line spacing
+                    <select data-setting="lineHeight">
+                        <option value="1.55">Compact</option><option value="1.75" selected>Comfortable</option><option value="1.95">Airy</option>
+                    </select>
+                </label>
+                <label>Text width
+                    <select data-setting="contentWidth">
+                        <option value="36">Narrow</option><option value="42" selected>Comfortable</option><option value="48">Wide</option>
+                    </select>
+                </label>
+                <label>Weight
+                    <select data-setting="fontWeight">
+                        <option value="400" selected>Regular</option><option value="500">Medium</option><option value="600">Bold</option>
+                    </select>
+                </label>
+            </div>
+            <div class="reader-state-actions">
+                <a class="btn btn-outline" href="/chat?video_id={{ video.id }}">Ask this transcript</a>
+                <button type="button" class="btn btn-outline" data-generate-chapters>Generate smart outline</button>
+                <button type="button" class="btn btn-outline" data-bookmark-current>Bookmark this passage</button>
+                <button type="button" class="btn btn-outline" data-reader-status="later">Save for later</button>
+                <button type="button" class="btn btn-primary" data-reader-status="finished">Mark finished</button>
+            </div>
+            <p id="reader-chapter-status" class="reader-tool-status" aria-live="polite"></p>
+            <p id="reader-save-status" class="reader-tool-status" aria-live="polite"></p>
+            <div class="reader-notebook-head"><h3>Notebook</h3><a href="/api/reader/videos/{{ video.id }}/annotations/export">Export Markdown</a></div>
+            <div id="reader-annotation-list" class="reader-annotation-list" aria-live="polite"></div>
+        </dialog>
+    </div>
+
+    <div id="reader-selection-tools" class="reader-selection-tools" hidden role="toolbar" aria-label="Selected passage actions">
+        <button type="button" data-create-annotation="highlight">Highlight</button>
+        <button type="button" data-create-annotation="note">Add note</button>
+        <button type="button" data-selection-research="explain">Explain</button>
+        <button type="button" data-selection-research="summarize">Summarize</button>
+        <button type="button" data-selection-research="context">Context</button>
+    </div>
+    <dialog id="reader-note-dialog" class="reader-note-dialog" aria-labelledby="reader-note-title">
+        <form method="dialog">
+            <h2 id="reader-note-title">Add a note</h2>
+            <p id="reader-note-selection"></p>
+            <label for="reader-note-text">Your note</label>
+            <textarea id="reader-note-text" rows="5" maxlength="10000" required></textarea>
+            <div><button value="cancel" class="btn btn-outline">Cancel</button><button value="save" class="btn btn-primary" data-save-note>Save note</button></div>
+        </form>
+    </dialog>
+
+    <button type="button" class="reader-mobile-tools" data-open-tools aria-controls="reader-tools">Aa · Search · Progress</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/reader.js?v=20260721"></script>
+{% endblock %}

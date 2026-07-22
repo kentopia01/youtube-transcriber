@@ -1,0 +1,18 @@
+{% extends "reader_base.html" %}
+{% block title %}Highlights · Transcript Reader{% endblock %}
+{% block content %}
+<header class="page-head"><p class="kicker">Notebook</p><h1 class="page-title">Highlights and notes</h1><p class="page-subtitle">Passages you saved across your transcript library.</p></header>
+{% if annotations %}
+<div class="reader-highlights-list">
+{% for annotation in annotations %}
+<article class="reader-highlight-card">
+    <p class="kicker">{{ annotation.annotation_type }} · {{ annotation.start_timestamp_seconds|format_timestamp }}</p>
+    <blockquote>{{ annotation.selected_text_snapshot or 'Bookmark' }}</blockquote>
+    {% if annotation.note_text %}<p>{{ annotation.note_text }}</p>{% endif %}
+    <a href="/read/{{ annotation.video_id }}#{{ annotation.block_anchor }}">{{ annotation.video.title }}</a>
+    {% if annotation.video.channel %}<span>{{ annotation.video.channel.name }}</span>{% endif %}
+</article>
+{% endfor %}
+</div>
+{% else %}<div class="reader-empty"><h2>No saved passages yet</h2><p>Select text in any transcript to highlight it or add a note.</p><a class="link" href="/read">Find something to read</a></div>{% endif %}
+{% endblock %}

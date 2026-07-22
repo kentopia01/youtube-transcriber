@@ -346,6 +346,22 @@ class TestNativeVsDockerConfig:
         assert s.transcription_engine == "faster-whisper"
 
 
+class TestTelegramRoleConfig:
+    def test_admin_users_parse_as_explicit_allowlist_subset(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "[5815973193,39026195]")
+        monkeypatch.setenv("TELEGRAM_ADMIN_USERS", "[5815973193,39026195]")
+
+        s = Settings(
+            database_url="x",
+            database_url_sync="x",
+            redis_url="x",
+            _env_file=None,
+        )
+
+        assert s.telegram_allowed_users == [5815973193, 39026195]
+        assert s.telegram_admin_users == [5815973193, 39026195]
+
+
 class TestEngineSelectionFromConfig:
     """Test that get_engine returns the right engine based on config values."""
 

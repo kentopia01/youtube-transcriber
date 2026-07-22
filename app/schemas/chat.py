@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChatSessionCreate(BaseModel):
@@ -16,6 +17,15 @@ class ChatSessionRename(BaseModel):
 class ChatMessageSend(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     channel_id: uuid.UUID | None = None
+    video_id: uuid.UUID | None = None
+    selection_text: str | None = Field(default=None, max_length=4000)
+    selection_action: Literal["explain", "summarize", "context"] | None = None
+
+    @model_validator(mode="after")
+    def validate_selection_scope(self):
+        if self.selection_action and not (self.selection_text or "").strip():
+            raise ValueError("selection_text is required for a selection action")
+        return self
 
 
 class ChatSourceOut(BaseModel):

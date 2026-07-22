@@ -77,7 +77,7 @@
         {% endif %}
 
         <progress class="progress-bar progress-bar-lg {% if job.status == 'completed' %}progress-success{% elif job.status == 'failed' %}progress-error{% endif %} w-full"
-                  value="{{ job.progress_pct }}" max="100"></progress>
+                  value="{{ job.progress_pct }}" max="100" aria-label="{{ job.display_name }} progress"></progress>
         <p class="text-center mt-2">
             <span class="font-mono font-bold">{{ "%.0f"|format(job.progress_pct) }}%</span>
             {% if job.progress_message %} · <span class="text-muted">{{ job.progress_message }}</span>{% endif %}
@@ -211,7 +211,7 @@
 
         <div class="flex gap-2 mt-4">
             {% if video %}
-            <a href="/videos/{{ video.id }}" class="btn btn-outline btn-sm">
+            <a href="/read/{{ video.id }}" class="btn btn-outline btn-sm">
                 <i class="iconoir-video-camera" style="font-size:0.8rem"></i> View Video
             </a>
             {% endif %}
@@ -219,7 +219,7 @@
             {% if job.status in ['pending', 'queued'] %}
             <form hx-post="/api/jobs/{{ job.id }}/cancel"
                   hx-swap="none"
-                  hx-on::after-request="htmx.ajax('GET', '/jobs/{{ job.id }}', {target: '#job-status-container', swap: 'innerHTML'})">
+                  hx-on::after-request="htmx.ajax('GET', '/ops/jobs/{{ job.id }}', {target: '#job-status-container', swap: 'innerHTML'})">
                 <button class="btn btn-error-outline btn-sm">
                     <i class="iconoir-xmark" style="font-size:0.8rem"></i> Cancel Job
                 </button>
@@ -240,7 +240,7 @@
 </div>
 
 {% if job.status in ['running', 'queued', 'pending'] %}
-<div hx-get="/jobs/{{ job.id }}"
+<div hx-get="/ops/jobs/{{ job.id }}"
      hx-trigger="load delay:2s"
      hx-target="#job-status-container"
      hx-swap="innerHTML"

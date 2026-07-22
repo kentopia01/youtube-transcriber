@@ -2,13 +2,19 @@
 
 ## Current status
 
-As of 2026-07-21, the YouTube Transcriber has completed the stabilization,
+As of 2026-07-22, the YouTube Transcriber has completed the stabilization,
 delivery-quality, search, Codex routing, throughput, local-security, notification,
-and runtime-consolidation roadmap through T058. The latest default validation is
-green at `1243 passed, 12 skipped`.
+runtime-consolidation roadmap through T058 and the T063 Reader/Operations product
+epic. The latest default validation is green at `1350 passed, 11 skipped`, with
+`33/33` live HTTP checks and `30/30` desktop/mobile browser checks.
 
-No ungated feature build is currently required. The remaining roadmap entries are
-evidence- or product-gated:
+The active release sequence is T073-T079: freeze the implemented workspace
+baseline, reconcile operational warnings, expose stable local status APIs, add a
+supported `ytctl` CLI, modernize OpenClaw against that boundary, harden the local
+runtime, and finish with evidence-driven Reader workflow QA. The order is
+intentional: contracts and operational truth precede control clients and UI polish.
+
+The older remaining roadmap entries are evidence- or product-gated:
 - T034 only if public YouTube downloads begin failing again;
 - T042 after at least 30 anonymized real search queries or repeatable quality misses;
 - T049 before adding users who need restricted permissions or private digest scope.
@@ -20,6 +26,31 @@ runtime.
 T061 records 22 genuine historical stale-download failures discovered during
 closeout. It is an operator-approved recovery task, not an automatic bulk retry:
 availability review and bounded release must happen before queue mutation.
+
+T072 is complete: it refreshes the approved Anthropic and yt-dlp baselines and
+removes accidental CUDA packages from the ARM64 web image while preserving the
+T054 native audio pins.
+
+T063 is complete: the web experience is split into two distinct workspaces while
+keeping one platform and deployment. Reader is the calm, reading-first home for
+transcripts, state, annotations, chapters, and Research; Operations owns
+ingestion, queue health, recovery, subscriptions, deliveries, and spend. T064-
+T071 are implemented, migrated through Alembic `021`, and live-validated.
+
+### Active execution sequence: T073-T079
+
+1. T073 freezes the current Reader/Operations worktree behind release gates.
+2. T074 makes current warnings explainable and reconciles stale derived state.
+3. T075 adds stable, paginated local service contracts.
+4. T076 packages those contracts as the guarded `ytctl` operator CLI.
+5. T077 moves OpenClaw off direct SQL and provider calls onto `ytctl`.
+6. T078 hardens the trusted-local runtime, provenance, backup, and restore path.
+7. T079 observes real Reader workflows and ships only evidenced improvements.
+
+Authentication remains deliberately absent while every service stays on loopback.
+Telegram's numeric allowlist authenticates bot messages only; it is not reused as
+web or CLI identity. CLI/OpenClaw mutations require explicit confirmation and are
+recorded with local actor provenance.
 
 ## Completed follow-on: Global corpus search
 
@@ -468,3 +499,67 @@ Target posture:
 - notification controls remain global while both users have the same access
 
 Source of truth: `docs/tasks/T057_allowlisted_notification_fanout.md`.
+
+## Completed follow-on: T063 Reader and Operations workspaces
+
+### Product architecture
+
+The web application will behave as two user-facing products backed by one shared
+platform:
+
+- **Reader**: home, reading library, transcript reader, highlights/notes, and
+  unified search/ask workflows.
+- **Operations**: submission, queue, jobs, worker health, subscriptions, report
+  delivery, and LLM usage.
+
+The workspaces remain in the same repository, FastAPI application, database,
+service layer, authentication boundary, and deployment. They receive separate
+route namespaces, base layouts, navigation, responsive behavior, and browser-test
+coverage so either frontend can be extracted later if security or product needs
+justify a separate deployment.
+
+### Navigation target
+
+- `/` becomes Reader Home.
+- `/read` and `/read/{video_id}` own reading-library and document-reading flows.
+- `/ops` becomes the operations dashboard.
+- `/ops/queue`, `/ops/jobs/{job_id}`, and related routes own operational detail.
+- Search and Ask are consolidated into a reader-facing research surface.
+- A clear workspace switcher connects Reader and Operations.
+- Existing URLs receive compatibility redirects during migration.
+
+### Execution order
+
+1. T064: establish truthful operational aggregates and repair misleading/stale
+   dashboard state before redesigning Operations.
+2. T065: create the Reader/Operations route, layout, navigation, authorization,
+   and compatibility boundaries.
+3. T066: add reader state and transcript-block contracts before reader UI.
+4. T067: deliver the transcript Reader MVP with timestamps, appearance controls,
+   navigation, and saved progress.
+5. T068: deliver Reader Home and reading-library workflows.
+6. T069: add highlights, notes, bookmarks, and the notebook.
+7. T070: add document-scoped intelligence and consolidate Search/Ask.
+8. T071: finish production frontend assets, accessibility, browser regression,
+   and workspace-level release validation.
+
+### Guardrails
+
+- Do not create separate services or deployments in this epic.
+- Data contracts and tests precede UI that depends on them.
+- Reader activity must never mutate queue or pipeline lifecycle state.
+- The reader must open existing completed transcripts without an LLM call or
+  mandatory content backfill.
+- Operations must expose structured health/state rather than infer it from copy
+  or hardcoded badges.
+- Accessibility is a per-task done criterion, not a final cosmetic pass.
+- T049's scoped-user contract must be completed before Reader becomes a
+  restricted multi-user product.
+- T066 must coordinate reader ownership with T049 so the repo does not create
+  competing recipient/user identity models.
+
+Source of truth: `docs/tasks/T063_reader_operations_workspace_epic.md`.
+
+Completion evidence (2026-07-21): `1349 passed, 12 skipped`, `33/33` live HTTP
+checks, and `30/30` desktop/mobile browser checks. Default release QA remained
+non-mutating.

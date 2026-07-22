@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only live QA for operator tabs and feature-area GET/search surfaces."""
+"""Read-only live QA for Reader, Operations, and shared GET/search surfaces."""
 
 from __future__ import annotations
 
@@ -89,20 +89,21 @@ def _check_json(fetch: Fetch, area: str, path: str, *, keys: tuple[str, ...] = (
         return Check(area, path, "fail", f"{exc.__class__.__name__}: {exc}")
 
 
-def _ids(body: str, resource: str) -> list[str]:
-    return list(dict.fromkeys(re.findall(rf'/{resource}/({UUID_PATTERN})', body)))
+def _ids(body: str, path_prefix: str) -> list[str]:
+    return list(dict.fromkeys(re.findall(rf'{re.escape(path_prefix)}/({UUID_PATTERN})', body)))
 
 
 def run_checks(fetch: Fetch) -> list[Check]:
     checks: list[Check] = []
     page_specs = (
-        ("Dashboard", "/", "Operations Hub"),
-        ("Queue", "/queue", "Processing Queue"),
-        ("Library / videos", "/library?tab=videos", "video-list-content"),
-        ("Library / channels", "/library?tab=channels", "channel-card-wrapper"),
+        ("Reader home", "/", "Read what you saved"),
+        ("Operations dashboard", "/ops", "Operations Hub"),
+        ("Queue", "/ops/queue", "Processing Queue"),
+        ("Library / videos", "/read?tab=videos", "video-list-content"),
+        ("Library / channels", "/read?tab=channels", "channel-card-wrapper"),
         ("Chat", "/chat", "chat-page-shell"),
-        ("Search", "/search", "search-results"),
-        ("Global Search", "/global-search", "global-search-results"),
+        ("Research", "/search", "search-results"),
+        ("Highlights notebook", "/read/highlights", "Highlights and notes"),
     )
     responses: dict[str, Response] = {}
     for area, path, marker in page_specs:
@@ -111,17 +112,20 @@ def run_checks(fetch: Fetch) -> list[Check]:
         responses[path] = response
 
     for area, path, location in (
-        ("Legacy submit redirect", "/submit", "/"),
-        ("Legacy channels redirect", "/channels", "/library?tab=channels"),
+        ("Legacy submit redirect", "/submit", "/ops#submit-video"),
+        ("Legacy queue redirect", "/queue", "/ops/queue"),
+        ("Legacy library redirect", "/library?tab=videos", "/read?tab=videos"),
+        ("Legacy channels redirect", "/channels", "/read?tab=channels"),
+        ("Legacy global search redirect", "/global-search", "/search"),
     ):
         response = fetch(path, "GET", None, False, None)
         actual = response.headers.get("Location") or response.headers.get("location", "")
-        checks.append(Check(area, path, "pass" if response.status == 302 and actual == location else "fail", f"HTTP {response.status}; location={actual}"))
+        checks.append(Check(area, path, "pass" if response.status == 307 and actual == location else "fail", f"HTTP {response.status}; location={actual}"))
 
-    checks.append(_check_page(fetch, "Recent jobs partial", "/partials/recent-jobs", "recent-jobs-body")[0])
-    partial = fetch("/queue", "GET", None, True, {"HX-Request": "true"})
+    checks.append(_check_page(fetch, "Recent jobs partial", "/ops/partials/recent-jobs", "recent-jobs-body")[0])
+    partial = fetch("/ops/queue", "GET", None, True, {"HX-Request": "true"})
     partial_ok = partial.status == 200 and "queue-summary" in partial.body and "<html" not in partial.body
-    checks.append(Check("Queue HTMX partial", "/queue [HX-Request]", "pass" if partial_ok else "fail", f"HTTP {partial.status}; partial={partial_ok}"))
+    checks.append(Check("Queue HTMX partial", "/ops/queue [HX-Request]", "pass" if partial_ok else "fail", f"HTTP {partial.status}; partial={partial_ok}"))
 
     checks.extend([
         _check_json(fetch, "Health API", "/health", keys=("status",)),
@@ -130,15 +134,25 @@ def run_checks(fetch: Fetch) -> list[Check]:
         _check_json(fetch, "LLM usage API", "/api/llm/usage", keys=("today_usd", "seven_day_usd")),
     ])
 
-    library_body = responses["/library?tab=videos"].body + responses["/library?tab=channels"].body
-    video_ids = _ids(library_body, "videos")
-    channel_ids = _ids(library_body, "channels")
-    job_ids = _ids(responses["/queue"].body + responses["/"].body, "jobs")
+    library_body = responses["/read?tab=videos"].body + responses["/read?tab=channels"].body
+    video_ids = _ids(library_body, "/read")
+    channel_ids = _ids(library_body, "/read/channels")
+    job_ids = _ids(responses["/ops/queue"].body + responses["/ops"].body, "/ops/jobs")
 
     if video_ids:
         video_id = video_ids[0]
-        checks.append(_check_page(fetch, "Video detail", f"/videos/{video_id}", "page-title")[0])
+        checks.append(
+            _check_page(
+                fetch,
+                "Video detail",
+                f"/read/{video_id}",
+                'id="reader-document"',
+            )[0]
+        )
         checks.append(_check_json(fetch, "Video API", f"/api/videos/{video_id}", keys=("id", "status")))
+        checks.append(_check_json(fetch, "Reader annotations API", f"/api/reader/videos/{video_id}/annotations"))
+        checks.append(_check_json(fetch, "Reader chapters API", f"/api/reader/videos/{video_id}/chapters", keys=("chapters", "provenance")))
+        checks.append(_check_page(fetch, "Current transcript research scope", f"/search?video_id={video_id}", "Current transcript")[0])
         transcription_ok = False
         transcription_detail = "No rendered video had a transcription response"
         for candidate in video_ids[:20]:
@@ -150,11 +164,11 @@ def run_checks(fetch: Fetch) -> list[Check]:
                 break
         checks.append(Check("Transcription API", "/api/transcriptions/{video_id}", "pass" if transcription_ok else "fail", transcription_detail))
     else:
-        checks.append(Check("Video detail/API", "/videos/{video_id}", "fail", "No video IDs discovered"))
+        checks.append(Check("Video detail/API", "/read/{video_id}", "fail", "No video IDs discovered"))
 
     if channel_ids:
         channel_id = channel_ids[0]
-        checks.append(_check_page(fetch, "Channel detail", f"/channels/{channel_id}", "page-title")[0])
+        checks.append(_check_page(fetch, "Channel detail", f"/read/channels/{channel_id}", "page-title")[0])
         persona_channel = None
         for candidate in channel_ids[:30]:
             response = fetch(f"/api/channels/{candidate}/persona", "GET", None, True, None)
@@ -163,19 +177,19 @@ def run_checks(fetch: Fetch) -> list[Check]:
                 break
         if persona_channel:
             checks.append(_check_json(fetch, "Channel persona API", f"/api/channels/{persona_channel}/persona"))
-            checks.append(_check_page(fetch, "Channel persona chat", f"/channels/{persona_channel}/chat", 'id="chat-form"')[0])
+            checks.append(_check_page(fetch, "Channel persona chat", f"/read/channels/{persona_channel}/chat", 'id="chat-form"')[0])
             checks.append(_check_json(fetch, "Channel agent sessions", f"/api/agents/channel/{persona_channel}/sessions"))
         else:
             checks.append(Check("Channel persona surfaces", "/api/channels/{channel_id}/persona", "fail", "No channel with a generated persona discovered"))
     else:
-        checks.append(Check("Channel detail/API", "/channels/{channel_id}", "fail", "No channel IDs discovered"))
+        checks.append(Check("Channel detail/API", "/read/channels/{channel_id}", "fail", "No channel IDs discovered"))
 
     if job_ids:
         job_id = job_ids[0]
-        checks.append(_check_page(fetch, "Job detail", f"/jobs/{job_id}", "Job Details")[0])
+        checks.append(_check_page(fetch, "Job detail", f"/ops/jobs/{job_id}", "Job Details")[0])
         checks.append(_check_json(fetch, "Job API", f"/api/jobs/{job_id}", keys=("id", "status")))
     else:
-        checks.append(Check("Job detail/API", "/jobs/{job_id}", "fail", "No job IDs discovered"))
+        checks.append(Check("Job detail/API", "/ops/jobs/{job_id}", "fail", "No job IDs discovered"))
 
     for area, path in (("Search API", "/api/search"), ("Global Search API", "/api/global-search")):
         try:

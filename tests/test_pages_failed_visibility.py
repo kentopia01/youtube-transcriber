@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.routers import pages as pages_router
+from app.services.operations_dashboard import QueueCoverage
 
 
 class _FakeScalars:
@@ -55,7 +56,15 @@ def _dummy_request(hx: bool = False):
     headers = {"HX-Request": "true"} if hx else {}
     return SimpleNamespace(
         headers=headers,
-        app=SimpleNamespace(state=SimpleNamespace(templates=_DummyTemplates())),
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                templates=_DummyTemplates(),
+                operations_queue_probe=lambda: QueueCoverage(
+                    workers=("test-worker",),
+                    covered_queues=frozenset({"audio", "diarize", "post", "celery"}),
+                ),
+            )
+        ),
     )
 
 

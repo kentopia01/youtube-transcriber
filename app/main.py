@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.routers import agents, channels, chat, global_search, jobs, pages, search, subscriptions, transcriptions, videos
+from app.routers import agents, channels, chat, global_search, jobs, operations, pages, reader, search, subscriptions, transcriptions, videos
 from app.routers import llm_usage
 
 structlog.configure(
@@ -39,7 +39,13 @@ def _warm_embedding_model() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _warm_embedding_model()
+    # Reader, Operations, and health checks must not wait for a large model or
+    # a model-registry network request. Search loads the query encoder lazily;
+    # deployments that value first-search latency can opt into eager warming.
+    if settings.warm_embedding_model:
+        _warm_embedding_model()
+    else:
+        logger.info("embedding_model_lazy", model=settings.embedding_model)
     yield
 
 # Paths that skip API key auth
@@ -91,6 +97,8 @@ def create_app() -> FastAPI:
     application.state.templates.env.filters["format_timestamp"] = format_timestamp
 
     # Routers
+    application.include_router(pages.reader_router)
+    application.include_router(pages.operations_router)
     application.include_router(pages.router)
     application.include_router(videos.router)
     application.include_router(channels.router)
@@ -102,6 +110,8 @@ def create_app() -> FastAPI:
     application.include_router(agents.router)
     application.include_router(subscriptions.router)
     application.include_router(llm_usage.router)
+    application.include_router(operations.router)
+    application.include_router(reader.router)
 
     return application
 

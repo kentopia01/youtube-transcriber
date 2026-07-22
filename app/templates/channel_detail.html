@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+{% extends "reader_base.html" %}
 
 {% block title %}{{ channel.name }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
 <!-- Breadcrumb -->
 <nav class="breadcrumb">
-    <a href="/library?tab=channels"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
+    <a href="/read?tab=channels"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
     <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
     <span>{{ channel.name }}</span>
 </nav>
@@ -20,7 +20,7 @@
             <div>
                 <h1 class="page-title">{{ channel.name }}</h1>
                 <p class="text-sm text-muted">
-                    <span class="font-mono">{{ channel.video_count }}</span> videos
+                    <span class="font-mono">{{ channel_video_count }}</span> videos
                     {% if channel.last_synced_at %}
                     &middot; Last synced {{ channel.last_synced_at.strftime('%b %d, %Y %H:%M') }}
                     {% endif %}
@@ -36,7 +36,7 @@
             <a href="{{ channel.url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
                 <i class="iconoir-open-new-window" style="font-size:0.8rem"></i> View on YouTube
             </a>
-            <a href="/videos?channel_id={{ channel.id }}" class="btn btn-outline btn-sm">
+            <a href="/read/videos?channel_id={{ channel.id }}" class="btn btn-outline btn-sm">
                 <i class="iconoir-view-grid" style="font-size:0.8rem"></i> View as Grid
             </a>
         </div>
@@ -72,7 +72,7 @@
             </div>
             <div class="flex gap-2">
                 {% if persona %}
-                    <a href="/channels/{{ channel.id }}/chat" class="btn btn-primary btn-sm">
+                    <a href="/read/channels/{{ channel.id }}/chat" class="btn btn-primary btn-sm">
                         <i class="iconoir-chat-bubble" style="font-size:0.85rem"></i>
                         Talk to {{ persona.display_name }}
                     </a>
@@ -124,31 +124,6 @@
     </div>
 </div>
 
-<script>
-async function triggerPersona(channelId, button) {
-    if (!button) return;
-    const original = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = 'Queuing…';
-    try {
-        const resp = await fetch('/api/channels/' + channelId + '/generate-persona', {method: 'POST'});
-        if (resp.ok) {
-            button.innerHTML = 'Queued — persona will refresh shortly';
-            setTimeout(() => location.reload(), 4000);
-        } else {
-            const body = await resp.json().catch(() => ({detail: 'Failed to enqueue.'}));
-            button.innerHTML = original;
-            button.disabled = false;
-            alert(body.detail || 'Failed to enqueue persona generation.');
-        }
-    } catch (e) {
-        button.innerHTML = original;
-        button.disabled = false;
-        alert('Network error: ' + e);
-    }
-}
-</script>
-
 <!-- Meta Stats -->
 <div class="meta-grid">
     <div class="meta-card">
@@ -181,7 +156,7 @@ async function triggerPersona(channelId, button) {
             <tbody>
                 {% for video in videos %}
                 <tr>
-                    <td><a href="/videos/{{ video.id }}" class="link-muted font-medium hover:text-[var(--accent)]">{{ video.title }}</a></td>
+                    <td><a href="/read/{{ video.id }}" class="link-muted font-medium hover:text-[var(--accent)]">{{ video.title }}</a></td>
                     <td class="font-mono text-sm text-faint">{{ video.duration_seconds|format_duration }}</td>
                     <td>
                         <span class="status-pill status-{{ video.status }}">
@@ -196,4 +171,8 @@ async function triggerPersona(channelId, button) {
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/channel-detail.js?v=20260721"></script>
 {% endblock %}

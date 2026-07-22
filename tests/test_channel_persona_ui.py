@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.main import create_app
@@ -100,5 +101,8 @@ class TestChannelChatPage:
         })
         assert "Test Voice" in html
         assert "Ask Test Voice" in html
-        assert "/api/agents/channel/" in html
-        assert "sessions" in html
+        assert 'data-channel-id=' in html
+        assert '/static/js/channel-chat.js?v=20260721' in html
+        script = Path("app/static/js/channel-chat.js").read_text(encoding="utf-8")
+        assert "/api/agents/channel/" in script
+        assert "sessions" in script

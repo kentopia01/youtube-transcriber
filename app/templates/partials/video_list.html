@@ -1,7 +1,7 @@
 <div id="video-list-content">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% for video in videos %}
-        <a href="/videos/{{ video.id }}" class="video-card">
+        <a href="/read/{{ video.id }}" class="video-card">
             {% if video.thumbnail_url %}
             <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
             {% else %}
@@ -39,7 +39,7 @@
     {% if total_pages > 1 %}
     <div class="pagination">
         {% if page > 1 %}
-        <a href="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+        <a href="/read/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-get="/videos?page={{ page - 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-target="#video-list-content"
            hx-push-url="true"
@@ -47,7 +47,7 @@
         {% endif %}
 
         {% for p in range(1, total_pages + 1) %}
-        <a href="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+        <a href="/read/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-get="/videos?page={{ p }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-target="#video-list-content"
            hx-push-url="true"
@@ -55,7 +55,7 @@
         {% endfor %}
 
         {% if page < total_pages %}
-        <a href="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
+        <a href="/read/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-get="/videos?page={{ page + 1 }}{% if channel_id %}&channel_id={{ channel_id }}{% endif %}"
            hx-target="#video-list-content"
            hx-push-url="true"

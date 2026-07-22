@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "reader_base.html" %}
 
 {% block title %}Library - YouTube Transcriber{% endblock %}
 
@@ -25,13 +25,13 @@
 
 <!-- Tabs -->
 <div class="tab-bar">
-    <a href="/library?tab=videos"
+    <a href="/read?tab=videos"
        class="tab-item {% if tab == 'videos' %}is-active{% endif %}">
         <i class="iconoir-video-camera" style="font-size:0.95rem"></i>
         Videos
         <span class="tab-count">{{ video_count }}</span>
     </a>
-    <a href="/library?tab=channels"
+    <a href="/read?tab=channels"
        class="tab-item {% if tab == 'channels' %}is-active{% endif %}">
         <i class="iconoir-community" style="font-size:0.95rem"></i>
         Channels
@@ -42,34 +42,51 @@
 {% if tab == 'videos' %}
 <!-- Videos Tab -->
 <div id="video-list-content">
+    <form class="reader-library-filters" method="get" action="/read" aria-label="Filter transcript library">
+        <input type="hidden" name="tab" value="videos">
+        <label><span>Find</span><input type="search" name="q" value="{{ query_filter }}" placeholder="Search titles"></label>
+        <label><span>Status</span><select name="status">
+            <option value="">All</option>
+            {% for value, label in [('unread','Unread'),('reading','Reading'),('later','Later'),('finished','Finished'),('archived','Archived')] %}
+            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+        <label><span>Length</span><select name="length"><option value="">Any</option><option value="quick" {% if length_filter == 'quick' %}selected{% endif %}>Quick reads</option><option value="long" {% if length_filter == 'long' %}selected{% endif %}>Long reads</option></select></label>
+        <label><span>Channel</span><select name="channel_id"><option value="">All channels</option>{% for channel in channels %}<option value="{{ channel.id }}" {% if channel_filter == channel.id %}selected{% endif %}>{{ channel.name }}</option>{% endfor %}</select></label>
+        <label><span>Sort</span><select name="sort"><option value="recent">Recently added</option><option value="progress" {% if sort_filter == 'progress' %}selected{% endif %}>Recently read</option><option value="title" {% if sort_filter == 'title' %}selected{% endif %}>Title</option><option value="shortest" {% if sort_filter == 'shortest' %}selected{% endif %}>Shortest</option><option value="longest" {% if sort_filter == 'longest' %}selected{% endif %}>Longest</option></select></label>
+        <button class="btn btn-primary" type="submit">Apply</button>
+    </form>
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {% for video in videos %}
+        {% set reading_state = video_state_map.get(video.id) %}
+        {% set card = video_card_map.get(video.id) %}
         <div class="video-card-wrapper {% if not video.chat_enabled %}is-chat-disabled{% endif %}" id="video-card-{{ video.id }}">
-            <a href="/videos/{{ video.id }}" class="video-card">
+            <a href="/read/{{ video.id }}" class="video-card">
                 {% if video.thumbnail_url %}
-                <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" class="video-card-thumb">
+                <img src="{{ video.thumbnail_url }}" alt="" loading="lazy" class="video-card-thumb">
                 {% else %}
                 <div class="video-card-placeholder">
                     <i class="iconoir-video-camera" style="font-size:1.25rem"></i> No thumbnail
                 </div>
                 {% endif %}
                 <div class="video-card-body">
+                    <p class="reader-card-channel">{{ video.channel.name if video.channel else 'Transcript' }}</p>
                     <h4 class="text-sm font-medium leading-snug line-clamp-2">{{ video.title }}</h4>
                     <div class="flex items-center gap-2 mt-2">
-                        <span class="status-pill status-{{ video.status }}">
-                            <span class="dot"></span>
-                            {{ video.status }}
-                        </span>
-                        {% if video.duration_seconds %}
-                        <span class="font-mono text-xs text-faint">{{ video.duration_seconds|format_duration }}</span>
-                        {% endif %}
+                        <span class="font-mono text-xs text-faint">{{ card.reading_minutes }} min read</span>
+                        {% if card.report_ready %}<span class="font-mono text-xs text-faint">Report ready</span>{% endif %}
                     </div>
+                    {% if card.summary_preview %}<p class="reader-card-summary">{{ card.summary_preview }}</p>{% endif %}
+                    {% if card.progress_pct > 0 %}
+                    <div class="reader-card-progress" aria-label="{{ reading_state.progress_pct|round|int }} percent read"><span style="width:{{ reading_state.progress_pct }}%"></span></div>
+                    {% endif %}
+                    <p class="text-xs text-faint mt-2">{{ reading_state.status|capitalize if reading_state else 'Unread' }}</p>
                 </div>
             </a>
             <label class="chat-toggle" title="Toggle chat">
                 <input type="checkbox"
                        {% if video.chat_enabled %}checked{% endif %}
                        hx-patch="/api/videos/{{ video.id }}/chat-toggle"
+                       hx-headers='{"Content-Type":"application/json"}'
                        hx-vals='js:{"enabled": event.target.checked}'
                        hx-swap="none"
                        hx-on::after-request="toggleCardDim(this)">
@@ -89,8 +106,8 @@
             <h3 class="section-title mb-1">No videos in library yet</h3>
             <p class="text-sm mb-4" style="color: var(--text-secondary);">Queue your first video to start building searchable content.</p>
             <div class="flex items-center justify-center gap-2">
-                <a href="/" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Submit New</a>
-                <a href="/queue" class="btn btn-ghost btn-sm">Open Queue</a>
+                <a href="/ops#submit-video" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Submit New</a>
+                <a href="/ops/queue" class="btn btn-ghost btn-sm">Open Queue</a>
             </div>
         </div>
     </div>
@@ -99,14 +116,14 @@
     {% if total_pages > 1 %}
     <div class="pagination">
         {% if page > 1 %}
-        <a href="/library?tab=videos&page={{ page - 1 }}" class="page-btn">&laquo;</a>
+        <a href="/read?tab=videos&page={{ page - 1 }}&status={{ status_filter or '' }}&length={{ length_filter or '' }}&channel_id={{ channel_filter or '' }}&sort={{ sort_filter }}&q={{ query_filter|urlencode }}" class="page-btn">&laquo;</a>
         {% endif %}
         {% for p in range(1, total_pages + 1) %}
-        <a href="/library?tab=videos&page={{ p }}"
+        <a href="/read?tab=videos&page={{ p }}&status={{ status_filter or '' }}&length={{ length_filter or '' }}&channel_id={{ channel_filter or '' }}&sort={{ sort_filter }}&q={{ query_filter|urlencode }}"
            class="page-btn {% if p == page %}is-active{% endif %}">{{ p }}</a>
         {% endfor %}
         {% if page < total_pages %}
-        <a href="/library?tab=videos&page={{ page + 1 }}" class="page-btn">&raquo;</a>
+        <a href="/read?tab=videos&page={{ page + 1 }}&status={{ status_filter or '' }}&length={{ length_filter or '' }}&channel_id={{ channel_filter or '' }}&sort={{ sort_filter }}&q={{ query_filter|urlencode }}" class="page-btn">&raquo;</a>
         {% endif %}
     </div>
     {% endif %}
@@ -118,7 +135,7 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
     {% for channel in channels %}
     <div class="channel-card-wrapper {% if not channel.chat_enabled %}is-chat-disabled{% endif %}" id="channel-card-{{ channel.id }}">
-        <a href="/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow" style="display:block">
+        <a href="/read/channels/{{ channel.id }}" class="surface hover:shadow-md transition-shadow" style="display:block">
             <div class="surface-body flex flex-col items-center text-center py-6">
                 {% if channel.thumbnail_url %}
                 <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" class="channel-avatar mb-3">
@@ -126,13 +143,14 @@
                 <div class="channel-avatar-placeholder mb-3">{{ channel.name[0] }}</div>
                 {% endif %}
                 <h4 class="text-sm font-medium">{{ channel.name }}</h4>
-                <p class="text-xs text-faint mt-1">{{ channel.video_count }} videos</p>
+                <p class="text-xs text-faint mt-1">{{ channel_video_counts.get(channel.id, 0) }} videos</p>
             </div>
         </a>
         <label class="chat-toggle chat-toggle-channel" title="Toggle chat for all videos">
             <input type="checkbox"
                    {% if channel.chat_enabled %}checked{% endif %}
                    hx-patch="/api/channels/{{ channel.id }}/chat-toggle"
+                   hx-headers='{"Content-Type":"application/json"}'
                    hx-vals='js:{"enabled": event.target.checked}'
                    hx-swap="none"
                    hx-on::after-request="toggleCardDim(this)">
@@ -148,19 +166,12 @@
 <div class="text-center py-16">
     <i class="iconoir-community" style="font-size:2rem; color: var(--text-tertiary); display: block; margin-bottom: 0.75rem;"></i>
     <p class="text-muted mb-3">No channels imported yet.</p>
-    <a href="/" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Import Channel</a>
+    <a href="/ops#submit-video" class="btn btn-primary btn-sm"><i class="iconoir-plus" style="font-size:0.85rem"></i> Import Channel</a>
 </div>
 {% endif %}
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
-<script>
-function toggleCardDim(checkbox) {
-    var wrapper = checkbox.closest('.video-card-wrapper, .channel-card-wrapper');
-    if (wrapper) {
-        wrapper.classList.toggle('is-chat-disabled', !checkbox.checked);
-    }
-}
-</script>
+<script src="/static/js/library.js?v=20260721"></script>
 {% endblock %}

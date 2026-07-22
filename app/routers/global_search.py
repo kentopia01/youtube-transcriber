@@ -43,6 +43,7 @@ async def global_search(
     query: str = Form(None),
     source_type: str = Form("all"),
     channel_id: str = Form(None),
+    video_id: str = Form(None),
     limit: str = Form(None),
     candidate_limit: str = Form(None),
     summary_limit: str = Form(None),
@@ -58,6 +59,7 @@ async def global_search(
         query = body.get("query", "")
         source_type = body.get("source_type", source_type)
         channel_id = body.get("channel_id", channel_id)
+        video_id = body.get("video_id", video_id)
         limit = body.get("limit", limit)
         candidate_limit = body.get("candidate_limit", candidate_limit)
         summary_limit = body.get("summary_limit", summary_limit)
@@ -96,6 +98,7 @@ async def global_search(
         summary_limit=_parse_int(summary_limit, DEFAULT_SUMMARY_LIMIT),
         per_video_limit=_parse_int(per_video_limit, DEFAULT_PER_VIDEO_LIMIT),
         channel_id=_parse_channel_id(channel_id),
+        video_id=_parse_channel_id(video_id),
         source_type=source_type or "all",
         rrf_k=_parse_int(rrf_k, DEFAULT_RRF_K),
     )

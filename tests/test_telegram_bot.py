@@ -552,9 +552,9 @@ class TestCreateBotApplication:
             mock_settings.telegram_bot_token = "fake-token:12345"
             mock_settings.telegram_allowed_users = [123]
             app = create_bot_application()
-            # Expected: 23 commands + 1 callback_query + 1 message handler.
+            # Expected: 30 commands + 1 callback_query + 1 message handler.
             # See _build_command_manifest() in app/telegram_bot.py.
-            assert len(app.handlers[0]) == 25
+            assert len(app.handlers[0]) == 32
 
     def test_raises_without_allowlist(self):
         with patch("app.telegram_bot.settings") as mock_settings:

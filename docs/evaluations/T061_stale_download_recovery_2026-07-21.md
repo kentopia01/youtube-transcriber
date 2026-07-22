@@ -38,17 +38,17 @@ Metadata result:
 | `yiJOTCRVWjc` | 3242s | Recovered | `9e2c3cb8-cb49-4477-aa81-d472aa813435` |
 | `dvEwb1Ajkwo` | 3305s | Recovered | `c99769c2-75e5-469f-a7eb-6361fa3ec65e` |
 | `oM1d9Tau27w` | 2711s | Recovered | `99434166-a9db-4d99-ba28-53f013a96a45` |
-| `W--hvgRLmJM` | 6831s | Final batch running | `7778a396-d03c-4dd6-bb91-d38bcc652ef1` |
-| `Es4sU4H4TYg` | 877s | Final batch running | `13eb30ea-08d8-4682-a259-b6c6844431e3` |
-| `ue8y5e3HnHE` | 4986s | Final batch running | `1ee04939-eafc-4649-81db-43f5fc5df12b` |
-| `4EZUrGPgAos` | 2817s | Final batch running | `31fee972-ba82-4f81-a8d4-85900e6dc5f9` |
+| `W--hvgRLmJM` | 6831s | Recovered | `7778a396-d03c-4dd6-bb91-d38bcc652ef1` |
+| `Es4sU4H4TYg` | 877s | Recovered | `13eb30ea-08d8-4682-a259-b6c6844431e3` |
+| `ue8y5e3HnHE` | 4986s | Recovered | `1ee04939-eafc-4649-81db-43f5fc5df12b` |
+| `4EZUrGPgAos` | 2817s | Recovered | `31fee972-ba82-4f81-a8d4-85900e6dc5f9` |
 
 ## Batch evidence
 
 - Batch 1: three AI/product videos, 3/3 completed.
 - Batch 2: three AI/design videos, all downloads passed and recovery completed.
-- Batch 3: four remaining approved long-form videos, all downloads passed before
-  heavy processing began.
+- Batch 3: four remaining approved long-form videos, 4/4 completed after all
+  downloads passed through the existing public-video fallback.
 - Every retry created attempt 2 with stale-recovery lineage; historical failed
   attempts remain preserved and superseded.
 - Cookie-backed media requests returned the known public-video 403 in several
@@ -58,3 +58,6 @@ Metadata result:
 The short-form and duplicate videos were already reversibly dismissed by the April
 legacy-backfill cleanup. T061 leaves those historical audit rows intact and records
 the more specific policy disposition here.
+
+Final queue evidence: all ten approved recovery attempts completed and the active
+pipeline count returned to zero on 2026-07-21.

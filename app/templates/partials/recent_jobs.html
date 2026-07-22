@@ -1,22 +1,22 @@
 {% for job in jobs %}
 <tr>
-    <td class="font-medium">{{ job.display_name }}</td>
-    <td>
+    <td class="font-medium" data-label="Job">{{ job.display_name }}</td>
+    <td data-label="Status">
         <span class="status-pill status-{{ job.status }}">
             <span class="dot"></span>
             {{ job.status }}
         </span>
     </td>
-    <td>
+    <td data-label="Progress">
         <div class="flex items-center gap-2 w-36">
-            <progress class="progress-bar" value="{{ job.progress_pct }}" max="100"></progress>
+            <progress class="progress-bar" value="{{ job.progress_pct }}" max="100" aria-label="{{ job.display_name }} progress"></progress>
             <span class="font-mono text-xs text-faint">{{ "%.0f"|format(job.progress_pct) }}%</span>
         </div>
     </td>
-    <td class="font-mono text-xs text-faint">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
-    <td>
+    <td class="font-mono text-xs text-faint" data-label="Created">{{ job.created_at.strftime('%Y-%m-%d %H:%M') if job.created_at else '--' }}</td>
+    <td data-label="Actions">
         <div class="flex items-center justify-end gap-2">
-            <a href="/jobs/{{ job.id }}" class="btn btn-ghost btn-xs">Details</a>
+            <a href="/ops/jobs/{{ job.id }}" class="btn btn-ghost btn-xs">Details</a>
             {% if job.status == 'failed' %}
             <form hx-post="/api/jobs/{{ job.id }}/retry"
                   hx-swap="none"
@@ -44,5 +44,5 @@
     </td>
 </tr>
 {% endif %}
-<div hx-get="/partials/recent-jobs" hx-trigger="load delay:5s"
+<div hx-get="/ops/partials/recent-jobs" hx-trigger="load delay:5s"
      hx-target="#recent-jobs-body" hx-swap="innerHTML" style="display:none;"></div>

@@ -18,21 +18,21 @@
     /* Text */
     --text-primary: #1a1a2e;
     --text-secondary: #4a5568;
-    --text-tertiary: #9ca3af;
+    --text-tertiary: #6b7280;
 
     /* Accent (Orange) */
-    --accent: #f48120;
-    --accent-hover: #d96a0d;
+    --accent: #a84f0b;
+    --accent-hover: #873b06;
     --accent-subtle: rgba(244, 129, 32, 0.08);
 
     /* Semantic */
-    --success: #16a34a;
+    --success: #137333;
     --success-subtle: rgba(22, 163, 74, 0.08);
-    --error: #dc2626;
+    --error: #b91c1c;
     --error-subtle: rgba(220, 38, 38, 0.08);
-    --warning: #d97706;
+    --warning: #9a4f00;
     --warning-subtle: rgba(217, 119, 6, 0.08);
-    --info: #2563eb;
+    --info: #1d4ed8;
     --info-subtle: rgba(37, 99, 235, 0.08);
 
     /* Navigation */
@@ -40,9 +40,10 @@
     --nav-text: #ffffff;
 
     /* Fonts */
-    --font-headline: 'Playfair Display', serif;
-    --font-body: 'Inter', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-headline: Georgia, 'Times New Roman', serif;
+    --font-body: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: var(--font-body);
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* ============================================================
@@ -60,6 +61,31 @@ body {
 }
 
 a { color: inherit; text-decoration: none; }
+
+.skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 100;
+    padding: 0.65rem 0.9rem;
+    border-radius: 0.5rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    transform: translateY(-150%);
+}
+
+.skip-link:focus { transform: translateY(0); }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+}
 
 /* ============================================================
    3. Typography
@@ -175,6 +201,44 @@ a { color: inherit; text-decoration: none; }
     gap: 0.5rem;
 }
 
+.workspace-switch {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.6rem;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.workspace-switch-link {
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.4rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.workspace-switch-link:hover,
+.workspace-switch-link:focus-visible { color: #fff; }
+
+.workspace-switch-link.is-active {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.workspace-mobile-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    margin-top: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.5rem;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
 /* Mobile hamburger */
 .nav-mobile-toggle {
     display: none;
@@ -212,6 +276,25 @@ a { color: inherit; text-decoration: none; }
         border-top: 1px solid rgba(255, 255, 255, 0.08);
         margin-top: 0.5rem;
     }
+
+    .nav-mobile-toggle,
+    .mobile-nav .nav-link,
+    .workspace-mobile-link {
+        min-height: 2.75rem;
+    }
+    .nav-mobile-toggle { min-width: 2.75rem; }
+    .nav-brand { min-height: 2.75rem; }
+    .page-btn { min-width: 2.75rem; height: 2.75rem; }
+    button,
+    .btn,
+    .input-field,
+    input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea { min-height: 2.75rem; }
+    .modal-close,
+    .chat-session-action-btn,
+    .toggle-btn { min-width: 2.75rem; }
+    .chat-session-actions { display: flex; }
 }
 
 /* ============================================================
@@ -1708,7 +1791,14 @@ details.collapsible > .details-body {
 
     .chat-mobile-toggle {
         display: flex;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        align-items: center;
+        justify-content: center;
     }
+
+    .chat-input-field { min-width: 2.75rem; min-height: 2.75rem; }
+    .chat-send-btn { width: 2.75rem; height: 2.75rem; }
 
     .chat-sidebar-overlay {
         display: none;

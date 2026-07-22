@@ -1,14 +1,20 @@
-{% extends "base.html" %}
+{% extends "reader_base.html" %}
 
 {% block title %}{{ video.title }} - YouTube Transcriber{% endblock %}
 
 {% block content %}
 <!-- Breadcrumb -->
 <nav class="breadcrumb">
-    <a href="/library"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
+    <a href="/read"><i class="iconoir-book" style="font-size:0.85rem"></i> Library</a>
     <span class="breadcrumb-sep"><i class="iconoir-nav-arrow-right" style="font-size:0.7rem"></i></span>
     <span>{{ video.title[:50] }}{% if video.title|length > 50 %}...{% endif %}</span>
 </nav>
+
+<div class="mb-4">
+    <a href="/read/{{ video.id }}" class="btn btn-primary btn-sm">
+        <i class="iconoir-book" aria-hidden="true"></i> Open Reader
+    </a>
+</div>
 
 <!-- Video Header Card -->
 <div class="surface mb-6">
@@ -50,7 +56,8 @@
                         hx-swap="none"
                         hx-on::after-request="htmxChatToggled(event)"
                         class="toggle-btn {% if video.chat_enabled %}toggle-on{% else %}toggle-off{% endif %}"
-                        title="Toggle RAG search inclusion"
+                        aria-label="Include this transcript in chat search"
+                        aria-pressed="{{ 'true' if video.chat_enabled else 'false' }}"
                     >
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                     </button>
@@ -86,7 +93,7 @@
         <h2 class="section-title mb-2">Manual review required</h2>
         <p class="text-sm text-muted">{{ latest_job.recovery_reason or 'This video hit repeated identical failures and automatic retry is blocked.' }}</p>
         <div class="mt-3">
-            <a href="/jobs/{{ latest_job.id }}" class="btn btn-outline btn-sm">View latest job</a>
+            <a href="/ops/jobs/{{ latest_job.id }}" class="btn btn-outline btn-sm">View latest job in Operations</a>
         </div>
     </div>
 </div>
@@ -137,24 +144,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-function htmxChatToggled(evt) {
-    if (!evt.detail.successful) return;
-    const btn = document.getElementById('chat-toggle-btn');
-    const label = document.getElementById('chat-toggle-label');
-    const isNowEnabled = btn.classList.contains('toggle-off');
-    if (isNowEnabled) {
-        btn.classList.replace('toggle-off', 'toggle-on');
-        btn.setAttribute('hx-vals', '{"enabled": false}');
-        label.textContent = 'Enabled';
-        label.className = 'text-sm text-accent';
-    } else {
-        btn.classList.replace('toggle-on', 'toggle-off');
-        btn.setAttribute('hx-vals', '{"enabled": true}');
-        label.textContent = 'Disabled';
-        label.className = 'text-sm text-faint';
-    }
-    htmx.process(btn);
-}
-</script>
+<script src="/static/js/video-detail.js?v=20260721"></script>
 {% endblock %}

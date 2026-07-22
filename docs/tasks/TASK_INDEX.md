@@ -42,7 +42,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T031 | Cookie lint and safe refresh policy | done | SentryClaw | Cookie file lint classifies anonymous-only and auth-like sessions without exposing values |
 | T032 | Batch download failure alerting | done | SentryClaw | Threshold checker and Telegram diagnostic renderer added |
 | T033 | yt-dlp version guardrail | done | SentryClaw | Version freshness checker added |
-| T034 | Authenticated cookie last resort | planned | SentryClaw | Runbook-only fallback; no login automation or credential storage |
+| T034 | Authenticated cookie last resort | planned-contingency | SentryClaw | Evidence gate remains closed; T061 public downloads recover without authenticated cookies |
 | T035 | Repo cleanup after download hardening | done | SentryClaw | T026/T027 summary-quality work committed separately; generated OpenClaw workspace files ignored |
 | T036 | Recovered jobs and yt-dlp update | done | SentryClaw | Seven 403 recovery jobs completed; yt-dlp updated to 2026.06.09 in dev/native envs and validated |
 | T037 | Global search source-of-truth docs and task contract | done | SentryClaw | Establish rollout docs for whole-corpus retrieval |
@@ -57,7 +57,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T046 | Digest Codex default | done | SentryClaw | Codex-primary digest default with Anthropic fallback validated on a non-delivering 24h digest eval |
 | T047 | Chat and persona Codex default | done | SentryClaw | Web/Telegram chat, direct video Q&A, and channel persona generation now use Smart Router Codex with Anthropic fallback |
 | T048 | Subscription watchlist and long-form ingest | done | SentryClaw | Requested channels enabled, long-form auto-ingest floor added, and Andrej Karpathy backlog seeded |
-| T049 | Recipient lanes and scoped digests | planned-gated | SentryClaw / BuildClaw / QAClaw | Lightweight shared-processing lanes; implementation blocked until current catch-up pipeline fully drains and Ken reopens build |
+| T049 | Recipient lanes and scoped digests | done | SentryClaw / BuildClaw / QAClaw | Separate admin lanes live; restricted authorization, scoped subscriptions/polling/digests, and admin monitoring implemented |
 | T050 | Codex workload router profiles | done | SentryClaw | Keep YouTube LLM workloads on Codex/OAuth while splitting cleanup/summary/digest/chat/persona across workload-specific Smart Router profiles; live profiles and both model-name forms validated |
 | T051 | Catch-up runner hardening | done | SentryClaw | Keep unattended backlog release moving through future premieres/unavailable candidates |
 | T052 | Summary-first conditional diarization | done | SentryClaw | Skip expensive inline diarization by default; preserve explicit inline/operator diarization path |
@@ -69,8 +69,25 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T058 | Runtime bootstrap consolidation | done | SentryClaw | Centralized copied native env loading and sync database URL precedence |
 | T059 | Post-roadmap operational closeout | done | SentryClaw | Reconciled live production evidence, roadmap status, and gated residual work |
 | T060 | yt-dlp dependency floor | done | SentryClaw | Project/test environments aligned to the T036 validated 2026.06.09 baseline |
-| T061 | Historical stale download recovery | planned-approval | SentryClaw | Review and recover 22 April stale-download failures in bounded batches only after approval |
-| T062 | Feature-area QA matrix | done | SentryClaw | 26/26 read-only live checks plus explicit isolated/mutating/browser coverage boundaries |
+| T061 | Historical stale download recovery | done | SentryClaw | 10 approved long-form retries recovered; 11 short-form and one duplicate intentionally skipped |
+| T062 | Feature-area QA matrix | done | SentryClaw | 26/26 live HTTP and 20/20 desktop/mobile browser checks; mobile pagination overflow fixed |
+| T063 | Reader and Operations workspace epic | done | SentryClaw / BuildClaw / QAClaw | T064-T071 complete; one platform with release-gated Reader and Operations workspaces |
+| T064 | Operations truth and dashboard contract | done | SentryClaw / BuildClaw / QAClaw | Structured health/count/batch/delivery contract implemented and live-validated |
+| T065 | Reader and Operations workspace boundary | done | SentryClaw / BuildClaw / QAClaw | Separate routes, layouts, navigation, authorization boundary, and compatibility redirects |
+| T066 | Reader state and transcript content contract | done | SentryClaw / BuildClaw / QAClaw | Reading state plus deterministic timestamp-preserving reader blocks before UI |
+| T067 | Transcript Reader MVP | done | SentryClaw / BuildClaw / QAClaw | Comfortable transcript reading, timestamps, search, appearance, and saved progress |
+| T068 | Reader Home and reading library | done | SentryClaw / BuildClaw / QAClaw | Continue Reading, Recently Ready, unread/later/finished, filters, and channel views live-validated |
+| T069 | Reader annotations and notebook | done | SentryClaw / BuildClaw / QAClaw | Regeneration-safe highlights, notes, bookmarks, export, and jump-back navigation |
+| T070 | Document intelligence and Search/Ask consolidation | done | SentryClaw / BuildClaw / QAClaw | Exact video-scoped retrieval, selection actions, semantic chapters, and coherent Research surface |
+| T071 | Frontend production and accessibility release gate | done | SentryClaw / BuildClaw / QAClaw | Local static assets, shared modules, WCAG/reflow/browser regression, and final release validation |
+| T072 | Runtime dependency refresh | done | SentryClaw | Anthropic/yt-dlp refreshed; ARM64 web image validated with CPU-only Torch while native audio pins remain unchanged |
+| T073 | Reader/Operations release baseline | done | SentryClaw | `1350/11` tests, `33/33` HTTP, and `30/30` browser gates passed |
+| T074 | Operations warning reconciliation | in-progress | SentryClaw | Explain and reconcile visible batch, delivery, subscription, and failed-job warnings without hiding evidence |
+| T075 | Local status and inventory APIs | planned | SentryClaw | Stable read APIs for jobs, videos, Reader state, service status, and warning detail |
+| T076 | `ytctl` local operator CLI | planned | SentryClaw | Loopback-first status, inspection, search, transcript, and explicitly confirmed mutation commands |
+| T077 | OpenClaw local-control modernization | planned | SentryClaw | Replace direct DB/provider access with `ytctl` and add read-only status workflows |
+| T078 | Local runtime hardening and recovery | planned | SentryClaw | Production web command, browser-origin guard, mutation provenance, backup, and restore validation |
+| T079 | Evidence-driven Reader workflow polish | planned | SentryClaw | Use live visual/behavioral evidence to remove demonstrated reading friction only |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

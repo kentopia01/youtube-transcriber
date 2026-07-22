@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "operations_base.html" %}
 
 {% block title %}Job {{ job.id }} - YouTube Transcriber{% endblock %}
 
@@ -16,8 +16,8 @@
     <p class="page-subtitle">Inspect pipeline progress, timestamps, and retry/cancel controls.</p>
 </div>
 
-<div id="job-status-container"
-     hx-get="/jobs/{{ job.id }}"
+<div id="job-status-container" aria-live="polite" aria-atomic="false"
+     hx-get="/ops/jobs/{{ job.id }}"
      hx-trigger="{% if job.status in ['running', 'queued', 'pending'] %}load delay:2s{% endif %}"
      hx-target="#job-status-container"
      hx-swap="innerHTML">

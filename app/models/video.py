@@ -46,3 +46,15 @@ class Video(Base):
     # One current summary report per video; report_type is a label, not a relationship dimension.
     report = relationship("VideoReport", back_populates="video", uselist=False)
     jobs = relationship("Job", back_populates="video")
+    reader_states = relationship(
+        "ReaderState", back_populates="video", cascade="all, delete-orphan"
+    )
+    reader_annotations = relationship(
+        "ReaderAnnotation", back_populates="video", cascade="all, delete-orphan"
+    )
+    reader_chapter_set = relationship(
+        "ReaderChapterSet", back_populates="video", cascade="all, delete-orphan", uselist=False
+    )
+    reader_chapter_set = relationship(
+        "ReaderChapterSet", back_populates="video", cascade="all, delete-orphan", uselist=False
+    )

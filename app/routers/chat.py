@@ -149,6 +149,9 @@ async def send_message(
         history=history,
         db=db,
         channel_id=data.channel_id,
+        video_id=data.video_id,
+        selection_text=data.selection_text,
+        selection_action=data.selection_action,
     )
 
     # Touch activity for any videos cited — keeps them out of the compression sweep.

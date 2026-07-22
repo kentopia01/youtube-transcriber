@@ -34,6 +34,7 @@ class GlobalSearchOptions:
     summary_limit: int = DEFAULT_SUMMARY_LIMIT
     per_video_limit: int = DEFAULT_PER_VIDEO_LIMIT
     channel_id: uuid.UUID | None = None
+    video_id: uuid.UUID | None = None
     source_type: str = "all"
     rrf_k: int = DEFAULT_RRF_K
 
@@ -45,6 +46,7 @@ class GlobalSearchOptions:
             summary_limit=max(0, min(self.summary_limit, MAX_CANDIDATE_LIMIT)),
             per_video_limit=max(1, min(self.per_video_limit, MAX_LIMIT)),
             channel_id=self.channel_id,
+            video_id=self.video_id,
             source_type=source_type,
             rrf_k=max(1, self.rrf_k),
         )
@@ -61,6 +63,7 @@ def _source_type_for_speaker(speaker: str | None) -> str:
 def _build_global_where_clause(
     channel_id: uuid.UUID | None = None,
     source_type: str = "all",
+    video_id: uuid.UUID | None = None,
 ) -> tuple[str, dict[str, Any]]:
     conditions = []
     params: dict[str, Any] = {"summary_label": SUMMARY_SPEAKER_LABEL}
@@ -68,6 +71,9 @@ def _build_global_where_clause(
     if channel_id:
         conditions.append("v.channel_id = :channel_id")
         params["channel_id"] = str(channel_id)
+    if video_id:
+        conditions.append("v.id = :video_id")
+        params["video_id"] = str(video_id)
 
     if source_type == "summary":
         conditions.append("ec.speaker = :summary_label")
@@ -111,9 +117,10 @@ async def _global_vector_search(
     limit: int,
     channel_id: uuid.UUID | None = None,
     source_type: str = "all",
+    video_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     embedding = _embedding_literal(query_embedding)
-    where, params = _build_global_where_clause(channel_id, source_type)
+    where, params = _build_global_where_clause(channel_id, source_type, video_id)
     params.update({"embedding": embedding, "limit": limit})
 
     sql = f"""
@@ -150,8 +157,9 @@ async def _global_keyword_search(
     limit: int,
     channel_id: uuid.UUID | None = None,
     source_type: str = "all",
+    video_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
-    where, params = _build_global_where_clause(channel_id, source_type)
+    where, params = _build_global_where_clause(channel_id, source_type, video_id)
     params.update({"query": query, "limit": limit})
 
     ts_condition = "ec.search_vector @@ plainto_tsquery('english', :query)"
@@ -193,12 +201,13 @@ async def _summary_vector_search(
     query_embedding: list[float],
     limit: int,
     channel_id: uuid.UUID | None = None,
+    video_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     if limit <= 0:
         return []
 
     embedding = _embedding_literal(query_embedding)
-    where, params = _build_global_where_clause(channel_id, "summary")
+    where, params = _build_global_where_clause(channel_id, "summary", video_id)
     params.update({"embedding": embedding, "limit": limit})
 
     sql = f"""
@@ -440,6 +449,7 @@ async def global_search(
         limit=opts.candidate_limit,
         channel_id=opts.channel_id,
         source_type=opts.source_type,
+        video_id=opts.video_id,
     )
     keyword_results = await _global_keyword_search(
         db=db,
@@ -447,6 +457,7 @@ async def global_search(
         limit=opts.candidate_limit,
         channel_id=opts.channel_id,
         source_type=opts.source_type,
+        video_id=opts.video_id,
     )
     summary_results = []
     if opts.source_type in {"all", "summary"}:
@@ -455,6 +466,7 @@ async def global_search(
             query_embedding=query_embedding,
             limit=opts.summary_limit,
             channel_id=opts.channel_id,
+            video_id=opts.video_id,
         )
 
     lanes = {
@@ -488,6 +500,7 @@ async def global_search(
             "summary_limit": opts.summary_limit,
             "per_video_limit": opts.per_video_limit,
             "channel_id": str(opts.channel_id) if opts.channel_id else None,
+            "video_id": str(opts.video_id) if opts.video_id else None,
             "source_type": opts.source_type,
             "rrf_k": opts.rrf_k,
         },

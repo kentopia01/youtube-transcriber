@@ -60,6 +60,12 @@ class TestBuildWhereClause:
         assert "WHERE" in clause
         assert "channel_id" in params
 
+    def test_with_video_returns_exact_scope(self):
+        video_id = uuid.uuid4()
+        clause, params = _build_where_clause(None, video_id=video_id)
+        assert "v.id = :video_id" in clause
+        assert params["video_id"] == str(video_id)
+
 
 # --- _vector_search ---
 

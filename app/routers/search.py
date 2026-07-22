@@ -16,6 +16,8 @@ async def search(
     request: Request,
     db: AsyncSession = Depends(get_db),
     query: str = Form(None),
+    channel_id: str = Form(None),
+    video_id: str = Form(None),
 ):
     """Semantic search across all transcripts. Accepts form data (HTMX) or JSON."""
     # Handle both form-encoded (HTMX) and JSON requests
@@ -23,6 +25,8 @@ async def search(
         try:
             body = await request.json()
             query = body.get("query", "")
+            channel_id = body.get("channel_id", channel_id)
+            video_id = body.get("video_id", video_id)
         except Exception:
             query = ""
 
@@ -46,11 +50,19 @@ async def search(
             detail="Search requires sentence-transformers. Install with: pip install sentence-transformers",
         )
 
+    try:
+        parsed_channel_id = uuid.UUID(channel_id) if channel_id else None
+        parsed_video_id = uuid.UUID(video_id) if video_id else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid retrieval scope") from exc
+
     results = await semantic_search(
         db=db,
         query_embedding=query_embedding,
         limit=10,
         query=query,
+        channel_id=parsed_channel_id,
+        video_id=parsed_video_id,
         chat_enabled_only=True,
     )
 

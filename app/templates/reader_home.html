@@ -1,0 +1,69 @@
+{% extends "reader_base.html" %}
+
+{% block title %}Reader Home - YouTube Transcriber{% endblock %}
+
+{% macro reader_card(item) %}
+<article class="reader-library-card">
+    <a href="/read/{{ item.video.id }}" class="reader-card-main">
+        <div class="reader-card-cover">
+            {% if item.video.thumbnail_url %}<img src="{{ item.video.thumbnail_url }}" alt="" loading="lazy">{% else %}<span aria-hidden="true">¶</span>{% endif %}
+        </div>
+        <div class="reader-card-copy">
+            <p class="reader-card-channel">{{ item.video.channel.name if item.video.channel else 'Transcript' }}</p>
+            <h3>{{ item.video.title }}</h3>
+            {% if item.summary_preview %}<p class="reader-card-summary">{{ item.summary_preview }}</p>{% endif %}
+            <div class="reader-card-meta">
+                <span>{{ item.reading_minutes }} min read</span>
+                {% if item.report_ready %}<span>Report ready</span>{% endif %}
+            </div>
+            {% if item.progress_pct > 0 %}
+            <div class="reader-card-progress" aria-label="{{ item.progress_pct|round|int }} percent read"><span style="width:{{ item.progress_pct }}%"></span></div>
+            {% endif %}
+        </div>
+    </a>
+</article>
+{% endmacro %}
+
+{% block content %}
+<section class="reader-home-hero" aria-labelledby="reader-home-title">
+    <div>
+        <p class="kicker">Reader workspace</p>
+        <h1 id="reader-home-title">Read what you saved, at your own pace</h1>
+        <p>Return to an unfinished idea or choose something newly ready.</p>
+    </div>
+    <div class="reader-home-actions">
+        <a href="/read" class="btn btn-primary">Browse all transcripts</a>
+        <a href="/search" class="btn btn-outline">Search your library</a>
+    </div>
+</section>
+
+{% if operations.warning_count %}
+<aside class="reader-operations-alert" aria-label="Operations warning">
+    <span>Some transcript jobs need attention.</span>
+    <a href="/ops">Review {{ operations.warning_count }} warning{% if operations.warning_count != 1 %}s{% endif %} in Operations</a>
+</aside>
+{% endif %}
+
+{% if continue_items %}
+<section class="reader-shelf" aria-labelledby="continue-heading">
+    <div class="reader-shelf-head"><div><p class="kicker">Pick up where you left off</p><h2 id="continue-heading">Continue reading</h2></div></div>
+    <div class="reader-card-grid">{% for item in continue_items %}{{ reader_card(item) }}{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="reader-shelf" aria-labelledby="recent-heading">
+    <div class="reader-shelf-head">
+        <div><p class="kicker">Ready for you</p><h2 id="recent-heading">Recently ready</h2></div>
+        <a href="/read?status=unread">See all unread</a>
+    </div>
+    {% if recent_items %}<div class="reader-card-grid">{% for item in recent_items %}{{ reader_card(item) }}{% endfor %}</div>
+    {% else %}<div class="reader-empty"><h3>Nothing unread right now</h3><p>Finished transcripts and saved items remain in your library.</p><a href="/read" class="link">Open the library</a></div>{% endif %}
+</section>
+
+{% if later_items %}
+<section class="reader-shelf" aria-labelledby="later-heading">
+    <div class="reader-shelf-head"><div><p class="kicker">Your shortlist</p><h2 id="later-heading">Saved for later</h2></div><a href="/read?status=later">See all</a></div>
+    <div class="reader-card-grid">{% for item in later_items %}{{ reader_card(item) }}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

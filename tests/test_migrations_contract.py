@@ -280,6 +280,56 @@ def test_alembic_revision_chain_is_single_linear_chain_to_head():
             },
         ),
         (
+            "digest_lanes",
+            {
+                "id",
+                "label",
+                "slug",
+                "telegram_user_id",
+                "telegram_chat_id",
+                "timezone",
+                "digest_enabled",
+                "role",
+                "created_at",
+                "updated_at",
+            },
+        ),
+        (
+            "lane_subscriptions",
+            {
+                "id",
+                "lane_id",
+                "channel_id",
+                "enabled",
+                "poll_frequency_hours",
+                "max_videos_per_poll",
+                "last_polled_at",
+                "last_seen_video_ids",
+                "videos_ingested_today",
+                "daily_counter_reset_at",
+                "consecutive_failure_count",
+                "disabled_reason",
+                "created_at",
+                "updated_at",
+            },
+        ),
+        (
+            "lane_video_items",
+            {
+                "id",
+                "lane_id",
+                "video_id",
+                "lane_subscription_id",
+                "processing_job_id",
+                "source",
+                "first_seen_at",
+                "digest_delivered_at",
+                "dismissed_at",
+                "created_at",
+                "updated_at",
+            },
+        ),
+        (
             "chat_sessions",
             {"id", "title", "platform", "telegram_chat_id", "persona_id", "created_at", "updated_at"},
         ),
@@ -418,6 +468,58 @@ def test_subscription_chat_and_persona_model_constraints_are_represented():
     assert ("scope_type", "scope_id") in _constraint_column_sets(personas, UniqueConstraint)
     assert (("persona_id",), ("personas.id",)) in _foreign_key_targets(chat_sessions)
     assert (("session_id",), ("chat_sessions.id",)) in _foreign_key_targets(chat_messages)
+
+
+def test_recipient_lane_model_constraints_preserve_scope_and_delivery_boundaries():
+    lanes = _table("digest_lanes")
+    subscriptions = _table("lane_subscriptions")
+    items = _table("lane_video_items")
+
+    lane_uniques = _unique_constraint_columns_by_name(lanes)
+    assert lane_uniques["uq_digest_lanes_label"] == ("label",)
+    assert lane_uniques["uq_digest_lanes_slug"] == ("slug",)
+    assert lane_uniques["uq_digest_lanes_telegram_user_id"] == ("telegram_user_id",)
+    assert lane_uniques["uq_digest_lanes_telegram_chat_id"] == ("telegram_chat_id",)
+    assert ("lane_id", "channel_id") in _constraint_column_sets(
+        subscriptions, UniqueConstraint
+    )
+    assert ("lane_id", "video_id") in _constraint_column_sets(items, UniqueConstraint)
+    assert (("lane_id",), ("digest_lanes.id",)) in _foreign_key_targets(subscriptions)
+    assert (("lane_id",), ("digest_lanes.id",)) in _foreign_key_targets(items)
+    assert (("video_id",), ("videos.id",)) in _foreign_key_targets(items)
+    assert (("processing_job_id",), ("jobs.id",)) in _foreign_key_targets(items)
+
+
+def test_recipient_lane_migration_declares_tables_constraints_and_indexes():
+    calls = _record_upgrade("018")
+    create_tables = {
+        call.args[0]: call
+        for call in calls
+        if call.name == "create_table"
+    }
+    assert {"digest_lanes", "lane_subscriptions", "lane_video_items"} <= set(
+        create_tables
+    )
+
+    lane_constraints = create_tables["digest_lanes"].args[1:]
+    assert any(
+        isinstance(item, sa.CheckConstraint)
+        and item.name == "ck_digest_lanes_role"
+        and "restricted" in str(item.sqltext)
+        and "admin" in str(item.sqltext)
+        for item in lane_constraints
+    )
+
+    index_calls = _create_index_calls("018")
+    assert list(index_calls["ix_lane_subscriptions_due"].args[2]) == [
+        "enabled",
+        "last_polled_at",
+    ]
+    assert list(index_calls["ix_lane_video_items_digest_pending"].args[2]) == [
+        "lane_id",
+        "digest_delivered_at",
+        "dismissed_at",
+    ]
 
 
 def test_jobs_pipeline_contract_columns_are_backed_by_migrations():

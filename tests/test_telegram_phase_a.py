@@ -39,18 +39,107 @@ def _allow_single_user(monkeypatch):
 
 
 class TestCommandManifest:
-    def test_manifest_has_23_commands(self):
-        assert len(telegram_bot._build_command_manifest()) == 23
+    def test_manifest_has_30_commands(self):
+        assert len(telegram_bot._build_command_manifest()) == 30
 
     def test_manifest_includes_new_commands(self):
         names = {c.name for c in telegram_bot._build_command_manifest()}
         for expected in ("submit", "queue", "search", "ask_video",
-                         "refresh_persona", "cost", "notify", "help"):
+                         "refresh_persona", "cost", "notify", "help",
+                         "admin_help", "lanes", "lane_status", "lane_failures",
+                         "lane_digest", "lane_retry"):
             assert expected in names
 
     def test_names_are_unique(self):
         names = [c.name for c in telegram_bot._build_command_manifest()]
         assert len(names) == len(set(names))
+
+    def test_restricted_manifest_hides_operator_commands(self):
+        names = {
+            c.name
+            for c in telegram_bot._build_command_manifest("restricted")
+        }
+        assert names == {
+            "start",
+            "help",
+            "subscribe",
+            "unsubscribe",
+            "subscriptions",
+            "digest",
+        }
+
+
+class TestRoleAwareDispatch:
+    @pytest.mark.asyncio
+    async def test_restricted_user_cannot_invoke_hidden_admin_command(self, monkeypatch):
+        update, context, reply = _update_stub()
+        context.user_data = {}
+        db = SimpleNamespace(close=AsyncMock())
+        access = SimpleNamespace(allowed=True, is_admin=False, role="restricted")
+        monkeypatch.setattr(telegram_bot, "_get_db", AsyncMock(return_value=db))
+        monkeypatch.setattr(
+            "app.services.recipient_lanes.resolve_lane_access",
+            AsyncMock(return_value=access),
+        )
+        command = next(
+            cmd for cmd in telegram_bot._build_command_manifest() if cmd.name == "queue"
+        )
+
+        await telegram_bot._dispatch_authorized_command(
+            update,
+            context,
+            command=command,
+        )
+
+        reply.assert_awaited_once_with(telegram_bot.LANE_COMMAND_DENIED_TEXT)
+
+    @pytest.mark.asyncio
+    async def test_admin_dispatches_existing_command_and_sets_context(self, monkeypatch):
+        update, context, reply = _update_stub(args=[])
+        context.user_data = {}
+        db = SimpleNamespace(close=AsyncMock())
+        access = SimpleNamespace(allowed=True, is_admin=True, role="admin")
+        handler = AsyncMock()
+        command = telegram_bot.BotCmd(
+            name="test_admin",
+            group="Admin",
+            short="test",
+            args=None,
+            handler=handler,
+            admin_only=True,
+        )
+        monkeypatch.setattr(telegram_bot, "_get_db", AsyncMock(return_value=db))
+        monkeypatch.setattr(
+            "app.services.recipient_lanes.resolve_lane_access",
+            AsyncMock(return_value=access),
+        )
+
+        await telegram_bot._dispatch_authorized_command(
+            update,
+            context,
+            command=command,
+        )
+
+        handler.assert_awaited_once_with(update, context)
+        assert context.user_data["recipient_lane_access"] is access
+
+
+class TestRestrictedHelp:
+    @pytest.mark.asyncio
+    async def test_help_only_lists_lane_commands_for_restricted_context(self):
+        update, context, reply = _update_stub()
+        context.user_data = {
+            "recipient_lane_access": SimpleNamespace(role="restricted")
+        }
+
+        await telegram_bot.help_command(update, context)
+
+        text = reply.call_args.args[0]
+        assert "/subscribe" in text
+        assert "/subscriptions" in text
+        assert "/queue" not in text
+        assert "/search" not in text
+        assert "Admin" not in text
 
 
 class TestHelpCommand:

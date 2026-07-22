@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "reader_base.html" %}
 
 {% block title %}Global Search - YouTube Transcriber{% endblock %}
 
@@ -59,17 +59,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-const qs = new URLSearchParams(window.location.search);
-const q = qs.get('q');
-const globalSearchInput = document.getElementById('global-search-query');
-if (q && globalSearchInput) {
-    globalSearchInput.value = q;
-    htmx.ajax('POST', '/api/global-search', {
-        values: {query: q},
-        target: '#global-search-results',
-        swap: 'innerHTML'
-    });
-}
-</script>
+<script src="/static/js/global-search.js?v=20260721"></script>
 {% endblock %}

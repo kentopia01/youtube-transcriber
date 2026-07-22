@@ -1,8 +1,10 @@
 """Telegram bot for chatting with video transcripts."""
 
 import atexit
+import asyncio
 import dataclasses
 import fcntl
+import functools
 import os
 from pathlib import Path
 
@@ -25,6 +27,7 @@ from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.persona import Persona
 from app.models.video import Video
+from app.models.digest_lane import LANE_ROLE_ADMIN, LANE_ROLE_RESTRICTED
 from app.services.chat import chat_with_context
 from app.services.persona import (
     SCOPE_CHANNEL,
@@ -48,7 +51,16 @@ def _is_user_allowed(user_id: int) -> bool:
     return user_id in settings.telegram_allowed_users
 
 
+def _is_user_admin(user_id: int) -> bool:
+    """Config is the rollout safety net; an empty admin list preserves legacy behavior."""
+    if not _is_user_allowed(user_id):
+        return False
+    admin_users = settings.telegram_admin_users
+    return user_id in admin_users if admin_users else True
+
+
 DENIED_TEXT = "Sorry, you are not authorized to use this bot."
+LANE_COMMAND_DENIED_TEXT = "That command is not available for your lane."
 
 
 async def _get_db() -> AsyncSession:
@@ -58,6 +70,14 @@ async def _get_db() -> AsyncSession:
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_user_allowed(update.effective_user.id):
         await update.message.reply_text(DENIED_TEXT)
+        return
+    access = _context_lane_access(context)
+    if access is not None and access.role == LANE_ROLE_RESTRICTED:
+        await update.message.reply_text(
+            "Welcome! This bot delivers your personal YouTube channel digest.\n\n"
+            "Use /subscribe <channel> to follow a channel, /unsubscribe to remove one, "
+            "and /subscriptions to see your list."
+        )
         return
     await update.message.reply_text(
         "Welcome to the YouTube Transcriber Chat Bot!\n\n"
@@ -275,6 +295,9 @@ async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_T
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_user_allowed(update.effective_user.id):
         await update.message.reply_text(DENIED_TEXT)
+        return
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
         return
 
     chat_id = update.effective_chat.id
@@ -1164,6 +1187,60 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     url = args[0].strip()
 
+    access = _context_lane_access(context)
+    if access is not None and access.lane is not None:
+        from app.services.channel_sync import get_or_create_channel
+        from app.services.lane_subscriptions import create_or_enable_lane_subscription
+        from app.services.subscriptions import SubscriptionError, fetch_channel_feed
+        from app.services.youtube import discover_channel_videos, is_channel_url
+
+        if not is_channel_url(url):
+            await update.message.reply_text(
+                "❌ Use a YouTube /@handle, /c/, /user/, or /channel/ URL."
+            )
+            return
+        db = await _get_db()
+        try:
+            try:
+                discovered = await asyncio.to_thread(
+                    discover_channel_videos, url, limit=1
+                )
+                youtube_channel_id = discovered.get("channel_id")
+                if not youtube_channel_id:
+                    raise ValueError("Could not resolve YouTube channel ID")
+                channel = await get_or_create_channel(
+                    db,
+                    youtube_channel_id=youtube_channel_id,
+                    name=discovered.get("channel_name", "Unknown"),
+                    url=url,
+                    description=discovered.get("description"),
+                    thumbnail_url=discovered.get("thumbnail"),
+                )
+            except Exception as exc:  # noqa: BLE001
+                await update.message.reply_text(f"❌ Channel lookup failed: {exc}")
+                return
+            try:
+                await fetch_channel_feed(youtube_channel_id)
+            except SubscriptionError as exc:
+                await update.message.reply_text(f"❌ Channel feed unreachable: {exc}")
+                return
+            subscription = await create_or_enable_lane_subscription(
+                db,
+                access.lane.id,
+                channel,
+                poll_frequency_hours=settings.auto_ingest_poll_hours_default,
+                max_videos_per_poll=settings.auto_ingest_max_videos_per_poll_default,
+            )
+            await update.message.reply_text(
+                f"✅ Added *{channel.name}* to your personal digest lane.\n"
+                f"Polling every {subscription.poll_frequency_hours}h, "
+                f"up to {subscription.max_videos_per_poll} videos per poll.",
+                parse_mode="Markdown",
+            )
+        finally:
+            await db.close()
+        return
+
     import httpx
 
     async with httpx.AsyncClient(
@@ -1218,7 +1295,18 @@ async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"No channel matches '{query}'. Try /subscriptions."
             )
             return
-        sub = await disable_subscription(db, channel.id, reason="user_disabled")
+        access = _context_lane_access(context)
+        if access is not None and access.lane is not None:
+            from app.services.lane_subscriptions import disable_lane_subscription
+
+            sub = await disable_lane_subscription(
+                db,
+                access.lane.id,
+                channel.id,
+                reason="user_disabled",
+            )
+        else:
+            sub = await disable_subscription(db, channel.id, reason="user_disabled")
         if sub is None:
             await update.message.reply_text(
                 f"'{channel.name}' is not subscribed."
@@ -1238,9 +1326,15 @@ async def subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
     db = await _get_db()
     try:
-        from app.services.subscriptions import list_subscriptions
+        access = _context_lane_access(context)
+        if access is not None and access.lane is not None:
+            from app.services.lane_subscriptions import list_lane_subscriptions
 
-        subs = await list_subscriptions(db)
+            subs = await list_lane_subscriptions(db, access.lane.id)
+        else:
+            from app.services.subscriptions import list_subscriptions
+
+            subs = await list_subscriptions(db)
         if not subs:
             await update.message.reply_text(
                 "No subscriptions. Add one with /subscribe <channel url>."
@@ -1263,6 +1357,235 @@ async def subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TY
                 reason = (s.disabled_reason or "user")[:40]
                 lines.append(f"• ⏸ {name[:40]} — {reason}")
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    finally:
+        await db.close()
+
+
+async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the caller's personal lane digest now."""
+    if not _is_user_allowed(update.effective_user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    access = _context_lane_access(context)
+    if access is None or access.lane is None:
+        await update.message.reply_text("Your digest lane is not provisioned yet.")
+        return
+    from app.services.lane_digest import deliver_lane_digest
+
+    db = await _get_db()
+    try:
+        result = await deliver_lane_digest(db, access.lane)
+    finally:
+        await db.close()
+    status = result["status"]
+    if status == "sent":
+        await update.message.reply_text("Personal digest sent.")
+    elif status == "awaiting_start":
+        await update.message.reply_text(
+            "Delivery is not ready yet. Send /start in a private chat first."
+        )
+    elif status == "disabled":
+        await update.message.reply_text("Your personal digest is disabled.")
+    else:
+        await update.message.reply_text("Digest delivery failed; please try again later.")
+
+
+async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    await update.message.reply_text(
+        "Lane administration:\n"
+        "/lanes — list recipients and delivery state\n"
+        "/lane_status <lane> — subscriptions and recent item state\n"
+        "/lane_failures <lane> — recent failed lane items\n"
+        "/lane_digest <lane> — send that lane's digest\n"
+        "/lane_retry <lane> <video/job> — retry a lane-linked failure"
+    )
+
+
+async def lanes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    from sqlalchemy import func, select
+
+    from app.models.digest_lane import DigestLane
+    from app.models.lane_subscription import LaneSubscription
+
+    db = await _get_db()
+    try:
+        rows = (
+            await db.execute(
+                select(DigestLane, func.count(LaneSubscription.id))
+                .outerjoin(LaneSubscription, LaneSubscription.lane_id == DigestLane.id)
+                .group_by(DigestLane.id)
+                .order_by(DigestLane.slug)
+            )
+        ).all()
+        lines = [f"Recipient lanes ({len(rows)}):"]
+        for lane, subscription_count in rows:
+            delivery = "ready" if lane.telegram_chat_id is not None else "awaiting /start"
+            lines.append(
+                f"• {lane.slug} — {lane.role}, {int(subscription_count)} subscription(s), {delivery}"
+            )
+        await update.message.reply_text("\n".join(lines))
+    finally:
+        await db.close()
+
+
+async def _lane_from_command(db, context, usage: str):
+    args = context.args or []
+    if not args:
+        return None, usage
+    from app.services.recipient_lanes import find_digest_lane
+
+    lane = await find_digest_lane(db, args[0])
+    if lane is None:
+        return None, f"Lane '{args[0]}' was not found."
+    return lane, None
+
+
+async def lane_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    from app.services.lane_digest import gather_lane_digest_inputs
+
+    db = await _get_db()
+    try:
+        lane, error = await _lane_from_command(db, context, "Usage: /lane_status <lane>")
+        if error:
+            await update.message.reply_text(error)
+            return
+        inputs = await gather_lane_digest_inputs(db, lane)
+        delivery = "ready" if lane.telegram_chat_id is not None else "awaiting /start"
+        await update.message.reply_text(
+            f"Lane {lane.slug} ({lane.role}, {delivery})\n"
+            f"Subscriptions: {inputs.enabled_subscriptions}/{inputs.total_subscriptions} enabled\n"
+            f"Last 24h: {len(inputs.completed_items)} ready, "
+            f"{len(inputs.active_items)} processing, {len(inputs.failed_items)} failed"
+        )
+    finally:
+        await db.close()
+
+
+async def lane_failures_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    from app.services.lane_digest import gather_lane_digest_inputs
+
+    db = await _get_db()
+    try:
+        lane, error = await _lane_from_command(db, context, "Usage: /lane_failures <lane>")
+        if error:
+            await update.message.reply_text(error)
+            return
+        inputs = await gather_lane_digest_inputs(db, lane, window_hours=24 * 30)
+        if not inputs.failed_items:
+            await update.message.reply_text(f"No recent failures for {lane.slug}.")
+            return
+        lines = [f"Recent failures for {lane.slug}:"]
+        for item in inputs.failed_items[:10]:
+            title = getattr(item.video, "title", None) or str(item.video_id)
+            job_id = getattr(item, "processing_job_id", None)
+            lines.append(f"• {title[:80]} — job {job_id or 'not linked'}")
+        await update.message.reply_text("\n".join(lines))
+    finally:
+        await db.close()
+
+
+async def lane_digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    from app.services.lane_digest import deliver_lane_digest
+
+    db = await _get_db()
+    try:
+        lane, error = await _lane_from_command(db, context, "Usage: /lane_digest <lane>")
+        if error:
+            await update.message.reply_text(error)
+            return
+        result = await deliver_lane_digest(db, lane)
+        await update.message.reply_text(f"Lane digest {result['status']} for {lane.slug}.")
+    finally:
+        await db.close()
+
+
+async def lane_retry_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_user_admin(update.effective_user.id):
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text("Usage: /lane_retry <lane> <video/job>")
+        return
+
+    import uuid as _uuid
+
+    import httpx
+    from sqlalchemy import or_, select
+
+    from app.models.lane_video_item import LaneVideoItem
+    from app.models.video import Video
+    from app.services.recipient_lanes import find_digest_lane
+
+    db = await _get_db()
+    try:
+        lane = await find_digest_lane(db, args[0])
+        if lane is None:
+            await update.message.reply_text(f"Lane '{args[0]}' was not found.")
+            return
+        key = args[1]
+        try:
+            key_uuid = _uuid.UUID(key)
+        except ValueError:
+            key_uuid = None
+        statement = (
+            select(LaneVideoItem)
+            .join(Video, Video.id == LaneVideoItem.video_id)
+            .where(LaneVideoItem.lane_id == lane.id)
+        )
+        if key_uuid is not None:
+            statement = statement.where(
+                or_(
+                    LaneVideoItem.id == key_uuid,
+                    LaneVideoItem.video_id == key_uuid,
+                    LaneVideoItem.processing_job_id == key_uuid,
+                )
+            )
+        else:
+            statement = statement.where(Video.youtube_video_id == key)
+        item = (await db.execute(statement.limit(1))).scalar_one_or_none()
+        if item is None or item.processing_job_id is None:
+            await update.message.reply_text("No retryable lane-linked job matched.")
+            return
+
+        async with httpx.AsyncClient(
+            base_url=settings.internal_web_base_url,
+            timeout=20.0,
+        ) as client:
+            response = await client.post(
+                f"/api/jobs/{item.processing_job_id}/retry",
+                headers=_api_headers(),
+            )
+        if response.status_code >= 400:
+            detail = response.text
+            try:
+                detail = response.json().get("detail") or detail
+            except Exception:  # noqa: BLE001
+                pass
+            await update.message.reply_text(f"Retry failed: {detail}")
+            return
+        new_job_id = response.json().get("job_id")
+        if new_job_id:
+            item.processing_job_id = _uuid.UUID(new_job_id)
+            await db.commit()
+        await update.message.reply_text(
+            f"Retry queued for {lane.slug}: {new_job_id or item.processing_job_id}"
+        )
     finally:
         await db.close()
 
@@ -1332,16 +1655,24 @@ class BotCmd:
     short: str
     args: str | None
     handler: object
+    admin_only: bool
 
 
-def _cmd(name, group, short, handler, args=None):
-    return BotCmd(name=name, group=group, short=short, args=args, handler=handler)
+def _cmd(name, group, short, handler, args=None, admin_only=True):
+    return BotCmd(
+        name=name,
+        group=group,
+        short=short,
+        args=args,
+        handler=handler,
+        admin_only=admin_only,
+    )
 
 
-def _build_command_manifest() -> list[BotCmd]:
-    return [
-        _cmd("start", "Getting started", "Welcome + entry point", start_command),
-        _cmd("help", "Getting started", "Show all commands", help_command),
+def _build_command_manifest(role: str = LANE_ROLE_ADMIN) -> list[BotCmd]:
+    commands = [
+        _cmd("start", "Getting started", "Welcome + entry point", start_command, admin_only=False),
+        _cmd("help", "Getting started", "Show all commands", help_command, admin_only=False),
 
         _cmd("submit", "Content", "Submit a YouTube URL (video or channel)", submit_command, args="<url>"),
         _cmd("queue", "Content", "Active + failed jobs", queue_command),
@@ -1362,13 +1693,71 @@ def _build_command_manifest() -> list[BotCmd]:
         _cmd("toggle", "Library", "Flip RAG state", toggle_command, args="[keyword]"),
 
         _cmd("dismiss", "Content", "Hide failed videos matching a keyword", dismiss_command, args="<keyword>"),
-        _cmd("subscribe", "Content", "Subscribe to a channel for nightly auto-ingest", subscribe_command, args="<channel_url>"),
-        _cmd("unsubscribe", "Content", "Stop auto-ingesting from a channel", unsubscribe_command, args="<channel>"),
-        _cmd("subscriptions", "Content", "List active subscriptions", subscriptions_command),
+        _cmd("subscribe", "Content", "Subscribe to a channel for nightly auto-ingest", subscribe_command, args="<channel_url>", admin_only=False),
+        _cmd("unsubscribe", "Content", "Stop auto-ingesting from a channel", unsubscribe_command, args="<channel>", admin_only=False),
+        _cmd("subscriptions", "Content", "List active subscriptions", subscriptions_command, admin_only=False),
+        _cmd("digest", "Content", "Send your personal digest now", digest_command, admin_only=False),
 
         _cmd("cost", "Admin", "Today / month LLM spend vs budget", cost_command),
         _cmd("notify", "Admin", "Toggle push notifications", notify_command, args="on|off|status [event]"),
+        _cmd("admin_help", "Admin", "Show lane administration commands", admin_help_command),
+        _cmd("lanes", "Admin", "List recipient lanes", lanes_command),
+        _cmd("lane_status", "Admin", "Show one lane's status", lane_status_command, args="<lane>"),
+        _cmd("lane_failures", "Admin", "Show one lane's failures", lane_failures_command, args="<lane>"),
+        _cmd("lane_digest", "Admin", "Send one lane's digest", lane_digest_command, args="<lane>"),
+        _cmd("lane_retry", "Admin", "Retry a lane-linked failure", lane_retry_command, args="<lane> <video/job>"),
     ]
+    if role == LANE_ROLE_RESTRICTED:
+        return [command for command in commands if not command.admin_only]
+    return commands
+
+
+def _context_lane_access(context):
+    user_data = getattr(context, "user_data", None)
+    if isinstance(user_data, dict):
+        return user_data.get("recipient_lane_access")
+    return None
+
+
+def _private_chat_id(update: Update) -> int | None:
+    chat = update.effective_chat
+    if chat is not None and getattr(chat, "type", None) == "private":
+        return chat.id
+    return None
+
+
+async def _dispatch_authorized_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    command: BotCmd,
+) -> None:
+    user = update.effective_user
+    if user is None or not _is_user_allowed(user.id):
+        await update.message.reply_text(DENIED_TEXT)
+        return
+
+    from app.services.recipient_lanes import resolve_lane_access
+
+    db = await _get_db()
+    try:
+        access = await resolve_lane_access(
+            db,
+            user.id,
+            telegram_chat_id=_private_chat_id(update),
+        )
+    finally:
+        await db.close()
+
+    if not access.allowed:
+        await update.message.reply_text(DENIED_TEXT)
+        return
+    if command.admin_only and not access.is_admin:
+        await update.message.reply_text(LANE_COMMAND_DENIED_TEXT)
+        return
+    if isinstance(getattr(context, "user_data", None), dict):
+        context.user_data["recipient_lane_access"] = access
+    await command.handler(update, context)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1377,7 +1766,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(DENIED_TEXT)
         return
 
-    manifest = _build_command_manifest()
+    access = _context_lane_access(context)
+    role = access.role if access is not None else (
+        LANE_ROLE_ADMIN if _is_user_admin(update.effective_user.id) else LANE_ROLE_RESTRICTED
+    )
+    manifest = _build_command_manifest(role)
     by_group: dict[str, list[BotCmd]] = {}
     for c in manifest:
         by_group.setdefault(c.group, []).append(c)
@@ -1418,6 +1811,9 @@ async def callback_dispatcher(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = query.from_user
     if user is None or not _is_user_allowed(user.id):
         await query.answer("Unauthorized", show_alert=True)
+        return
+    if not _is_user_admin(user.id):
+        await query.answer(LANE_COMMAND_DENIED_TEXT, show_alert=True)
         return
 
     data = query.data or ""
@@ -1577,7 +1973,8 @@ def create_bot_application() -> Application:
     )
 
     for cmd in _build_command_manifest():
-        app.add_handler(CommandHandler(cmd.name, cmd.handler))
+        callback = functools.partial(_dispatch_authorized_command, command=cmd)
+        app.add_handler(CommandHandler(cmd.name, callback))
     app.add_handler(CallbackQueryHandler(callback_dispatcher))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(telegram_error_handler)
@@ -1589,8 +1986,11 @@ async def _post_init_register_commands(application: Application) -> None:
     """Register commands with Telegram so the native / menu shows them."""
     from telegram import BotCommand
 
+    # Keep the global menu conservative. Admins still receive the full role-aware
+    # /help surface, and a later lane interaction can register a chat-scoped menu.
     commands = [
-        BotCommand(c.name, c.short) for c in _build_command_manifest()
+        BotCommand(c.name, c.short)
+        for c in _build_command_manifest(LANE_ROLE_RESTRICTED)
     ]
     try:
         await application.bot.set_my_commands(commands)

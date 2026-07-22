@@ -30,13 +30,17 @@ def encode_query(query: str, model_cache_dir: str | None = None) -> list[float]:
 def _build_where_clause(
     channel_id: uuid.UUID | None,
     chat_enabled_only: bool = False,
+    video_id: uuid.UUID | None = None,
 ) -> tuple[str, dict]:
-    """Build optional WHERE clause for channel and chat_enabled filtering."""
+    """Build optional WHERE clause for explicit retrieval scope and visibility."""
     conditions = []
     params: dict = {}
     if channel_id:
         conditions.append("v.channel_id = :channel_id")
         params["channel_id"] = str(channel_id)
+    if video_id:
+        conditions.append("v.id = :video_id")
+        params["video_id"] = str(video_id)
     if chat_enabled_only:
         conditions.append("v.chat_enabled = true")
     if conditions:
@@ -50,10 +54,11 @@ async def _vector_search(
     limit: int,
     channel_id: uuid.UUID | None,
     chat_enabled_only: bool = False,
+    video_id: uuid.UUID | None = None,
 ) -> list[dict]:
     """Pure vector cosine similarity search."""
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-    where, params = _build_where_clause(channel_id, chat_enabled_only)
+    where, params = _build_where_clause(channel_id, chat_enabled_only, video_id)
     params.update({"embedding": embedding_str, "limit": limit})
 
     sql = f"""
@@ -99,9 +104,10 @@ async def _keyword_search(
     limit: int,
     channel_id: uuid.UUID | None,
     chat_enabled_only: bool = False,
+    video_id: uuid.UUID | None = None,
 ) -> list[dict]:
     """Pure keyword (tsvector) search using PostgreSQL full-text search."""
-    where, params = _build_where_clause(channel_id, chat_enabled_only)
+    where, params = _build_where_clause(channel_id, chat_enabled_only, video_id)
     params.update({"query": query, "limit": limit})
 
     # Add tsquery match condition
@@ -156,6 +162,7 @@ async def _hybrid_search(
     channel_id: uuid.UUID | None,
     rrf_k: int = 60,
     chat_enabled_only: bool = False,
+    video_id: uuid.UUID | None = None,
 ) -> list[dict]:
     """Hybrid search using reciprocal rank fusion (RRF) of BM25 + vector scores.
 
@@ -163,7 +170,7 @@ async def _hybrid_search(
     where k=60 (standard RRF constant).
     """
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-    where, params = _build_where_clause(channel_id, chat_enabled_only)
+    where, params = _build_where_clause(channel_id, chat_enabled_only, video_id)
     params.update({
         "embedding": embedding_str,
         "query": query,
@@ -256,6 +263,7 @@ async def semantic_search(
     query: str | None = None,
     search_mode: str | None = None,
     chat_enabled_only: bool = False,
+    video_id: uuid.UUID | None = None,
 ) -> list[dict]:
     """Search for similar transcript chunks.
 
@@ -272,6 +280,8 @@ async def semantic_search(
         query: Original query text (required for hybrid/keyword modes)
         search_mode: Override for settings.search_mode
         chat_enabled_only: When True, only search videos with chat_enabled=true
+        video_id: Optional exact-video retrieval scope. This remains enforced in
+            every search mode and provider-fallback path.
     """
     mode = search_mode or settings.search_mode
 
@@ -280,14 +290,31 @@ async def semantic_search(
             logger.warning("keyword_search_requires_query_text, falling back to vector")
             mode = "vector"
         else:
-            return await _keyword_search(db, query, limit, channel_id, chat_enabled_only)
+            return await _keyword_search(
+                db, query, limit, channel_id, chat_enabled_only, video_id
+            )
 
     if mode == "hybrid":
         if not query:
             logger.warning("hybrid_search_requires_query_text, falling back to vector")
             mode = "vector"
         else:
-            return await _hybrid_search(db, query, query_embedding, limit, channel_id, chat_enabled_only=chat_enabled_only)
+            return await _hybrid_search(
+                db,
+                query,
+                query_embedding,
+                limit,
+                channel_id,
+                chat_enabled_only=chat_enabled_only,
+                video_id=video_id,
+            )
 
     # Default: vector-only
-    return await _vector_search(db, query_embedding, limit, channel_id, chat_enabled_only)
+    return await _vector_search(
+        db,
+        query_embedding,
+        limit,
+        channel_id,
+        chat_enabled_only=chat_enabled_only,
+        video_id=video_id,
+    )

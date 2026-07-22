@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress — final bounded recovery batch
+Done
 
 ## Objective
 
@@ -19,8 +19,8 @@ retrying videos that are no longer available or useful.
 - The current queue is empty and recent unattended pipeline jobs complete cleanly.
 - Metadata probing categorized 11 items as short-form and 11 as available
   long-form. One long-form item is an older duplicate of a fixed-audio re-upload.
-- Six approved long-form retries have passed download and five are fully complete;
-  the final four non-duplicate candidates are queued as a bounded release.
+- All ten approved long-form retries passed download and completed successfully.
+- The active pipeline count returned to zero after the bounded release.
 
 ## Proposed Sequence
 

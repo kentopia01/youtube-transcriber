@@ -180,7 +180,7 @@ class TestCSSComponentClasses:
 class TestTemplateStructure:
     """Verify structural properties of templates."""
 
-    def test_all_pages_extend_base(self):
+    def test_all_pages_extend_a_workspace_or_shared_base(self):
         templates = _read_all_templates()
         # Partials don't extend base
         for path, content in templates.items():
@@ -189,8 +189,11 @@ class TestTemplateStructure:
                     f"Partial {path} should not extend base.html"
                 )
             elif path != "base.html":
-                assert '{% extends "base.html" %}' in content, (
-                    f"Page {path} should extend base.html"
+                assert any(
+                    f'{{% extends "{base}" %}}' in content
+                    for base in ("base.html", "reader_base.html", "operations_base.html")
+                ), (
+                    f"Page {path} should extend a shared or workspace base"
                 )
 
     def test_base_has_content_block(self):
@@ -213,14 +216,15 @@ class TestTemplateStructure:
     def test_htmx_preserved_in_base(self):
         templates = _read_all_templates()
         base = templates.get("base.html", "")
-        assert "htmx.org@2.0.4" in base
+        assert '/static/js/htmx-lite.js' in base
 
-    def test_google_fonts_in_base(self):
+    def test_fonts_are_local_system_stacks(self):
         templates = _read_all_templates()
         base = templates.get("base.html", "")
-        assert "Playfair+Display" in base
-        assert "Inter" in base
-        assert "JetBrains+Mono" in base
+        assert "fonts.googleapis.com" not in base
+        css = (Path(__file__).parents[1] / "app/static/css/main.css").read_text()
+        assert "ui-sans-serif" in css
+        assert "ui-monospace" in css
 
     def test_no_old_fonts_in_base(self):
         templates = _read_all_templates()
@@ -238,13 +242,13 @@ class TestHTMXAttributesPreserved:
 
     def test_queue_polling_in_index(self, templates):
         html = templates.get("index.html", "")
-        assert 'hx-get="/queue"' in html
+        assert 'hx-get="/ops/queue"' in html
         assert 'hx-trigger="load delay:3s"' in html
         assert 'hx-target="#queue-content"' in html
 
     def test_queue_polling_in_queue(self, templates):
         html = templates.get("queue.html", "")
-        assert 'hx-get="/queue"' in html
+        assert 'hx-get="/ops/queue"' in html
         assert 'hx-trigger="load delay:3s"' in html
 
     def test_job_polling_in_job_detail(self, templates):
@@ -254,7 +258,8 @@ class TestHTMXAttributesPreserved:
 
     def test_search_debounce(self, templates):
         html = templates.get("search.html", "")
-        assert 'hx-trigger="keyup changed delay:500ms"' in html
+        assert 'hx-trigger="submit"' in html
+        assert 'hx-post="/api/global-search"' in html
 
     def test_video_list_pagination_push(self, templates):
         html = templates.get("partials/video_list.html", "")

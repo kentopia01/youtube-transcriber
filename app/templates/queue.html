@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "operations_base.html" %}
 
 {% block title %}Processing Queue - YouTube Transcriber{% endblock %}
 
@@ -9,8 +9,8 @@
     <p class="page-subtitle">Track running, pending, and failed pipeline jobs in one place.</p>
 </div>
 
-<div id="queue-content"
-     hx-get="/queue"
+<div id="queue-content" aria-live="polite" aria-atomic="false"
+     hx-get="/ops/queue"
      hx-trigger="load delay:3s"
      hx-target="#queue-content"
      hx-swap="innerHTML">

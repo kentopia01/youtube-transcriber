@@ -1,65 +1,65 @@
-{% extends "base.html" %}
+{% extends "reader_base.html" %}
 
-{% block title %}Chat with Library - YouTube Transcriber{% endblock %}
+{% block title %}Research - YouTube Transcriber{% endblock %}
 
 {% block content %}
 <div class="page-head">
-    <p class="kicker mb-1">Discovery</p>
-    <h1 class="page-title">Chat with Library</h1>
-    <p class="page-subtitle">Search across all transcribed video content using natural language.</p>
+    <p class="kicker mb-1">Research</p>
+    <h1 class="page-title">Search or ask, with a clear scope</h1>
+    <p class="page-subtitle">Find grounded transcript evidence here, then move into an evidence-cited conversation when a result needs interpretation.</p>
 </div>
+
+<nav class="research-mode-tabs" aria-label="Research mode">
+    <a href="/search" class="is-active" aria-current="page">Search evidence</a>
+    <a href="/chat{% if scope_video_id %}?video_id={{ scope_video_id }}{% endif %}">Ask a question</a>
+</nav>
 
 <div class="surface mb-6">
     <div class="surface-body">
-        <p class="text-sm mb-3" style="color: var(--text-secondary);">Try concrete intent queries to get better matches:</p>
-        <div class="flex flex-wrap gap-2 mb-4">
-            <span class="chip"><i class="iconoir-search" style="font-size:0.75rem"></i> deployment steps</span>
-            <span class="chip"><i class="iconoir-search" style="font-size:0.75rem"></i> pricing breakdown</span>
-            <span class="chip"><i class="iconoir-search" style="font-size:0.75rem"></i> api authentication</span>
-            <span class="chip"><i class="iconoir-search" style="font-size:0.75rem"></i> incident response</span>
-        </div>
-        <form hx-post="/api/search"
-              hx-target="#search-results"
-              hx-trigger="submit"
+        <form id="research-search-form" hx-post="/api/global-search"
+              hx-target="#search-results" hx-trigger="submit"
               hx-indicator="#search-loading">
-            <div class="flex gap-2">
-                <input type="text" id="search-query" name="query" placeholder="What are you looking for?"
-                       hx-post="/api/search"
-                       hx-target="#search-results"
-                       hx-trigger="keyup changed delay:500ms"
-                       hx-include="[name='query']"
-                       class="input-field flex-1"
-                       autofocus>
+            <div class="research-query-row">
+                <label class="sr-only" for="search-query">Search transcript evidence</label>
+                <input type="search" id="search-query" name="query"
+                       placeholder="Search transcript evidence…" class="input-field" autofocus>
                 <button type="submit" class="btn btn-primary">
-                    <i class="iconoir-search" style="font-size:0.9rem"></i> Search
+                    <i class="iconoir-search" aria-hidden="true"></i> Search
                 </button>
             </div>
+            <fieldset class="research-scope-controls">
+                <legend>Retrieval scope</legend>
+                <label>Scope
+                    <select id="research-scope" class="input-field">
+                        <option value="library" {% if not scope_video_id %}selected{% endif %}>Whole library</option>
+                        <option value="channel">One channel</option>
+                        {% if scope_video_id %}<option value="video" selected>Current transcript</option>{% endif %}
+                    </select>
+                </label>
+                <label id="research-channel-field">Channel
+                    <select id="research-channel" name="channel_id" class="input-field" disabled>
+                        <option value="">Choose a channel</option>
+                        {% for channel in channels %}<option value="{{ channel.id }}">{{ channel.name }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label>Evidence
+                    <select name="source_type" class="input-field">
+                        <option value="all">Transcripts and summaries</option>
+                        <option value="transcript">Transcripts only</option>
+                        <option value="summary">Summaries only</option>
+                    </select>
+                </label>
+                {% if scope_video_id %}<input id="research-video-id" type="hidden" name="video_id" value="{{ scope_video_id }}">{% endif %}
+            </fieldset>
         </form>
     </div>
 </div>
 
-<span id="search-loading" class="htmx-indicator inline-flex items-center gap-2 mb-4">
-    <span class="spinner spinner-sm"></span>
-    <span class="text-sm text-muted">Searching...</span>
+<span id="search-loading" class="htmx-indicator inline-flex items-center gap-2 mb-4" role="status">
+    <span class="spinner spinner-sm" aria-hidden="true"></span>
+    <span class="text-sm text-muted">Searching stored evidence…</span>
 </span>
-
-<div id="search-results" class="space-y-4"></div>
+<div id="search-results" class="space-y-4" aria-live="polite" aria-busy="false"></div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-const qs = new URLSearchParams(window.location.search);
-const q = qs.get('q');
-if (q) {
-    const input = document.getElementById('search-query');
-    if (input) {
-        input.value = q;
-        htmx.ajax('POST', '/api/search', {
-            values: {query: q},
-            target: '#search-results',
-            swap: 'innerHTML'
-        });
-    }
-}
-</script>
-{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/research.js?v=20260721"></script>{% endblock %}

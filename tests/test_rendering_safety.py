@@ -7,22 +7,32 @@ def _template(name: str) -> str:
     return Path("app/templates", name).read_text()
 
 
+def _script(name: str) -> str:
+    return Path("app/static/js", name).read_text()
+
+
 def test_dashboard_escapes_api_errors_and_external_metadata() -> None:
-    source = _template("index.html")
+    template = _template("index.html")
+    source = _script("submission.js")
+    assert '/static/js/submission.js?v=20260721' in template
     assert "escapeHtml(data.detail || 'Error')" in source
-    assert "escapeHtml(v.title || 'Untitled')" in source
-    assert "safeHttpUrl(v.thumbnail)" in source
-    assert "safeHttpUrl(v.url)" in source
+    assert "escapeHtml(video.title || 'Untitled')" in source
+    assert "safeHttpUrl(video.thumbnail)" in source
+    assert "safeHttpUrl(video.url)" in source
 
 
 def test_legacy_submit_template_escapes_api_and_channel_values() -> None:
-    source = _template("submit.html")
+    template = _template("submit.html")
+    source = _script("submission.js")
+    assert '/static/js/submission.js?v=20260721' in template
     assert "escapeHtml(data.detail || 'Error')" in source
-    assert "escapeHtml(data.channel_name || '')" in source
-    assert "escapeHtml(v.title || 'Untitled')" in source
+    assert "textContent = 'Select Videos from ' + channelName" in source
+    assert "escapeHtml(video.title || 'Untitled')" in source
 
 
 def test_server_rendered_chat_uses_shared_safe_markdown_path() -> None:
-    source = _template("partials/chat_messages.html")
-    assert "window.renderSafeMarkdown(el.textContent)" in source
-    assert "marked.parse(el.textContent)" not in source
+    template = _template("partials/chat_messages.html")
+    source = _script("chat.js")
+    assert "chat-md-content" in template
+    assert "element.innerHTML = renderMarkdown(element.textContent)" in source
+    assert "marked.parse(element.textContent)" not in source

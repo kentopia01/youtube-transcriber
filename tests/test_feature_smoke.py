@@ -8,8 +8,15 @@ from app.routers import search as search_router
 
 
 class DummyDB:
+    class _Result:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
     async def execute(self, *args, **kwargs):
-        raise AssertionError("Unexpected DB execute in this smoke test")
+        return self._Result()
 
     async def scalar(self, *args, **kwargs):
         return 0
@@ -35,21 +42,21 @@ def test_search_page_renders():
     client = _build_client()
     response = client.get("/search")
     assert response.status_code == 200
-    assert "Search across all transcribed video content" in response.text
+    assert "Search or ask, with a clear scope" in response.text
     assert "top-nav" in response.text
-    assert "Chat with Library" in response.text
+    assert "Ask a question" in response.text
 
 
 def test_legacy_routes_redirect_to_new_locations():
     client = _build_client()
 
     submit_response = client.get("/submit", follow_redirects=False)
-    assert submit_response.status_code == 302
-    assert submit_response.headers["location"] == "/"
+    assert submit_response.status_code == 307
+    assert submit_response.headers["location"] == "/ops#submit-video"
 
     channels_response = client.get("/channels", follow_redirects=False)
-    assert channels_response.status_code == 302
-    assert channels_response.headers["location"] == "/library?tab=channels"
+    assert channels_response.status_code == 307
+    assert channels_response.headers["location"] == "/read?tab=channels"
 
 
 def test_submit_video_rejects_channel_url():

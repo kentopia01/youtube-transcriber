@@ -102,8 +102,8 @@ brew install ffmpeg@7
 # Install dependencies with the native audio compatibility set pinned
 pip install "torch==2.8.0" "torchaudio==2.8.0" "torchcodec==0.7.*" \
   mlx-whisper pyannote.audio whisperx "celery[redis]" \
-  sqlalchemy psycopg2-binary anthropic sentence-transformers \
-  tiktoken "yt-dlp>=2026.6.9" structlog pydantic-settings pgvector alembic
+  sqlalchemy psycopg2-binary "anthropic>=0.117.0,<1.0.0" sentence-transformers \
+  tiktoken "yt-dlp>=2026.7.4" structlog pydantic-settings pgvector alembic
 
 # Copy and configure native worker env
 cp .env.example .env.native
@@ -203,6 +203,7 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `SEARCH_MODE` | `hybrid` | Search strategy: `vector`, `hybrid`, or `keyword` |
 | `TELEGRAM_BOT_TOKEN` | | Telegram bot token from BotFather |
 | `TELEGRAM_ALLOWED_USERS` | | JSON list of allowed numeric Telegram user IDs; the bot refuses to start when empty |
+| `TELEGRAM_ADMIN_USERS` | | JSON subset of allowed users who retain operator/admin commands |
 | `DATABASE_URL_NATIVE` | `postgresql+asyncpg://...@localhost:5432/transcriber` | Async Postgres URL for native processes (Telegram bot) |
 | `MODEL_CACHE_DIR` | `/data/models` | Cache directory for ML models |
 

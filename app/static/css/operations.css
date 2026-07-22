@@ -1,0 +1,39 @@
+.workspace-operations {
+    --nav-bg: #171725;
+}
+
+.operations-top-nav .nav-brand-icon { background: var(--accent); }
+
+.operations-footer {
+    padding: 1.5rem 1rem;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+}
+
+@media (max-width: 640px) {
+    .recent-jobs-table, .recent-jobs-table tbody, .recent-jobs-table tr, .recent-jobs-table td { display: block; width: 100%; }
+    .recent-jobs-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .recent-jobs-table tbody { display: grid; gap: .75rem; }
+    .recent-jobs-table tr { padding: .85rem; border: 1px solid var(--border-default); border-radius: .6rem; background: var(--bg-surface); }
+    .recent-jobs-table td { display: grid; grid-template-columns: 4.5rem minmax(0,1fr); gap: .65rem; padding: .3rem 0; border: 0; text-align: left; }
+    .recent-jobs-table td::before { content: attr(data-label); color: var(--text-tertiary); font-size: .66rem; font-weight: 700; text-transform: uppercase; }
+    .recent-jobs-table td > .flex { justify-content: flex-start; min-width: 0; width: 100%; }
+    .recent-jobs-table td[colspan] { display: block; }
+    .recent-jobs-table td[colspan]::before { content: none; }
+}
+
+@media (max-width: 767px) {
+    .workspace-operations .btn,
+    .workspace-operations button {
+        min-height: 2.75rem;
+    }
+    .workspace-operations a.link,
+    .workspace-operations a.link-muted {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+    }
+}

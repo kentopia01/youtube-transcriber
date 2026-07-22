@@ -12,6 +12,15 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 
 ## Current clarifications
 
+### T073-T079 local release clarifications
+- Reader and Operations remain separate workspaces in one FastAPI application and deployment.
+- The local web API, CLI, and OpenClaw do not need user authentication while all published service ports remain loopback-only.
+- Telegram allowlisting authenticates Telegram ingress only and must not become a general API credential.
+- Read-only CLI/OpenClaw operations are the default; queue mutations require an explicit confirmation flag.
+- OpenClaw must use the supported API/`ytctl` boundary, not direct SQL or independent model-provider calls.
+- Warning cleanup must preserve genuine failure evidence and preview reconciliation before mutation.
+- Reader polish must follow observed workflow evidence; visual novelty alone is not a release reason.
+
 ### Global corpus search clarifications
 - The goal is whole-corpus search over every ingested video, not persona prompt expansion.
 - Web chat should default to all embedded YouTube videos, with an explicit channel/account filter for scoped retrieval.
@@ -143,3 +152,20 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - First review availability, duration, duplication, and current usefulness; then release only approved items in bounded batches.
 - Preserve historical failed attempts and use the shared attempt factory for any retry.
 - The separate 609-minute duration-limit failure remains intentionally excluded unless the duration policy changes explicitly.
+
+### T063-T071 Reader and Operations workspace clarifications
+- Reader and Operations are separate user-facing workspaces, not separate repositories, databases, FastAPI services, or deployments in this rollout.
+- Reader is the default daily-use experience. Operations remains available through a clear workspace switcher and owns all queue/pipeline administration.
+- The Reader landing page may show a compact operational warning, but it must not reproduce queue-management controls or raw operational detail.
+- Operational truth comes before dashboard redesign: hardcoded health, capped counts, stale batch state, delivery failures, and inconsistent channel counts must be corrected through structured contracts.
+- Completed transcripts must remain readable without LLM availability. AI chapters, summaries, and document chat are enhancements, not reader boot dependencies.
+- Transcript reading defaults to continuous vertical scroll. Optional page-turn behavior is deferred until the core reader is proven.
+- Reading position, status, highlights, notes, and bookmarks are reader-domain state. They must not reuse dismissal, pipeline status, or job progress fields.
+- Annotation anchors must survive transcript regeneration; do not rely only on transcription-segment UUIDs that are deleted and recreated.
+- Reader progress updates may update activity timestamps for artifact-retention purposes, but must never enqueue, cancel, retry, or reclassify pipeline jobs.
+- Existing operator URLs receive redirects or compatibility handling; do not break bookmarked job/video links without an explicit migration path.
+- Search and Ask should converge on one reader-facing research surface, while job/worker/report search remains an Operations concern.
+- Reader and Operations require separate base layouts and browser suites, but shared accessible controls, design tokens, API services, and security utilities.
+- Accessibility requirements apply in every execution chunk: WCAG-AA contrast, visible focus, descriptive names, live feedback, 44px mobile targets, and 320px reflow.
+- Keep the local single-user trust model for this epic. Complete T049's scoped-user contract before adding users who require private reading state, restricted Reader access, or separate annotation ownership.
+- T066 must reuse or remain migration-compatible with T049's recipient/lane identity contract; do not introduce a second incompatible user key.

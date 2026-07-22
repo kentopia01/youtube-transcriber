@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block body_class %}workspace-operations{% endblock %}
+
+{% block workspace_styles %}
+<link rel="stylesheet" href="/static/css/operations.css?v=20260721">
+{% endblock %}
+
+{% block workspace_nav %}
+{% set current_path = request.url.path if request.url.path is defined else '' %}
+<nav class="top-nav operations-top-nav" aria-label="Operations navigation">
+    <div class="top-nav-inner">
+        <a href="/ops" class="nav-brand" aria-label="Operations overview">
+            <span class="nav-brand-icon"><i class="iconoir-settings" aria-hidden="true"></i></span>
+            Transcript Operations
+        </a>
+
+        <div class="nav-links">
+            <a href="/ops" class="nav-link {% if current_path in ['/ops', '/ops/'] %}is-active{% endif %}"
+               {% if current_path in ['/ops', '/ops/'] %}aria-current="page"{% endif %}>
+                <i class="iconoir-dashboard" aria-hidden="true"></i> Overview
+            </a>
+            <a href="/ops/queue" class="nav-link {% if current_path.startswith('/ops/queue') or current_path.startswith('/ops/jobs') %}is-active{% endif %}"
+               {% if current_path.startswith('/ops/queue') or current_path.startswith('/ops/jobs') %}aria-current="page"{% endif %}>
+                <i class="iconoir-list" aria-hidden="true"></i> Queue
+            </a>
+        </div>
+
+        <div class="nav-actions">
+            <div class="workspace-switch" role="group" aria-label="Workspace switcher">
+                <a href="/" class="workspace-switch-link">Reader</a>
+                <a href="/ops" class="workspace-switch-link is-active" aria-current="page">Operations</a>
+            </div>
+            <a href="/ops#submit-video" class="btn btn-nav-primary btn-sm">
+                <i class="iconoir-plus" aria-hidden="true"></i> Submit
+            </a>
+        </div>
+
+        <button type="button" class="nav-mobile-toggle"
+                onclick="toggleWorkspaceNav(this, 'operations-mobile-nav')"
+                aria-label="Open Operations navigation" aria-controls="operations-mobile-nav" aria-expanded="false">
+            <i class="iconoir-menu" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <div id="operations-mobile-nav" class="mobile-nav">
+        <a href="/ops" class="nav-link {% if current_path in ['/ops', '/ops/'] %}is-active{% endif %}">Overview</a>
+        <a href="/ops/queue" class="nav-link {% if current_path.startswith('/ops/queue') or current_path.startswith('/ops/jobs') %}is-active{% endif %}">Queue</a>
+        <a href="/ops#submit-video" class="nav-link">Submit a video</a>
+        <a href="/" class="workspace-mobile-link">Switch to Reader</a>
+    </div>
+</nav>
+{% endblock %}
+
+{% block workspace_footer %}
+<footer class="operations-footer">Pipeline operations · one shared platform</footer>
+{% endblock %}

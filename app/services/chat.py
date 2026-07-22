@@ -108,6 +108,7 @@ async def _fallback_semantic_search(
     question: str,
     query_embedding: list[float],
     channel_id: uuid.UUID | None,
+    video_id: uuid.UUID | None,
 ) -> list[dict]:
     return await semantic_search(
         db,
@@ -115,6 +116,7 @@ async def _fallback_semantic_search(
         limit=settings.chat_retrieval_top_k,
         query=question,
         channel_id=channel_id,
+        video_id=video_id,
         chat_enabled_only=False,
     )
 
@@ -206,6 +208,9 @@ async def chat_with_context(
     db: AsyncSession,
     *,
     channel_id: uuid.UUID | None = None,
+    video_id: uuid.UUID | None = None,
+    selection_text: str | None = None,
+    selection_action: str | None = None,
     system_prompt: str | None = None,
     exemplar_chunks: list[dict] | None = None,
 ) -> dict:
@@ -217,6 +222,10 @@ async def chat_with_context(
         db: Async database session.
         channel_id: Optional channel to scope retrieval to. When unset, all
             embedded videos are considered.
+        video_id: Optional exact-video scope. When set, both primary and
+            fallback retrieval are constrained to this video.
+        selection_text: Optional user-selected passage supplied explicitly by
+            the Reader; it is included as evidence, never as an implicit call.
         system_prompt: Override the default system prompt (used for persona
             agents).
         exemplar_chunks: Optional list of persona exemplar chunk rows. Rendered
@@ -242,6 +251,7 @@ async def chat_with_context(
                 options=GlobalSearchOptions(
                     limit=settings.chat_retrieval_top_k,
                     channel_id=channel_id,
+                    video_id=video_id,
                     source_type="all",
                 ),
             )
@@ -254,12 +264,19 @@ async def chat_with_context(
                     question=question,
                     query_embedding=query_embedding,
                     channel_id=channel_id,
+                    video_id=video_id,
                 )
             except Exception as fallback_exc:
                 logger.warning("search_failed", error=str(fallback_exc))
                 chunks = []
 
     context_text = _format_chunks_for_context(chunks)
+    if selection_text:
+        action = selection_action or "analyze"
+        context_text = (
+            f"[User-selected passage — requested action: {action}]\n"
+            f"{selection_text.strip()}\n\n[Explicitly retrieved context]\n{context_text}"
+        )
     if exemplar_chunks:
         exemplar_text = _format_chunks_for_context(exemplar_chunks)
         context_text = (

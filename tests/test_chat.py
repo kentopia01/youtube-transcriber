@@ -381,6 +381,36 @@ class TestSendMessage:
         assert resp.status_code == 200
         assert mock_chat.call_args[1]["channel_id"] == channel_id
 
+    @patch("app.routers.chat.chat_with_context", new_callable=AsyncMock)
+    def test_video_and_selection_scope_passed_to_chat(self, mock_chat):
+        mock_chat.return_value = MOCK_CHAT_RESULT
+        video_id = uuid.uuid4()
+        session = _make_session(title="Reader question")
+        client = _build_client(StubDB(execute_results=[session]))
+
+        response = client.post(
+            f"/api/chat/sessions/{session.id}/messages",
+            json={
+                "content": "Explain this",
+                "video_id": str(video_id),
+                "selection_text": "A selected transcript claim.",
+                "selection_action": "explain",
+            },
+        )
+
+        assert response.status_code == 200
+        kwargs = mock_chat.call_args.kwargs
+        assert kwargs["video_id"] == video_id
+        assert kwargs["selection_text"] == "A selected transcript claim."
+        assert kwargs["selection_action"] == "explain"
+
+    def test_selection_action_requires_selected_text(self):
+        response = _build_client().post(
+            f"/api/chat/sessions/{uuid.uuid4()}/messages",
+            json={"content": "Explain this", "selection_action": "explain"},
+        )
+        assert response.status_code == 422
+
     def test_send_message_session_not_found(self):
         db = StubDB(execute_results=[None])
         client = _build_client(db)
@@ -588,6 +618,56 @@ class TestChatService:
         _, kwargs = mock_search.call_args
         assert kwargs["channel_id"] == channel_id
         assert kwargs["chat_enabled_only"] is False
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock)
+    @patch("app.services.chat.encode_query")
+    async def test_exact_video_scope_survives_retrieval_fallback(
+        self, mock_encode, mock_search, mock_llm,
+    ):
+        from app.services.chat import chat_with_context
+
+        video_id = uuid.uuid4()
+        mock_encode.return_value = [0.1] * 768
+        mock_search.return_value = []
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "test-model",
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+        }
+
+        await chat_with_context("question", [], AsyncMock(), video_id=video_id)
+
+        assert mock_search.call_args.kwargs["video_id"] == video_id
+
+    @pytest.mark.asyncio
+    @patch("app.services.chat._call_anthropic")
+    @patch("app.services.chat.semantic_search", new_callable=AsyncMock, return_value=[])
+    @patch("app.services.chat.encode_query", return_value=[0.1] * 768)
+    async def test_selection_action_is_explicit_evidence(
+        self, _mock_encode, _mock_search, mock_llm,
+    ):
+        from app.services.chat import chat_with_context
+
+        mock_llm.return_value = {
+            "content": "Answer",
+            "model": "test-model",
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+        }
+        await chat_with_context(
+            "Explain it",
+            [],
+            AsyncMock(),
+            selection_text="The selected claim.",
+            selection_action="explain",
+        )
+
+        messages = mock_llm.call_args.args[1]
+        assert "[User-selected passage" in messages[-1]["content"]
+        assert "The selected claim." in messages[-1]["content"]
 
     @pytest.mark.asyncio
     @patch("app.services.chat._call_anthropic")

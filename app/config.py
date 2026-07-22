@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     chunk_target_tokens: int = 300
     chunk_max_tokens: int = 400
+    warm_embedding_model: bool = False
 
     # Search
     search_mode: str = "hybrid"  # "vector", "hybrid", or "keyword"
@@ -224,6 +225,7 @@ class Settings(BaseSettings):
     # Telegram bot
     telegram_bot_token: str = ""
     telegram_allowed_users: list[int] = []
+    telegram_admin_users: list[int] = []
     telegram_notify_enabled: bool = True
     telegram_notify_muted_events: list[str] = []
     telegram_notify_state_path: str = "/tmp/yt-chatbot/notify_state.json"

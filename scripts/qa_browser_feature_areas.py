@@ -23,12 +23,13 @@ class BrowserCheck:
 
 
 PAGE_SPECS = (
-    ("Dashboard", "/", "h1", "Transcribe videos without babysitting jobs"),
-    ("Queue", "/queue", "h1", "Processing Queue"),
-    ("Library", "/library", "h1", "Library"),
+    ("Reader home", "/", "h1", "Read what you saved"),
+    ("Operations dashboard", "/ops", "h1", "Transcribe videos without babysitting jobs"),
+    ("Queue", "/ops/queue", "h1", "Processing Queue"),
+    ("Library", "/read", "h1", "Library"),
     ("Chat", "/chat", ".chat-page-shell", ""),
-    ("Search", "/search", "h1", "Chat with Library"),
-    ("Global Search", "/global-search", "h1", "Global Search"),
+    ("Research", "/search", "h1", "Search or ask"),
+    ("Highlights notebook", "/read/highlights", "h1", "Highlights and notes"),
 )
 
 VIEWPORTS = {
@@ -102,6 +103,35 @@ def _page_check(
                     .slice(0, 3)"""
             )
             problems.append(f"horizontal viewport overflow: {offenders}")
+        unnamed_controls = page.evaluate(
+            """Array.from(document.querySelectorAll('button,input:not([type=hidden]),select,textarea'))
+                .filter((el) => {
+                    const style = getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    if (!el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true}) || style.display === 'none' || style.visibility === 'hidden' || !rect.width || !rect.height) return false;
+                    const labelled = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') ||
+                        el.getAttribute('title') || el.innerText?.trim() || el.value ||
+                        Array.from(el.labels || []).some((label) => label.innerText.trim());
+                    return !labelled;
+                })
+                .slice(0, 3)
+                .map((el) => el.id || el.className || el.tagName.toLowerCase())"""
+        )
+        if unnamed_controls:
+            problems.append(f"unnamed interactive controls: {unnamed_controls}")
+        if viewport == "mobile":
+            undersized_controls = page.evaluate(
+                """Array.from(document.querySelectorAll('button,.btn,.input-field,select,textarea'))
+                    .filter((el) => {
+                        const style = getComputedStyle(el); const rect = el.getBoundingClientRect();
+                        return el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true}) && style.display !== 'none' && style.visibility !== 'hidden' && rect.width && rect.height &&
+                            (rect.width < 44 || rect.height < 44);
+                    })
+                    .slice(0, 3)
+                    .map((el) => ({id: el.id, cls: el.className, width: Math.round(el.getBoundingClientRect().width), height: Math.round(el.getBoundingClientRect().height)}))"""
+            )
+            if undersized_controls:
+                problems.append(f"mobile targets below 44px: {undersized_controls}")
         if page_errors:
             problems.append("page error: " + page_errors[0][:180])
         if bad_responses:
@@ -154,24 +184,129 @@ def run_browser_checks(base_url: str, api_key: str | None = None, *, headless: b
                     page = context.new_page()
 
                     def library_tabs() -> str:
-                        page.goto(base_url.rstrip("/") + "/library", wait_until="domcontentloaded")
-                        page.locator('.tab-item[href="/library?tab=channels"]').click()
-                        page.wait_for_url("**/library?tab=channels")
+                        page.goto(base_url.rstrip("/") + "/read", wait_until="domcontentloaded")
+                        page.locator('.tab-item[href="/read?tab=channels"]').click()
+                        page.wait_for_url("**/read?tab=channels")
                         if page.locator(".channel-card-wrapper").count() < 1:
                             raise AssertionError("no channel cards rendered")
-                        page.locator('.tab-item[href="/library?tab=videos"]').click()
-                        page.wait_for_url("**/library?tab=videos")
+                        page.locator('.tab-item[href="/read?tab=videos"]').click()
+                        page.wait_for_url("**/read?tab=videos")
                         if page.locator("#video-list-content").count() != 1:
                             raise AssertionError("video tab content missing")
                         return "Videos and Channels tabs navigate and render"
 
                     checks.append(_interaction_check("Library tabs", viewport_name, library_tabs))
 
+                    def toggle_transport() -> str:
+                        page.route(
+                            "**/api/videos/*/chat-toggle",
+                            lambda route: route.fulfill(
+                                status=200,
+                                content_type="application/json",
+                                body='{"chat_enabled":true}',
+                            ),
+                        )
+                        try:
+                            page.goto(base_url.rstrip("/") + "/read?tab=videos", wait_until="domcontentloaded")
+                            toggle = page.locator('input[hx-patch^="/api/videos/"]').first
+                            toggle_label = toggle.locator("xpath=ancestor::label[1]")
+                            with page.expect_request(lambda request: "/chat-toggle" in request.url) as info:
+                                toggle_label.click()
+                            request = info.value
+                            if "application/json" not in request.headers.get("content-type", ""):
+                                raise AssertionError("chat toggle did not use JSON transport")
+                            if not isinstance(request.post_data_json, dict) or not isinstance(request.post_data_json.get("enabled"), bool):
+                                raise AssertionError("chat toggle JSON payload is invalid")
+                            return "Local HTMX replacement encoded toggle state as JSON (request intercepted)"
+                        finally:
+                            page.unroute("**/api/videos/*/chat-toggle")
+
+                    checks.append(_interaction_check("Toggle transport contract", viewport_name, toggle_transport))
+
+                    def reader_document() -> str:
+                        page.goto(
+                            base_url.rstrip("/") + "/read?tab=videos",
+                            wait_until="domcontentloaded",
+                        )
+                        href = page.locator('.video-card[href^="/read/"]').first.get_attribute("href")
+                        if not href:
+                            raise AssertionError("no Reader document link discovered")
+                        page.goto(base_url.rstrip("/") + href, wait_until="domcontentloaded")
+                        if page.locator(".reader-block").count() < 1:
+                            raise AssertionError("Reader rendered no transcript blocks")
+                        page.wait_for_function(
+                            "document.querySelector('#reader-annotation-list').innerText.trim().length > 0"
+                        )
+                        if page.locator("#reader-selection-tools").count() != 1:
+                            raise AssertionError("Reader annotation controls missing")
+                        tools_toggle = page.locator("[data-open-tools]")
+                        if tools_toggle.is_visible():
+                            tools_toggle.click()
+                        search = page.locator("#reader-search")
+                        source_text = page.locator(".reader-copy").first.inner_text().strip()
+                        query = next(
+                            (word.strip(".,!?;:\"'") for word in source_text.split() if len(word) >= 5),
+                            "",
+                        )
+                        if not query:
+                            raise AssertionError("Reader block has no searchable word")
+                        search.fill(query)
+                        if page.locator(".reader-copy mark").count() < 1:
+                            raise AssertionError("Reader in-document search found no matches")
+                        page.locator('[data-reader-theme="sepia"]').click()
+                        page.reload(wait_until="domcontentloaded")
+                        if page.locator("#reader-document").get_attribute("data-reader-theme") != "sepia":
+                            raise AssertionError("Reader appearance setting did not persist")
+                        return "Transcript blocks, annotations, search, and persisted appearance pass"
+
+                    checks.append(
+                        _interaction_check(
+                            "Reader document interaction",
+                            viewport_name,
+                            reader_document,
+                        )
+                    )
+
+                    def current_transcript_scope() -> str:
+                        page.goto(base_url.rstrip("/") + "/read?tab=videos", wait_until="domcontentloaded")
+                        href = page.locator('.video-card[href^="/read/"]').first.get_attribute("href")
+                        if not href:
+                            raise AssertionError("no Reader document link discovered")
+                        video_id = href.rstrip("/").split("/")[-1]
+                        page.goto(base_url.rstrip("/") + f"/search?video_id={video_id}", wait_until="domcontentloaded")
+                        selected = page.locator("#research-scope").input_value()
+                        if selected != "video":
+                            raise AssertionError(f"expected current-video scope, got {selected!r}")
+                        page.goto(base_url.rstrip("/") + f"/chat?video_id={video_id}", wait_until="domcontentloaded")
+                        if page.locator('#chat-retrieval-scope option[value="video"]').count() != 1:
+                            raise AssertionError("Ask surface lost current transcript scope")
+                        return "Current transcript scope is explicit in Search and Ask"
+
+                    checks.append(_interaction_check("Current transcript research", viewport_name, current_transcript_scope))
+
+                    def operations_job_detail() -> str:
+                        page.goto(base_url.rstrip("/") + "/ops", wait_until="domcontentloaded")
+                        href = page.locator('a[href^="/ops/jobs/"]').first.get_attribute("href")
+                        if not href:
+                            raise AssertionError("no Operations job link discovered")
+                        page.goto(base_url.rstrip("/") + href, wait_until="domcontentloaded")
+                        if "Job Details" not in page.locator("h1").inner_text():
+                            raise AssertionError("job detail did not render")
+                        return "Job detail rendered without mutation controls being invoked"
+
+                    checks.append(_interaction_check("Operations job detail", viewport_name, operations_job_detail))
+
                     if viewport_name == "mobile":
                         def mobile_nav() -> str:
                             page.goto(base_url.rstrip("/") + "/", wait_until="domcontentloaded")
-                            page.locator(".nav-mobile-toggle").click()
-                            if "is-open" not in (page.locator("#mobile-nav").get_attribute("class") or ""):
+                            toggle = page.locator(".nav-mobile-toggle")
+                            target_id = toggle.get_attribute("aria-controls")
+                            if not target_id:
+                                raise AssertionError("mobile navigation toggle has no aria-controls")
+                            toggle.click()
+                            if "is-open" not in (
+                                page.locator(f"#{target_id}").get_attribute("class") or ""
+                            ):
                                 raise AssertionError("mobile navigation did not open")
                             return "Mobile navigation opens and exposes links"
 
@@ -189,7 +324,7 @@ def run_browser_checks(base_url: str, api_key: str | None = None, *, headless: b
                     def search() -> str:
                         page.goto(base_url.rstrip("/") + "/search", wait_until="domcontentloaded")
                         page.locator("#search-query").fill("AI agents")
-                        with page.expect_response(lambda response: "/api/search" in response.url) as info:
+                        with page.expect_response(lambda response: "/api/global-search" in response.url) as info:
                             page.locator("#search-query").press("Enter")
                         if info.value.status != 200:
                             raise AssertionError(f"search returned HTTP {info.value.status}")
@@ -202,16 +337,17 @@ def run_browser_checks(base_url: str, api_key: str | None = None, *, headless: b
 
                     def global_search() -> str:
                         page.goto(base_url.rstrip("/") + "/global-search", wait_until="domcontentloaded")
+                        page.wait_for_url("**/search")
                         page.locator("select[name=source_type]").select_option("summary")
-                        page.locator("#global-search-query").fill("AI agents")
+                        page.locator("#search-query").fill("AI agents")
                         with page.expect_response(lambda response: "/api/global-search" in response.url) as info:
-                            page.locator("#global-search-query").press("Enter")
+                            page.locator("#search-query").press("Enter")
                         if info.value.status != 200:
                             raise AssertionError(f"global search returned HTTP {info.value.status}")
                         page.wait_for_function(
-                            "document.querySelector('#global-search-results').innerText.trim().length > 0"
+                            "document.querySelector('#search-results').innerText.trim().length > 0"
                         )
-                        return "Global search filter and HTMX submission rendered results"
+                        return "Legacy Global Search redirected into scoped Research and rendered results"
 
                     checks.append(
                         _interaction_check("Global Search interaction", viewport_name, global_search)

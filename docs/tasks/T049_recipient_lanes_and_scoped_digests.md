@@ -1,9 +1,10 @@
 # T049 - Recipient Lanes and Scoped Digests
 
 ## Status
-Approved for build; waiting for T061 recovery queue to drain.
+Done — 2026-07-21
 
-Implementation must not start until the current YouTube catch-up pipeline has fully drained. Ken reopened this task for build on 2026-07-21; the queue-drain gate remains active.
+The T061 recovery queue drained to zero active jobs on 2026-07-21, clearing the
+implementation gate.
 
 ## Objective
 Add lightweight recipient lanes so multiple Telegram users can configure their own YouTube channel digest lists while sharing the existing transcript processing library.
@@ -237,9 +238,26 @@ Do not send per-video completion/report notifications to restricted users by def
 - Existing subscription and digest tests updated without broad regressions.
 - QAClaw validates against this task file after implementation.
 
-## Blocked Until
-- Current YouTube catch-up pipeline reaches zero active jobs and no new blocker state.
-- Ken explicitly approves starting implementation.
+Implementation evidence:
+- Migration 018 is applied locally with `digest_lanes`, `lane_subscriptions`, and
+  `lane_video_items` present at the live database head.
+- `kentopiadev` and `shqng` have separate admin lanes. Ken's existing global
+  watchlist was copied idempotently into Ken's lane; `shqng` starts empty.
+- `shqng.telegram_chat_id` remains NULL until a private `/start` or another
+  role-aware command records first contact.
+- Restricted command menus/help expose only `/start`, `/help`, `/subscribe`,
+  `/unsubscribe`, `/subscriptions`, and `/digest`; hidden commands fail closed.
+- Lane poll tests cover completed-video attach, active-job attach, one-time new
+  submission, and idempotent existing-item behavior.
+- Digest tests prove cross-lane exclusion, exact chat targeting, and no delivered
+  marker after a failed send.
+- Admin commands cover lane list, status, failures, manual digest, and scoped retry.
+- Focused recipient-lane validation passed (160 tests); the combined default suite
+  passed `1323 passed, 12 skipped` after the rollout.
+
+## Gate Evidence
+- Current YouTube catch-up pipeline reached zero active jobs on 2026-07-21.
+- Ken explicitly approved starting implementation.
 
 ## Notes
 - Related context: `docs/CLARIFICATIONS.md`, `docs/tasks/T048_subscription_watchlist_longform.md`.
