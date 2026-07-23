@@ -94,6 +94,7 @@ class TestListEndpoint:
             last_polled_at=datetime(2026, 4, 18, tzinfo=UTC),
             videos_ingested_today=1,
             consecutive_failure_count=0,
+            last_error=None,
             disabled_reason=None,
         )
         client = _client(_StubSession(subs=[sub]))
@@ -128,6 +129,7 @@ class TestCreateEndpoint:
             last_polled_at=None,
             videos_ingested_today=0,
             consecutive_failure_count=0,
+            last_error=None,
             disabled_reason=None,
         )
         client = _client(_StubSession())
@@ -173,6 +175,7 @@ class TestPatchEndpoint:
             last_polled_at=None,
             videos_ingested_today=0,
             consecutive_failure_count=0,
+            last_error=None,
             disabled_reason=None,
         )
         stub = _StubSession(
@@ -183,6 +186,31 @@ class TestPatchEndpoint:
         assert r.status_code == 200
         assert sub.enabled is False
         assert sub.disabled_reason == "user_disabled"
+
+    def test_resets_retained_failure_state_explicitly(self):
+        channel = SimpleNamespace(id=uuid.UUID(int=1), name="Lex")
+        sub = SimpleNamespace(
+            id=uuid.UUID(int=10),
+            channel_id=channel.id,
+            channel=channel,
+            enabled=True,
+            poll_frequency_hours=24,
+            max_videos_per_poll=3,
+            last_polled_at=None,
+            videos_ingested_today=0,
+            consecutive_failure_count=2,
+            last_error="scheduled premiere",
+            disabled_reason=None,
+        )
+        client = _client(_StubSession(subs=[sub], channel=channel))
+
+        response = client.patch(
+            f"/api/subscriptions/{sub.id}", json={"reset_failures": True}
+        )
+
+        assert response.status_code == 200
+        assert sub.consecutive_failure_count == 0
+        assert sub.last_error is None
 
 
 # ---------------------------------------------------------------------------

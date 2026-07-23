@@ -281,6 +281,7 @@ def reset_daily_counter_if_needed(sub: ChannelSubscription) -> None:
 def mark_poll_success(sub: ChannelSubscription, *, new_ids: list[str]) -> None:
     sub.last_polled_at = datetime.now(timezone.utc)
     sub.consecutive_failure_count = 0
+    sub.last_error = None
     # Keep last 50 seen ids so the list doesn't grow unbounded.
     merged = list(new_ids) + list(sub.last_seen_video_ids or [])
     sub.last_seen_video_ids = merged[:50]
@@ -288,6 +289,7 @@ def mark_poll_success(sub: ChannelSubscription, *, new_ids: list[str]) -> None:
 
 def mark_poll_failure(sub: ChannelSubscription, *, reason: str, disable_after: int = 3) -> None:
     sub.consecutive_failure_count = (sub.consecutive_failure_count or 0) + 1
+    sub.last_error = str(reason)[:1000]
     if sub.consecutive_failure_count >= disable_after:
         sub.enabled = False
         sub.disabled_reason = f"Auto-disabled after {sub.consecutive_failure_count} failures: {reason}"

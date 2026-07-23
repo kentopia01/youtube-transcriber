@@ -1,14 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.models.job import Job
 from app.models.video import Video
 from app.schemas.video import JobResponse
+from app.schemas.inventory import JobInventoryItem, JobInventoryPage
 from app.services.job_visibility import hide_superseded_failed_jobs
 from app.services.pipeline_state import (
     PIPELINE_STAGE_CANCELLED,
@@ -32,6 +33,63 @@ from app.services.pipeline_resume import detect_resume_point_async, select_resum
 from app.tasks.pipeline import run_pipeline_from
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+@router.get("", response_model=JobInventoryPage)
+async def list_jobs(
+    status: str | None = None,
+    stage: str | None = None,
+    channel_id: uuid.UUID | None = None,
+    video_id: uuid.UUID | None = None,
+    include_hidden: bool = False,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    filters = []
+    if status:
+        filters.append(Job.status == status)
+    if stage:
+        filters.append(Job.current_stage == stage)
+    if channel_id:
+        filters.append(Job.channel_id == channel_id)
+    if video_id:
+        filters.append(Job.video_id == video_id)
+    if not include_hidden:
+        filters.append(Job.hidden_from_queue.is_(False))
+
+    total = int(await db.scalar(select(func.count(Job.id)).where(*filters)) or 0)
+    rows = (
+        await db.execute(
+            select(Job, Video)
+            .outerjoin(Video, Video.id == Job.video_id)
+            .where(*filters)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    items = [
+        JobInventoryItem(
+            id=job.id,
+            video_id=job.video_id,
+            video_title=video.title if video else None,
+            youtube_video_id=video.youtube_video_id if video else None,
+            channel_id=job.channel_id,
+            job_type=job.job_type,
+            status=job.status,
+            current_stage=job.current_stage,
+            progress_pct=job.progress_pct,
+            attempt_number=job.attempt_number,
+            attempt_creation_reason=job.attempt_creation_reason,
+            error_message=job.error_message,
+            hidden_from_queue=job.hidden_from_queue,
+            created_at=job.created_at,
+            completed_at=job.completed_at,
+        )
+        for job, video in rows
+    ]
+    return JobInventoryPage(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/{job_id}")

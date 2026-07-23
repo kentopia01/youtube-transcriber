@@ -42,6 +42,7 @@ class SubscriptionPatch(BaseModel):
     enabled: bool | None = None
     poll_frequency_hours: int | None = Field(default=None, ge=1, le=24 * 7)
     max_videos_per_poll: int | None = Field(default=None, ge=1, le=20)
+    reset_failures: bool = False
 
 
 def _serialize(sub, channel):
@@ -55,6 +56,7 @@ def _serialize(sub, channel):
         "last_polled_at": sub.last_polled_at.isoformat() if sub.last_polled_at else None,
         "videos_ingested_today": sub.videos_ingested_today,
         "consecutive_failure_count": sub.consecutive_failure_count,
+        "last_error": sub.last_error,
         "disabled_reason": sub.disabled_reason,
     }
 
@@ -133,6 +135,9 @@ async def patch(
         sub.poll_frequency_hours = data.poll_frequency_hours
     if data.max_videos_per_poll is not None:
         sub.max_videos_per_poll = data.max_videos_per_poll
+    if data.reset_failures:
+        sub.consecutive_failure_count = 0
+        sub.last_error = None
     await db.commit()
     await db.refresh(sub)
     channel = await db.get(Channel, sub.channel_id)

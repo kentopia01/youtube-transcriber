@@ -15,6 +15,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -25,6 +26,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   web:
     build:
@@ -33,16 +35,20 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     env_file: .env
+    environment:
+      MUTATION_AUDIT_PATH: /data/audit/mutations.jsonl
     volumes:
       - audio_data:/data/audio
       - model_cache:/data/models
       - ./app:/app/app:ro
       - ./data/cookies:/data/cookies
+      - audit_data:/data/audit
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   # NOTE: Worker and Flower have been replaced by the native macOS worker.
   # The native worker uses MLX (Metal-accelerated) transcription which cannot
@@ -81,3 +87,4 @@ volumes:
   pgdata:
   audio_data:
   model_cache:
+  audit_data:

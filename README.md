@@ -243,10 +243,38 @@ launchctl kickstart -k gui/$(id -u)/com.sentryclaw.yt-worker-diarize
 
 ### Web UI
 
-- **Dashboard** (`/`) — Submit videos, view stats, monitor jobs
-- **Library** (`/videos`) — Browse transcribed videos
-- **Search** (`/search`) — Semantic search across all transcripts
-- **Queue** (`/queue`) — Monitor active and completed jobs
+- **Reader Home** (`/`) — Resume reading and discover newly ready transcripts
+- **Reader Library** (`/read`) — Browse transcripts and channels, with unread/later/finished state
+- **Research** (`/search`) — Search or ask across the library or within one transcript
+- **Highlights** (`/read/highlights`) — Revisit and export saved passages and notes
+- **Operations** (`/ops`) — Submit videos and inspect health, warnings, deliveries, and recent work
+- **Queue** (`/ops/queue`) — Monitor and recover pipeline jobs
+
+Reader and Operations are separate user-facing workspaces backed by the same local
+FastAPI service and PostgreSQL library. This keeps reading calm without duplicating
+the pipeline, database, deployment, or operational source of truth.
+
+### Local CLI
+
+Install the project in the local virtual environment, then use `ytctl` as the
+supported service boundary for humans and local agents:
+
+```bash
+pip install -e .
+ytctl status
+ytctl warnings
+ytctl jobs --limit 10
+ytctl videos --reader-status unread --limit 10
+ytctl transcript VIDEO_UUID --summary-only
+ytctl search "agent architecture" --limit 5
+ytctl reconcile                    # dry run
+ytctl reconcile --apply --confirm  # explicit state change
+```
+
+The default URL is `http://127.0.0.1:8000`. Override it with `--url` or
+`YT_TRANSCRIBER_URL`; configure long cold-start requests with `--timeout` or
+`YT_TRANSCRIBER_TIMEOUT`. Submit/retry/cancel and reconciliation apply commands
+refuse to run without `--confirm`.
 
 ### API
 
@@ -258,6 +286,12 @@ curl -X POST http://localhost:8000/api/videos \
 
 # Get transcription with V2 fields (language, speakers, segments)
 curl http://localhost:8000/api/transcriptions/{video_id}
+
+# Stable local status and inventory contracts
+curl http://localhost:8000/api/system/status
+curl 'http://localhost:8000/api/jobs?limit=25&offset=0'
+curl 'http://localhost:8000/api/videos?reader_status=unread&limit=25'
+curl 'http://localhost:8000/api/reader/states?limit=25'
 
 # Submit a channel for batch processing
 curl -X POST http://localhost:8000/api/channels \
@@ -291,22 +325,30 @@ curl -X POST http://localhost:8000/api/channels \
 
 ### OpenClaw Skills
 
-Two bundled skills in `skills/` let AI agents interact with the transcriber:
+The version-controlled `yt-status`, `yt-transcribe`, and `yt-chat` skills live in
+`openclaw/skills/`. Installed copies use `ytctl`, so OpenClaw reads the same service
+contracts as the web app and never bypasses them with direct PostgreSQL, Docker, or
+model-provider calls. Inspection is read-only by default; mutations inherit `ytctl`'s
+explicit confirmation requirement. See `openclaw/README.md` for sync instructions.
 
-**`yt-transcribe`** — Submit and monitor transcriptions:
+### Local trust, audit, and recovery
+
+Docker publishes PostgreSQL, Redis, and the web app only on loopback. Authentication
+is intentionally optional for this single-user Mac deployment: Telegram's allowlist
+authenticates bot messages only and is not reused as browser or CLI identity. Unsafe
+cross-site browser mutations are rejected; local CLI/OpenClaw calls without an Origin
+header remain supported. Mutation metadata is recorded in the `audit_data` volume
+without request bodies, query strings, tokens, or other credentials.
+
 ```bash
-bash skills/yt-transcribe/scripts/transcribe.sh "https://youtube.com/watch?v=..."
-bash skills/yt-transcribe/scripts/list_videos.sh
-bash skills/yt-transcribe/scripts/get_status.sh <job-id>
+# Create a timestamped PostgreSQL + report-artifact backup and checksums
+scripts/backup_local.sh
+
+# Restore into a generated temporary database, verify it, then drop it
+scripts/verify_restore_local.sh /absolute/path/to/data/backups/TIMESTAMP
 ```
 
-**`yt-chat`** — Chat with transcribed content:
-```bash
-python3 skills/yt-chat/scripts/chat.py --list
-python3 skills/yt-chat/scripts/chat.py --video-id <uuid> -q "What were the main points?"
-python3 skills/yt-chat/scripts/chat.py --video-id <uuid> -q "What did Speaker 1 say about pricing?"
-python3 skills/yt-chat/scripts/chat.py --search "topic" -q "Summarize the discussion"
-```
+The restore verifier never targets the live database.
 
 ## Telegram Bot
 
@@ -606,7 +648,12 @@ First run downloads ~3GB for `whisper-large-v3-turbo`. Models are cached in `MOD
 
 ### Search returns 503
 
-The embedding model needs to load on first search query. Wait a few seconds and retry. If persistent, check worker logs for model download errors.
+Semantic search uses the CPU-only `nomic-embed-text-v1.5` model to turn a query into
+the same vector space as transcript chunks. It is unrelated to webpage images and
+does not require CUDA. The first query after a restart may wait while the model loads
+from the persistent `model_cache` volume; Reader, Operations, and health requests
+remain responsive during that load. If a 503 persists, check web logs for model
+download or cache errors.
 
 ## Performance
 

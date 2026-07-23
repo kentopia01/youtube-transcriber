@@ -5,14 +5,14 @@
 As of 2026-07-22, the YouTube Transcriber has completed the stabilization,
 delivery-quality, search, Codex routing, throughput, local-security, notification,
 runtime-consolidation roadmap through T058 and the T063 Reader/Operations product
-epic. The latest default validation is green at `1350 passed, 11 skipped`, with
+epic. The latest default validation is green at `1379 passed, 11 skipped`, with
 `33/33` live HTTP checks and `30/30` desktop/mobile browser checks.
 
-The active release sequence is T073-T079: freeze the implemented workspace
-baseline, reconcile operational warnings, expose stable local status APIs, add a
-supported `ytctl` CLI, modernize OpenClaw against that boundary, harden the local
-runtime, and finish with evidence-driven Reader workflow QA. The order is
-intentional: contracts and operational truth precede control clients and UI polish.
+The T073-T079 release sequence is complete: the implemented workspace baseline is
+committed, operational warnings are reconciled, stable local status APIs and the
+supported `ytctl` CLI are live, OpenClaw uses that boundary, the local runtime has a
+proven audit/backup/restore path, and evidence-driven Reader QA removed the observed
+mobile reading obstruction.
 
 The older remaining roadmap entries are evidence- or product-gated:
 - T034 only if public YouTube downloads begin failing again;
@@ -37,15 +37,15 @@ transcripts, state, annotations, chapters, and Research; Operations owns
 ingestion, queue health, recovery, subscriptions, deliveries, and spend. T064-
 T071 are implemented, migrated through Alembic `021`, and live-validated.
 
-### Active execution sequence: T073-T079
+### Completed execution sequence: T073-T079
 
-1. T073 freezes the current Reader/Operations worktree behind release gates.
-2. T074 makes current warnings explainable and reconciles stale derived state.
-3. T075 adds stable, paginated local service contracts.
-4. T076 packages those contracts as the guarded `ytctl` operator CLI.
-5. T077 moves OpenClaw off direct SQL and provider calls onto `ytctl`.
-6. T078 hardens the trusted-local runtime, provenance, backup, and restore path.
-7. T079 observes real Reader workflows and ships only evidenced improvements.
+1. T073 froze the Reader/Operations worktree behind release gates.
+2. T074 made current warnings explainable and reconciled stale derived state.
+3. T075 added stable, paginated local service contracts.
+4. T076 packaged those contracts as the guarded `ytctl` operator CLI.
+5. T077 moved OpenClaw off direct SQL and provider calls onto `ytctl`.
+6. T078 hardened the trusted-local runtime, provenance, backup, and restore path.
+7. T079 observed real Reader workflows and shipped only evidenced improvements.
 
 Authentication remains deliberately absent while every service stays on loopback.
 Telegram's numeric allowlist authenticates bot messages only; it is not reused as

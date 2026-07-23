@@ -25,6 +25,9 @@ class _FakeResult:
             return _FakeScalars([])
         return _FakeScalars([self.value])
 
+    def all(self):
+        return self.value if isinstance(self.value, list) else []
+
 
 class _CaptureDB:
     def __init__(self, execute_values, scalar_values=None):

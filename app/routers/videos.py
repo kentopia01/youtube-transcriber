@@ -1,14 +1,18 @@
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.models.job import Job
 from app.models.video import Video
 from app.schemas.video import ChatToggle, VideoResponse, VideoSubmit
+from app.schemas.inventory import VideoInventoryItem, VideoInventoryPage
+from app.models.channel import Channel
+from app.models.reader_state import READER_STATUSES, ReaderState
+from app.models.transcription import Transcription
 from app.services.channel_sync import get_or_create_channel, parse_upload_date
 from app.services.job_visibility import hide_superseded_failed_jobs
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED
@@ -27,6 +31,76 @@ from app.services.youtube import extract_video_id, get_video_info, is_channel_ur
 from app.tasks.pipeline import run_pipeline
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
+
+
+@router.get("", response_model=VideoInventoryPage)
+async def list_videos(
+    status: str | None = None,
+    channel_id: uuid.UUID | None = None,
+    reader_status: str | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    include_dismissed: bool = False,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    if reader_status and reader_status not in READER_STATUSES:
+        raise HTTPException(status_code=422, detail="Unknown reader status")
+    filters = []
+    if status:
+        filters.append(Video.status == status)
+    if channel_id:
+        filters.append(Video.channel_id == channel_id)
+    if not include_dismissed:
+        filters.append(Video.dismissed_at.is_(None))
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append(or_(Video.title.ilike(pattern), Video.youtube_video_id.ilike(pattern)))
+    if reader_status:
+        filters.append(
+            ReaderState.status == reader_status
+            if reader_status != "unread"
+            else or_(ReaderState.status == "unread", ReaderState.id.is_(None))
+        )
+
+    joins = (
+        select(Video.id)
+        .outerjoin(ReaderState, (ReaderState.video_id == Video.id) & ReaderState.digest_lane_id.is_(None))
+        .where(*filters)
+    )
+    total = int(await db.scalar(select(func.count()).select_from(joins.subquery())) or 0)
+    rows = (
+        await db.execute(
+            select(Video, Channel, ReaderState, Transcription.id)
+            .outerjoin(Channel, Channel.id == Video.channel_id)
+            .outerjoin(ReaderState, (ReaderState.video_id == Video.id) & ReaderState.digest_lane_id.is_(None))
+            .outerjoin(Transcription, Transcription.video_id == Video.id)
+            .where(*filters)
+            .order_by(Video.created_at.desc(), Video.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    items = [
+        VideoInventoryItem(
+            id=video.id,
+            youtube_video_id=video.youtube_video_id,
+            channel_id=video.channel_id,
+            channel_name=channel.name if channel else None,
+            title=video.title,
+            status=video.status,
+            duration_seconds=video.duration_seconds,
+            published_at=video.published_at,
+            thumbnail_url=video.thumbnail_url,
+            has_transcript=transcription_id is not None,
+            reader_status=state.status if state else "unread",
+            reader_progress_pct=state.progress_pct if state else 0.0,
+            dismissed_at=video.dismissed_at,
+            created_at=video.created_at,
+        )
+        for video, channel, state, transcription_id in rows
+    ]
+    return VideoInventoryPage(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("")

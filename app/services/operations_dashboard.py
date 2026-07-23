@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,6 +122,30 @@ class BatchWarning:
 
 
 @dataclass(frozen=True)
+class OperationalWarning:
+    warning_type: str
+    resource_id: str
+    title: str
+    reason: str
+    detail: str
+    next_action: str
+    occurred_at: datetime | None = None
+    metadata: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "warning_type": self.warning_type,
+            "resource_id": self.resource_id,
+            "title": self.title,
+            "reason": self.reason,
+            "detail": self.detail,
+            "next_action": self.next_action,
+            "occurred_at": self.occurred_at.isoformat() if self.occurred_at else None,
+            "metadata": self.metadata or {},
+        }
+
+
+@dataclass(frozen=True)
 class RuntimeCapabilities:
     transcription_engine: str
     transcription_label: str
@@ -147,6 +171,7 @@ class OperationsSummary:
     runtime: RuntimeCapabilities
     active_batches: tuple[Batch, ...]
     batch_warnings: tuple[BatchWarning, ...]
+    warnings: tuple[OperationalWarning, ...]
 
     @property
     def batch_warning_map(self) -> dict[object, BatchWarning]:
@@ -170,6 +195,7 @@ class OperationsSummary:
         warning_map = {warning.batch_id: warning for warning in self.batch_warnings}
         return {
             "generated_at": self.generated_at.isoformat(),
+            "warning_count": self.warning_count,
             "counts": self.counts.to_dict(),
             "queue_health": self.queue_health.to_dict(),
             "runtime": self.runtime.to_dict(),
@@ -191,6 +217,7 @@ class OperationsSummary:
                 for batch in self.active_batches
             ],
             "batch_warnings": [warning.to_dict() for warning in self.batch_warnings],
+            "warnings": [warning.to_dict() for warning in self.warnings],
         }
 
 
@@ -437,6 +464,105 @@ async def build_operations_summary(
     )
     health_jobs = list(job_result.scalars().all())
 
+    failed_rows = (
+        await db.execute(
+            select(Job, Video)
+            .join(Video, Video.id == Job.video_id)
+            .where(
+                Job.status == "failed",
+                Job.hidden_from_queue.is_(False),
+                Video.dismissed_at.is_(None),
+            )
+            .order_by(Job.created_at.desc())
+        )
+    ).all()
+    report_rows = (
+        await db.execute(
+            select(VideoReport, Video)
+            .join(Video, Video.id == VideoReport.video_id)
+            .where(
+                or_(
+                    VideoReport.delivery_status == "failed",
+                    VideoReport.delivery_error.is_not(None),
+                )
+            )
+            .order_by(VideoReport.updated_at.desc())
+        )
+    ).all()
+    subscription_rows = (
+        await db.execute(
+            select(ChannelSubscription, Channel)
+            .join(Channel, Channel.id == ChannelSubscription.channel_id)
+            .where(
+                ChannelSubscription.enabled.is_(True),
+                ChannelSubscription.consecutive_failure_count > 0,
+            )
+            .order_by(ChannelSubscription.consecutive_failure_count.desc())
+        )
+    ).all()
+
+    warnings = [
+        OperationalWarning(
+            warning_type="failed_job",
+            resource_id=str(job.id),
+            title=video.title,
+            reason="pipeline_failed",
+            detail=(job.error_message or "Pipeline attempt failed.")[:1000],
+            next_action="Dismiss if this is an intentional policy rejection; otherwise inspect the attempt before retrying.",
+            occurred_at=job.completed_at or job.created_at,
+            metadata={
+                "video_id": str(video.id),
+                "youtube_video_id": video.youtube_video_id,
+                "stage": job.current_stage,
+            },
+        )
+        for job, video in failed_rows
+    ]
+    warnings.extend(
+        OperationalWarning(
+            warning_type="batch",
+            resource_id=warning.batch_id,
+            title="Channel batch needs reconciliation",
+            reason=warning.reason,
+            detail=warning.detail,
+            next_action="Preview batch reconciliation, then apply the derived terminal state.",
+        )
+        for warning in batch_warnings
+    )
+    warnings.extend(
+        OperationalWarning(
+            warning_type="report_delivery",
+            resource_id=str(report.id),
+            title=video.title,
+            reason=report.delivery_error or report.delivery_status,
+            detail="The report artifact exists, but Telegram did not confirm delivery.",
+            next_action="Verify the recipient and artifact, then request an explicit redelivery.",
+            occurred_at=report.updated_at,
+            metadata={"video_id": str(video.id), "youtube_video_id": video.youtube_video_id},
+        )
+        for report, video in report_rows
+    )
+    warnings.extend(
+        OperationalWarning(
+            warning_type="subscription",
+            resource_id=str(subscription.id),
+            title=channel.name,
+            reason="consecutive_poll_failures",
+            detail=(
+                subscription.last_error
+                or subscription.disabled_reason
+                or "The previous poll failed before an error detail was retained."
+            )[:1000],
+            next_action="The scheduler will retry; inspect or disable the subscription if the count keeps rising.",
+            occurred_at=subscription.last_polled_at,
+            metadata={
+                "channel_id": str(channel.id),
+                "failure_count": subscription.consecutive_failure_count,
+            },
+        )
+        for subscription, channel in subscription_rows
+    )
+
     probe = queue_probe or inspect_queue_coverage
     coverage = await asyncio.to_thread(probe)
     return OperationsSummary(
@@ -456,6 +582,7 @@ async def build_operations_summary(
         ),
         active_batches=active_batches,
         batch_warnings=batch_warnings,
+        warnings=tuple(warnings),
     )
 
 
@@ -464,6 +591,7 @@ __all__ = [
     "BatchWarning",
     "OperationsCounts",
     "OperationsSummary",
+    "OperationalWarning",
     "QueueCoverage",
     "QueueHealth",
     "RuntimeCapabilities",

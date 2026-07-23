@@ -30,6 +30,7 @@ SHORTS_MAX_DURATION_SECONDS = 60
 class ClassificationResult:
     is_regular: bool
     reason: str | None  # populated only when is_regular is False
+    retry_later: bool = False
 
     def __bool__(self) -> bool:
         return self.is_regular
@@ -65,7 +66,11 @@ def classify_video_info(
     )
 
     if is_live is True or live_status in {"is_live", "is_upcoming"}:
-        return ClassificationResult(False, f"live_status={live_status or 'is_live'}")
+        return ClassificationResult(
+            False,
+            f"live_status={live_status or 'is_live'}",
+            retry_later=True,
+        )
 
     if "/shorts/" in url.lower():
         return ClassificationResult(False, "url contains /shorts/")
@@ -102,6 +107,22 @@ def classify_video_url(url: str) -> ClassificationResult:
         info = get_video_info(url)
     except Exception as exc:  # noqa: BLE001
         logger.warning("classify_video_lookup_failed", url=url, error=str(exc))
+        message = str(exc).lower()
+        if any(
+            marker in message
+            for marker in (
+                "premieres in",
+                "premiere will begin",
+                "live event will begin",
+                "upcoming live event",
+                "is scheduled for",
+            )
+        ):
+            return ClassificationResult(
+                False,
+                "video is scheduled or awaiting its live premiere",
+                retry_later=True,
+            )
         # Fail-open: let the downstream submit attempt surface the real error
         return ClassificationResult(True, None)
 

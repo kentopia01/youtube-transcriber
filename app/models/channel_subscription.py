@@ -30,6 +30,7 @@ class ChannelSubscription(Base):
     videos_ingested_today: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     daily_counter_reset_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     consecutive_failure_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     disabled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import structlog
 from fastapi import FastAPI, Request
@@ -8,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.routers import agents, channels, chat, global_search, jobs, operations, pages, reader, search, subscriptions, transcriptions, videos
+from app.routers import agents, channels, chat, global_search, jobs, operations, pages, reader, search, subscriptions, system, transcriptions, videos
 from app.routers import llm_usage
 
 structlog.configure(
@@ -19,6 +20,26 @@ structlog.configure(
 )
 
 logger = structlog.get_logger()
+
+
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _origin_matches_request(origin: str, request: Request) -> bool:
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    request_host = request.url.hostname
+    request_port = request.url.port or (443 if request.url.scheme == "https" else 80)
+    origin_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return (
+        parsed.scheme == request.url.scheme
+        and parsed.hostname == request_host
+        and origin_port == request_port
+    )
 
 
 def _warm_embedding_model() -> None:
@@ -81,8 +102,48 @@ def create_app() -> FastAPI:
                 )
         return await call_next(request)
 
+    @application.middleware("http")
+    async def local_browser_boundary(request: Request, call_next):
+        unsafe = request.method.upper() in _UNSAFE_METHODS
+        origin = request.headers.get("origin")
+        fetch_site = (request.headers.get("sec-fetch-site") or "").lower()
+        if unsafe and (
+            fetch_site == "cross-site"
+            or (origin is not None and not _origin_matches_request(origin, request))
+        ):
+            response = JSONResponse(status_code=403, content={"detail": "Cross-site mutation blocked"})
+        else:
+            response = await call_next(request)
+
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        if unsafe:
+            try:
+                from app.services.mutation_audit import record_mutation, sanitize_actor
+
+                record_mutation(
+                    actor=sanitize_actor(
+                        request.headers.get("X-YT-Actor"),
+                        browser=bool(origin or request.headers.get("sec-fetch-mode")),
+                    ),
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    client=request.client.host if request.client else None,
+                )
+            except Exception as exc:  # noqa: BLE001 - audit must not reverse the action
+                logger.warning(
+                    "mutation_audit_write_failed",
+                    path=request.url.path,
+                    exception_type=exc.__class__.__name__,
+                )
+        return response
+
     if not settings.api_key:
-        logger.warning("api_auth_disabled", reason="API_KEY not set — running in open dev mode")
+        logger.info(
+            "api_auth_disabled",
+            reason="API_KEY not set — using the loopback-only local trust boundary",
+        )
 
     # Static files
     static_dir = Path(__file__).parent / "static"
@@ -111,6 +172,7 @@ def create_app() -> FastAPI:
     application.include_router(subscriptions.router)
     application.include_router(llm_usage.router)
     application.include_router(operations.router)
+    application.include_router(system.router)
     application.include_router(reader.router)
 
     return application

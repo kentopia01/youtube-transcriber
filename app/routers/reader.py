@@ -5,10 +5,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,6 +19,9 @@ from app.models.reader_annotation import ReaderAnnotation
 from app.models.reader_chapter_set import ReaderChapterSet
 from app.models.transcription import Transcription
 from app.models.video import Video
+from app.models.channel import Channel
+from app.models.reader_state import READER_STATUSES
+from app.schemas.inventory import ReaderStateInventoryItem, ReaderStateInventoryPage
 from app.services.reader import (
     apply_reader_state_update,
     build_reader_blocks,
@@ -100,6 +103,57 @@ class AnnotationPatch(BaseModel):
 
 class ChapterGenerateRequest(BaseModel):
     mode: Literal["semantic", "deterministic"] = "semantic"
+
+
+@router.get("/states", response_model=ReaderStateInventoryPage)
+async def list_reader_states(
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    if status and status not in READER_STATUSES:
+        raise HTTPException(status_code=422, detail="Unknown reader status")
+    filters = [ReaderState.digest_lane_id.is_(None)]
+    if status:
+        filters.append(ReaderState.status == status)
+    total = int(await db.scalar(select(func.count(ReaderState.id)).where(*filters)) or 0)
+    rows = (
+        await db.execute(
+            select(ReaderState, Video, Channel)
+            .join(Video, Video.id == ReaderState.video_id)
+            .outerjoin(Channel, Channel.id == Video.channel_id)
+            .where(*filters)
+            .order_by(
+                ReaderState.last_read_at.desc().nullslast(),
+                ReaderState.updated_at.desc(),
+                ReaderState.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    return ReaderStateInventoryPage(
+        items=[
+            ReaderStateInventoryItem(
+                id=state.id,
+                video_id=video.id,
+                video_title=video.title,
+                youtube_video_id=video.youtube_video_id,
+                channel_name=channel.name if channel else None,
+                status=state.status,
+                progress_pct=state.progress_pct,
+                last_block_anchor=state.last_block_anchor,
+                last_timestamp_seconds=state.last_timestamp_seconds,
+                last_read_at=state.last_read_at,
+                updated_at=state.updated_at,
+            )
+            for state, video, channel in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 async def _load_video_document(db: AsyncSession, video_id: uuid.UUID) -> tuple[Video, list]:
@@ -437,4 +491,3 @@ async def export_annotations(
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="annotations-{video_id}.md"'},
     )
-

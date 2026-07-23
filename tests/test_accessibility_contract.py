@@ -79,3 +79,21 @@ def test_mobile_operations_use_job_card_reflow_and_shared_focus_ring():
     assert "content: attr(data-label)" in operations
     assert "button:focus-visible" in shared
     assert "outline: 3px solid var(--accent)" in shared
+
+
+def test_mobile_reader_tools_control_is_compact_and_accessibly_named():
+    reader = (ROOT / "app/templates/reader_document.html").read_text(encoding="utf-8")
+    reader_css = (ROOT / "app/static/css/reader-document.css").read_text(encoding="utf-8")
+
+    assert "Open reading tools, search, and progress" in reader
+    assert "Aa · Search · Progress" not in reader
+    assert "left: .75rem" in reader_css
+    assert "width: 3rem" in reader_css
+    assert "padding: 0" in reader_css
+
+
+def test_reader_home_operations_warning_does_not_assume_job_failures():
+    reader_home = (ROOT / "app/templates/reader_home.html").read_text(encoding="utf-8")
+
+    assert "Operations has items to review." in reader_home
+    assert "Some transcript jobs need attention." not in reader_home

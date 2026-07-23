@@ -39,7 +39,7 @@
 
 {% if operations.warning_count %}
 <aside class="reader-operations-alert" aria-label="Operations warning">
-    <span>Some transcript jobs need attention.</span>
+    <span>Operations has items to review.</span>
     <a href="/ops">Review {{ operations.warning_count }} warning{% if operations.warning_count != 1 %}s{% endif %} in Operations</a>
 </aside>
 {% endif %}

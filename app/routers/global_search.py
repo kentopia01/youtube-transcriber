@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.dependencies import get_db
@@ -85,7 +86,11 @@ async def global_search(
     try:
         from app.services.search import encode_query
 
-        query_embedding = encode_query(query, model_cache_dir=settings.model_cache_dir)
+        query_embedding = await run_in_threadpool(
+            encode_query,
+            query,
+            model_cache_dir=settings.model_cache_dir,
+        )
     except ImportError as exc:
         raise HTTPException(
             status_code=503,

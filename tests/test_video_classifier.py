@@ -55,6 +55,7 @@ class TestClassifyVideoInfo:
         r = classify_video_info(info)
         assert r.is_regular is False
         assert "live" in r.reason
+        assert r.retry_later is True
 
     def test_upcoming_stream_rejected(self):
         info = {
@@ -66,6 +67,7 @@ class TestClassifyVideoInfo:
         r = classify_video_info(info)
         assert r.is_regular is False
         assert "is_upcoming" in r.reason
+        assert r.retry_later is True
 
     def test_past_live_stream_accepted(self):
         """Past live streams (recordings) are still worth ingesting."""
@@ -138,6 +140,22 @@ class TestClassifyVideoInfo:
 
 
 class TestClassifyVideoUrl:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "This live event will begin in a few moments.",
+            "Premieres in 59 minutes",
+        ],
+    )
+    def test_defers_known_upcoming_video_errors(self, monkeypatch, message):
+        def boom(url):
+            raise RuntimeError(message)
+
+        monkeypatch.setattr("app.services.youtube.get_video_info", boom)
+        result = classify_video_url("https://www.youtube.com/watch?v=x")
+        assert result.is_regular is False
+        assert result.retry_later is True
+
     def test_fails_open_on_lookup_error(self, monkeypatch):
         def boom(url):
             raise RuntimeError("yt-dlp exploded")

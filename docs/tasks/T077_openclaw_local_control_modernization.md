@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned
+Done
 
 ## Objective
 
@@ -26,3 +26,13 @@ research instead of direct database or model-provider access.
 - OpenClaw status and transcript/search reads work against the live local service.
 - Installed copies match the version-controlled source.
 
+## Validation
+
+- Added canonical `yt-status`, `yt-chat`, and `yt-transcribe` skill sources under
+  `openclaw/skills` and synced byte-identical copies into the active workspace.
+- Removed the installed legacy scripts that queried Docker/PostgreSQL or called model
+  providers directly.
+- `openclaw skills info` reports all three skills ready, visible to the model, and
+  available as commands.
+- Live `ytctl` status, transcript, and semantic-search reads pass; static boundary
+  tests confirm no SQL/provider bypass remains.

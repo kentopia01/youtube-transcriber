@@ -26,6 +26,7 @@ def _sub(channel, **kw):
         videos_ingested_today=0,
         daily_counter_reset_at=None,
         consecutive_failure_count=0,
+        last_error=None,
         disabled_reason=None,
     )
     defaults.update(kw)
@@ -175,6 +176,42 @@ class TestProcessOneSubscription:
         assert all("shorts" not in u and "live1" not in u for u in submitted)
 
     @pytest.mark.asyncio
+    async def test_upcoming_video_is_deferred_without_blocking_or_marking_seen(self, monkeypatch):
+        channel = _channel()
+        sub = _sub(channel, max_videos_per_poll=3, consecutive_failure_count=2)
+        entries = [
+            FeedEntry("upcoming001", "Soon", "https://youtube.test/upcoming", None),
+            FeedEntry("regular0001", "Ready", "https://youtube.test/ready", None),
+        ]
+        monkeypatch.setattr(poll_module, "fetch_channel_feed", AsyncMock(return_value=entries))
+
+        from app.services.video_classifier import ClassificationResult
+
+        monkeypatch.setattr(
+            "app.services.video_classifier.classify_video_url",
+            lambda url: ClassificationResult(False, "upcoming", retry_later=True)
+            if "upcoming" in url
+            else ClassificationResult(True, None),
+        )
+        monkeypatch.setattr(
+            poll_module,
+            "_submit_video",
+            AsyncMock(return_value={"job_id": str(uuid.uuid4()), "video_id": str(uuid.uuid4())}),
+        )
+        monkeypatch.setattr(poll_module, "_tag_job_as_auto_ingest", AsyncMock())
+
+        result = await poll_module._process_one_subscription(
+            _DbStub(), sub, budget_remaining=10.0
+        )
+
+        assert result["ingested"] == 1
+        assert result["deferred_for_retry"] == 1
+        assert "upcoming001" not in sub.last_seen_video_ids
+        assert "regular0001" in sub.last_seen_video_ids
+        assert sub.consecutive_failure_count == 0
+        assert sub.last_error is None
+
+    @pytest.mark.asyncio
     async def test_soft_cap_annotates_but_does_not_halt(self, monkeypatch):
         """Budget below threshold in per-sub handler still skips the sub — it's
         the outer loop that's soft. The inner skip is preserved as a safety
@@ -217,6 +254,7 @@ class TestProcessOneSubscription:
         out = await poll_module._process_one_subscription(db, sub, budget_remaining=10.0)
         assert "rss_error" in (out["skipped_reason"] or "")
         assert sub.consecutive_failure_count == 1
+        assert sub.last_error == "rss 500"
 
     @pytest.mark.asyncio
     async def test_disables_after_repeat_failures(self, monkeypatch):

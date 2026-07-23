@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.dependencies import get_db
 from app.main import create_app
 from app.models.job import Job
+from app.services.batch_reconciliation import reconcile_stale_batches
 from app.services.operations_dashboard import (
     QueueCoverage,
     build_operations_summary,
@@ -55,6 +56,9 @@ class _SummaryDB:
     async def execute(self, statement):
         self.execute_statements.append(statement)
         return _Result(self.execute_values.pop(0))
+
+    async def commit(self):
+        self.committed = True
 
 
 def _coverage(*queues: str, workers=("worker-1",), error_code=None):
@@ -133,7 +137,7 @@ def test_active_batch_with_terminal_children_is_explicitly_stale():
 async def test_summary_returns_true_counts_above_display_limits_and_warnings():
     db = _SummaryDB(
         scalar_values=[40, 31, 8, 12, 7, 4, 9, 2, 3],
-        execute_values=[[], []],
+        execute_values=[[], [], [], [], []],
     )
 
     summary = await build_operations_summary(
@@ -169,7 +173,7 @@ async def test_channel_video_counts_use_linked_videos_not_cached_channel_counter
 def test_operations_summary_route_exposes_structured_contract():
     db = _SummaryDB(
         scalar_values=[40, 31, 8, 12, 7, 4, 9, 2, 3],
-        execute_values=[[], []],
+        execute_values=[[], [], [], [], []],
     )
     app = create_app()
     app.state.operations_queue_probe = lambda: _coverage(*REQUIRED)
@@ -186,3 +190,54 @@ def test_operations_summary_route_exposes_structured_contract():
     assert body["counts"]["in_flight_jobs"] == 19
     assert body["counts"]["report_delivery_warnings"] == 2
     assert body["queue_health"]["state"] == "idle"
+    assert body["warning_count"] == 9
+    assert body["warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_batch_reconciliation_is_dry_run_first_and_accounts_for_missing_children():
+    batch = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="running",
+        batch_number=1,
+        total_videos=10,
+        completed_videos=2,
+        failed_videos=0,
+        completed_at=None,
+        created_at=datetime.now(UTC) - timedelta(days=30),
+        jobs=[_job("completed"), _job("completed"), _job("failed")],
+    )
+    db = _SummaryDB([], [[batch], [batch]])
+
+    preview = await reconcile_stale_batches(db, apply=False)
+    assert preview[0].status == "completed_with_errors"
+    assert preview[0].completed_videos == 2
+    assert preview[0].failed_videos == 8
+    assert batch.status == "running"
+
+    applied = await reconcile_stale_batches(db, apply=True)
+    assert applied[0].batch_id == str(batch.id)
+    assert batch.status == "completed_with_errors"
+    assert batch.completed_at is not None
+    assert db.committed is True
+
+
+@pytest.mark.asyncio
+async def test_empty_stale_batch_reconciles_to_failed():
+    batch = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="running",
+        batch_number=1,
+        total_videos=10,
+        completed_videos=0,
+        failed_videos=0,
+        completed_at=None,
+        created_at=datetime.now(UTC) - timedelta(days=30),
+        jobs=[],
+    )
+    db = _SummaryDB([], [[batch]])
+
+    changes = await reconcile_stale_batches(db, apply=True)
+
+    assert changes[0].status == "failed"
+    assert batch.failed_videos == 10

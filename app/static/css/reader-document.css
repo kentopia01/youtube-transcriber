@@ -80,7 +80,7 @@
     .reader-tools { position: fixed; inset: auto 0 0 0; z-index: 60; width: 100%; max-width: none; max-height: 85vh; padding: 1.25rem; border-radius: 1rem 1rem 0 0; background: var(--bg-surface); color: var(--text-primary); }
     .reader-tools:not([open]) { display: none; }
     .reader-tools-close { display: inline-grid; place-items: center; }
-    .reader-mobile-tools { display: block; position: fixed; right: 1rem; bottom: 1rem; z-index: 40; min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; background: var(--accent); color: white; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.25); font-weight: 700; }
+    .reader-mobile-tools { display: inline-grid; place-items: center; position: fixed; left: .75rem; bottom: .75rem; z-index: 40; width: 3rem; min-height: 3rem; padding: 0; border-radius: 999px; background: var(--accent); color: white; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.25); font-family: var(--font-headline); font-size: .9rem; font-weight: 700; }
 }
 @media (max-width: 699px) {
     .reader-document-head { text-align: left; padding-top: 2rem; }

@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned
+Done
 
 ## Objective
 
@@ -26,3 +26,12 @@ derived state without erasing genuine failure evidence.
 - Reconciliation previews changes before applying them and is covered by tests.
 - Live warnings are either corrected or retain an explicit reason and next action.
 
+## Validation
+
+- Reconciled four stale May channel batches through the dry-run-first endpoint.
+- Dismissed one deterministic 609-minute policy rejection with its explicit reason.
+- Fixed premiere/live-event polling so deferred videos no longer block later candidates.
+- Reset the repaired subscription failure counter through the explicit API contract.
+- Live Operations now reports two warnings, both retained report-delivery failures with
+  reason and next-action fields; no batch, failed-job, or subscription warning remains.
+- Focused Operations/subscription/classifier contracts pass.

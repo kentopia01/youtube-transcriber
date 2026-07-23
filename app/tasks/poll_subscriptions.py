@@ -140,6 +140,7 @@ async def _process_one_subscription(
     ingested_ids: list[str] = []
     rejected_filter_ids: list[str] = []
     rejected_count = 0
+    deferred_count = 0
     for entry in to_ingest:
         # Filter Shorts / live streams before we pay to submit them.
         try:
@@ -158,10 +159,13 @@ async def _process_one_subscription(
             classification = ClassificationResult(True, None)
 
         if not classification.is_regular:
-            rejected_count += 1
-            rejected_filter_ids.append(entry.video_id)
+            if classification.retry_later:
+                deferred_count += 1
+            else:
+                rejected_count += 1
+                rejected_filter_ids.append(entry.video_id)
             logger.info(
-                "auto_ingest_skipped_filter",
+                "auto_ingest_deferred" if classification.retry_later else "auto_ingest_skipped_filter",
                 video_id=entry.video_id,
                 reason=classification.reason,
             )
@@ -182,6 +186,7 @@ async def _process_one_subscription(
             return result
 
     result["rejected_by_filter"] = rejected_count
+    result["deferred_for_retry"] = deferred_count
 
     # Only mark as seen: videos we actually ingested + ones the classifier
     # deliberately rejected. Entries truncated by the per-poll cap stay in the
@@ -313,6 +318,7 @@ async def _process_one_lane_subscription(
     to_process = new_entries[:remaining_today]
     processed_ids: list[str] = []
     rejected_ids: list[str] = []
+    deferred_count = 0
 
     for entry in to_process:
         try:
@@ -331,7 +337,10 @@ async def _process_one_lane_subscription(
             classification = ClassificationResult(True, None)
 
         if not classification.is_regular:
-            rejected_ids.append(entry.video_id)
+            if classification.retry_later:
+                deferred_count += 1
+            else:
+                rejected_ids.append(entry.video_id)
             continue
 
         try:
@@ -349,6 +358,7 @@ async def _process_one_lane_subscription(
         sub.videos_ingested_today = (sub.videos_ingested_today or 0) + 1
 
     mark_poll_success(sub, new_ids=processed_ids + rejected_ids)
+    result["deferred_for_retry"] = deferred_count
     await db.commit()
     return result
 

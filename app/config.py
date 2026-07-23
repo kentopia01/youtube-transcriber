@@ -294,6 +294,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     audio_dir: str = "/data/audio"
     model_cache_dir: str = "/data/models"
+    mutation_audit_path: str = "data/audit/mutations.jsonl"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 

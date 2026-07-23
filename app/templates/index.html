@@ -64,6 +64,19 @@
             {{ operations.counts.subscription_warnings }} subscription warning{{ "s" if operations.counts.subscription_warnings != 1 }}.
             <a href="/ops/queue" class="link">Review the queue</a>.
         </p>
+        {% if operations.warnings %}
+        <details class="mt-2">
+            <summary class="link cursor-pointer">Show actionable warning details</summary>
+            <ul class="mt-2 space-y-2 text-sm">
+                {% for warning in operations.warnings %}
+                <li>
+                    <strong>{{ warning.title }}</strong> — {{ warning.detail }}
+                    <span class="block">Next: {{ warning.next_action }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
     </div>
 </div>
 {% endif %}

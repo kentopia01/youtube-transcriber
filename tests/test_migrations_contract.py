@@ -184,6 +184,15 @@ def test_alembic_revision_chain_is_single_linear_chain_to_head():
     )
 
 
+def test_subscription_last_error_model_and_migration_match():
+    table = _table("channel_subscriptions")
+    assert "last_error" in table.c
+    calls = _record_upgrade("022")
+    add = next(call for call in calls if call.name == "add_column")
+    assert add.args[0] == "channel_subscriptions"
+    assert add.args[1].name == "last_error"
+
+
 @pytest.mark.parametrize(
     ("table_name", "required_columns"),
     [

@@ -82,12 +82,12 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T071 | Frontend production and accessibility release gate | done | SentryClaw / BuildClaw / QAClaw | Local static assets, shared modules, WCAG/reflow/browser regression, and final release validation |
 | T072 | Runtime dependency refresh | done | SentryClaw | Anthropic/yt-dlp refreshed; ARM64 web image validated with CPU-only Torch while native audio pins remain unchanged |
 | T073 | Reader/Operations release baseline | done | SentryClaw | `1350/11` tests, `33/33` HTTP, and `30/30` browser gates passed |
-| T074 | Operations warning reconciliation | in-progress | SentryClaw | Explain and reconcile visible batch, delivery, subscription, and failed-job warnings without hiding evidence |
-| T075 | Local status and inventory APIs | planned | SentryClaw | Stable read APIs for jobs, videos, Reader state, service status, and warning detail |
-| T076 | `ytctl` local operator CLI | planned | SentryClaw | Loopback-first status, inspection, search, transcript, and explicitly confirmed mutation commands |
-| T077 | OpenClaw local-control modernization | planned | SentryClaw | Replace direct DB/provider access with `ytctl` and add read-only status workflows |
-| T078 | Local runtime hardening and recovery | planned | SentryClaw | Production web command, browser-origin guard, mutation provenance, backup, and restore validation |
-| T079 | Evidence-driven Reader workflow polish | planned | SentryClaw | Use live visual/behavioral evidence to remove demonstrated reading friction only |
+| T074 | Operations warning reconciliation | done | SentryClaw | Eight warnings reconciled to two preserved report-delivery failures with explicit next actions |
+| T075 | Local status and inventory APIs | done | SentryClaw | Bounded jobs, videos, Reader-state, warning, and composed system-status contracts live |
+| T076 | `ytctl` local operator CLI | done | SentryClaw | Loopback control client live; all data mutations require explicit confirmation |
+| T077 | OpenClaw local-control modernization | done | SentryClaw | Three ready skills use `ytctl`; direct SQL/provider scripts removed |
+| T078 | Local runtime hardening and recovery | done | SentryClaw | Production command, origin guard, audit trail, backup, and isolated restore drill validated |
+| T079 | Evidence-driven Reader workflow polish | done | SentryClaw | Mobile reading obstruction and misleading warning fixed; final browser/vision gate passed |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

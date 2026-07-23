@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned
+Done
 
 ## Objective
 
@@ -25,3 +25,10 @@ same service truth rather than scraping HTML or querying PostgreSQL directly.
 - Status output is composed from existing structured services.
 - Invalid filters and excessive limits fail or clamp predictably.
 
+## Validation
+
+- Added bounded `GET /api/jobs`, `GET /api/videos`, `GET /api/reader/states`, and
+  `GET /api/system/status` contracts with deterministic ordering and typed filters.
+- Live responses returned `627` jobs, `609` readable videos, and `4` Reader states;
+  the composed system status reported healthy queue coverage and two warnings.
+- Inventory API tests pass.
