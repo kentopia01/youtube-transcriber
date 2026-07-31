@@ -1263,7 +1263,7 @@ details.collapsible > .details-body {
     max-width: 100%;
     margin: 0;
     padding: 0;
-    height: calc(100vh - 3.5rem);
+    height: calc(100dvh - 8.75rem);
     display: flex;
     overflow: hidden;
 }
@@ -1770,10 +1770,6 @@ details.collapsible > .details-body {
 }
 
 @media (max-width: 767px) {
-    .chat-page-shell {
-        height: calc(100vh - 3.25rem);
-    }
-
     .chat-sidebar {
         position: fixed;
         top: 3.25rem;
@@ -1797,7 +1793,14 @@ details.collapsible > .details-body {
         justify-content: center;
     }
 
-    .chat-input-field { min-width: 2.75rem; min-height: 2.75rem; }
+    .chat-input-inner {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 2.75rem;
+        align-items: end;
+    }
+    #chat-retrieval-scope, #chat-channel-filter { grid-column: 1 / -1; width: 100%; max-width: none !important; }
+    #chat-channel-filter:disabled { display: none; }
+    .chat-input-field { grid-column: 1; min-width: 0; min-height: 2.75rem; }
     .chat-send-btn { width: 2.75rem; height: 2.75rem; }
 
     .chat-sidebar-overlay {

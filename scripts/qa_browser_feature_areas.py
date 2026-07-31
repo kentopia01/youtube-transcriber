@@ -232,6 +232,14 @@ def run_browser_checks(base_url: str, api_key: str | None = None, *, headless: b
                         if not href:
                             raise AssertionError("no Reader document link discovered")
                         page.goto(base_url.rstrip("/") + href, wait_until="domcontentloaded")
+                        summary = page.locator("#reader-summary-title")
+                        transcript = page.locator("#reader-transcript-details")
+                        if summary.count() == 1:
+                            if not summary.is_visible():
+                                raise AssertionError("Reader summary is not the default visible content")
+                            transcript.locator(":scope > summary").click()
+                            if not transcript.evaluate("element => element.open"):
+                                raise AssertionError("Full transcript disclosure did not open")
                         if page.locator(".reader-block").count() < 1:
                             raise AssertionError("Reader rendered no transcript blocks")
                         page.wait_for_function(
@@ -257,7 +265,7 @@ def run_browser_checks(base_url: str, api_key: str | None = None, *, headless: b
                         page.reload(wait_until="domcontentloaded")
                         if page.locator("#reader-document").get_attribute("data-reader-theme") != "sepia":
                             raise AssertionError("Reader appearance setting did not persist")
-                        return "Transcript blocks, annotations, search, and persisted appearance pass"
+                        return "Summary-first view, transcript disclosure, annotations, search, and persisted appearance pass"
 
                     checks.append(
                         _interaction_check(

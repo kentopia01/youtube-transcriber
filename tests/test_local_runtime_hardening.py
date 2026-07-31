@@ -33,13 +33,23 @@ def test_cross_site_browser_mutations_are_blocked_and_same_origin_is_allowed(tmp
         "/_test-mutation",
         headers={"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"},
     )
+    proxied = client.post(
+        "/_test-mutation",
+        headers={
+            "Host": "reader.tailnet.example",
+            "Origin": "https://reader.tailnet.example",
+            "Sec-Fetch-Site": "same-origin",
+            "X-Forwarded-Proto": "https",
+        },
+    )
     cli = client.post("/_test-mutation", headers={"X-YT-Actor": "openclaw"})
 
     assert blocked.status_code == 403
     assert allowed.status_code == 200
+    assert proxied.status_code == 200
     assert cli.status_code == 200
     records = list_mutations(limit=10)
-    assert [record["status_code"] for record in records] == [200, 200, 403]
+    assert [record["status_code"] for record in records] == [200, 200, 200, 403]
     assert records[0]["actor"] == "openclaw"
     assert all("body" not in record for record in records)
 

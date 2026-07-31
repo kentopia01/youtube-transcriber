@@ -88,6 +88,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T077 | OpenClaw local-control modernization | done | SentryClaw | Three ready skills use `ytctl`; direct SQL/provider scripts removed |
 | T078 | Local runtime hardening and recovery | done | SentryClaw | Production command, origin guard, audit trail, backup, and isolated restore drill validated |
 | T079 | Evidence-driven Reader workflow polish | done | SentryClaw | Mobile reading obstruction and misleading warning fixed; final browser/vision gate passed |
+| T080 | Summary-first Tailnet and mobile Reader fixes | done | SentryClaw | Summary-first Reader and tailnet browser fixes; `1382/11`, `33/33` HTTP, `30/30` Tailscale browser |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

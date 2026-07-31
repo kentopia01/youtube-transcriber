@@ -333,12 +333,15 @@ explicit confirmation requirement. See `openclaw/README.md` for sync instruction
 
 ### Local trust, audit, and recovery
 
-Docker publishes PostgreSQL, Redis, and the web app only on loopback. Authentication
-is intentionally optional for this single-user Mac deployment: Telegram's allowlist
-authenticates bot messages only and is not reused as browser or CLI identity. Unsafe
-cross-site browser mutations are rejected; local CLI/OpenClaw calls without an Origin
-header remain supported. Mutation metadata is recorded in the `audit_data` volume
-without request bodies, query strings, tokens, or other credentials.
+Docker publishes PostgreSQL, Redis, and the web app only on loopback. The web app may
+also be exposed to authenticated tailnet devices through a same-host HTTPS reverse
+proxy such as Tailscale Serve; its forwarded HTTPS scheme is honored for same-origin
+mutation checks. Authentication is intentionally optional for this single-user Mac
+deployment: Telegram's allowlist authenticates bot messages only and is not reused as
+browser or CLI identity. Unsafe cross-site browser mutations are rejected; local
+CLI/OpenClaw calls without an Origin header remain supported. Mutation metadata is
+recorded in the `audit_data` volume without request bodies, query strings, tokens, or
+other credentials.
 
 ```bash
 # Create a timestamped PostgreSQL + report-artifact backup and checksums

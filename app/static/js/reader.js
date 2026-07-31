@@ -1,7 +1,23 @@
 const root = document.getElementById("reader-document");
 
 if (root) {
+  const transcriptDetails = document.getElementById("reader-transcript-details");
   const blocks = [...root.querySelectorAll(".reader-block")];
+  const syncTranscriptState = () => {
+    root.dataset.transcriptOpen = transcriptDetails?.open ? "true" : "false";
+  };
+  const openTranscript = () => {
+    if (transcriptDetails && !transcriptDetails.open) transcriptDetails.open = true;
+    syncTranscriptState();
+  };
+  if (location.hash) {
+    let hashId = location.hash.slice(1);
+    try { hashId = decodeURIComponent(hashId); } catch { /* keep the literal fragment */ }
+    const hashTarget = document.getElementById(hashId);
+    if (hashTarget && transcriptDetails?.contains(hashTarget)) transcriptDetails.open = true;
+  }
+  transcriptDetails?.addEventListener("toggle", syncTranscriptState);
+  syncTranscriptState();
   const originalCopies = new Map(blocks.map(block => [block.id, block.querySelector(".reader-copy")?.textContent || ""]));
   const restoreCopies = () => blocks.forEach(block => {
     const copy = block.querySelector(".reader-copy");
@@ -79,7 +95,9 @@ if (root) {
     }
   };
   setCurrent(currentIndex, false);
-  if (root.dataset.resumeAnchor && !location.hash) requestAnimationFrame(() => document.getElementById(root.dataset.resumeAnchor)?.scrollIntoView({ block: "center" }));
+  if (transcriptDetails?.open && root.dataset.resumeAnchor && !location.hash) {
+    requestAnimationFrame(() => document.getElementById(root.dataset.resumeAnchor)?.scrollIntoView({ block: "center" }));
+  }
   const observer = new IntersectionObserver(entries => {
     const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top));
     if (visible[0]) setCurrent(blocks.indexOf(visible[0].target));
@@ -93,6 +111,7 @@ if (root) {
     restoreCopies(); matches = []; matchIndex = -1;
     const query = search.value.trim();
     if (!query) { searchStatus.textContent = "Type to find a passage"; renderAnnotationMarks(); return; }
+    openTranscript();
     root.querySelectorAll(".reader-copy").forEach(copy => {
       const text = copy.textContent; const lower = text.toLowerCase(); const needle = query.toLowerCase(); let cursor = 0; let found;
       const fragment = document.createDocumentFragment();
@@ -107,6 +126,7 @@ if (root) {
   };
   const showMatch = index => {
     if (!matches.length) return; matchIndex = (index + matches.length) % matches.length;
+    openTranscript();
     matches.forEach((mark, i) => mark.classList.toggle("is-active", i === matchIndex));
     matches[matchIndex].scrollIntoView({ block: "center" }); searchStatus.textContent = (matchIndex + 1) + " of " + matches.length + " matches";
   };
@@ -148,7 +168,7 @@ if (root) {
       const item = document.createElement("article"); item.className = "reader-annotation-item";
       const label = document.createElement("strong"); label.textContent = annotation.annotation_type + " · " + Math.floor(annotation.start_timestamp_seconds / 60) + ":" + String(Math.floor(annotation.start_timestamp_seconds % 60)).padStart(2, "0");
       const copy = document.createElement("p"); copy.textContent = annotation.note_text || annotation.selected_text_snapshot || "Bookmark";
-      const jump = document.createElement("button"); jump.type = "button"; jump.textContent = "Jump to passage"; jump.addEventListener("click", () => document.getElementById(annotation.block_anchor)?.scrollIntoView({ block: "center" }));
+      const jump = document.createElement("button"); jump.type = "button"; jump.textContent = "Jump to passage"; jump.addEventListener("click", () => { openTranscript(); document.getElementById(annotation.block_anchor)?.scrollIntoView({ block: "center" }); });
       const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Delete"; remove.addEventListener("click", async () => {
         const url = new URL("/api/reader/annotations/" + annotation.id, location.origin); if (apiKey) url.searchParams.set("api_key", apiKey);
         const response = await fetch(url, { method: "DELETE" }); if (response.ok) { annotations = annotations.filter(value => value.id !== annotation.id); renderAnnotations(); }
@@ -189,9 +209,9 @@ if (root) {
   noteDialog.querySelector("[data-save-note]")?.addEventListener("click", event => { event.preventDefault(); if (!noteText.value.trim() || !pendingSelection) return; noteDialog.close(); createAnnotation("note", pendingSelection, noteText.value.trim()); });
 
   document.addEventListener("keydown", event => {
-    if (event.key === "/" && document.activeElement !== search) { event.preventDefault(); if (innerWidth < 1024 && !tools.open) tools.showModal(); search.focus(); }
+    if (event.key === "/" && document.activeElement !== search) { event.preventDefault(); openTranscript(); if (innerWidth < 1024 && !tools.open) tools.showModal(); search.focus(); }
     if (event.target.matches("input, select, textarea")) return;
-    if (event.key.toLowerCase() === "j") { blocks[Math.min(blocks.length - 1, currentIndex + 1)]?.scrollIntoView({ block: "center" }); }
-    if (event.key.toLowerCase() === "k") { blocks[Math.max(0, currentIndex - 1)]?.scrollIntoView({ block: "center" }); }
+    if (event.key.toLowerCase() === "j") { openTranscript(); blocks[Math.min(blocks.length - 1, currentIndex + 1)]?.scrollIntoView({ block: "center" }); }
+    if (event.key.toLowerCase() === "k") { openTranscript(); blocks[Math.max(0, currentIndex - 1)]?.scrollIntoView({ block: "center" }); }
   });
 }

@@ -95,11 +95,11 @@
                 '<div class="chat-sources-list" id="' + sourcesId + '">';
             for (const source of sources) {
                 const time = source.start_time != null ? formatTime(source.start_time) : '';
-                const similarity = source.similarity != null ? Math.round(source.similarity * 100) + '%' : '';
+                const sourceType = source.source_type === 'summary' ? 'Summary' : 'Transcript';
                 sourcesHtml += '<div class="chat-source-card"><div class="chat-source-header">' +
                     '<span class="chat-source-title">' + escapeHtml(source.video_title || '') + '</span>' +
                     (time ? '<span class="chat-source-time">' + time + '</span>' : '') +
-                    (similarity ? '<span class="chat-source-similarity">' + similarity + '</span>' : '') +
+                    '<span class="chat-source-similarity">' + sourceType + '</span>' +
                     '</div><div class="chat-source-snippet">' + escapeHtml(source.chunk_text || '') + '</div></div>';
             }
             sourcesHtml += '</div></div>';

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from scripts.qa_browser_feature_areas import BrowserCheck, PAGE_SPECS, VIEWPORTS, _same_origin, render_markdown
 
 
@@ -26,3 +28,10 @@ def test_same_origin_and_markdown_rendering_contracts():
     )
     assert "1/1 passed" in rendered
     assert "results \\| rendered" in rendered
+
+
+def test_reader_browser_flow_opens_summary_first_transcript_disclosure():
+    source = (Path(__file__).parents[1] / "scripts/qa_browser_feature_areas.py").read_text()
+    assert "#reader-summary-title" in source
+    assert "#reader-transcript-details" in source
+    assert "element => element.open" in source

@@ -17,6 +17,7 @@ from app.main import create_app
 from app.models.channel import Channel
 from app.models.reader_state import ReaderState
 from app.models.reader_annotation import ReaderAnnotation
+from app.models.summary import Summary
 from app.models.transcription import Transcription
 from app.models.transcription_segment import TranscriptionSegment
 from app.models.video import Video
@@ -171,7 +172,7 @@ class _ReaderDB:
         self.deleted.append(value)
 
 
-def _video_document():
+def _video_document(*, summary_content=None):
     video_id = uuid.uuid4()
     channel = Channel(id=uuid.uuid4(), youtube_channel_id="UCtest", name="Test Channel")
     video = Video(
@@ -205,6 +206,12 @@ def _video_document():
         ),
     ]
     video.transcription = transcription
+    if summary_content is not None:
+        video.summary = Summary(
+            id=uuid.uuid4(),
+            video_id=video_id,
+            content=summary_content,
+        )
     return video
 
 
@@ -232,6 +239,25 @@ def test_reader_document_api_creates_local_state_on_demand():
     assert len(db.added) == 1
     assert db.added[0].digest_lane_id is None
     assert db.commits == 1
+
+
+def test_reader_page_is_summary_first_and_escapes_summary_markup():
+    video = _video_document(summary_content="## Key point\nUseful signal.\n<script>alert(1)</script>")
+    state = ReaderState(video_id=video.id, status="reading", progress_pct=35)
+    response = _client_with_db(_ReaderDB(video, state)).get(f"/read/{video.id}")
+
+    assert response.status_code == 200
+    assert 'id="reader-summary-title"' in response.text
+    assert "Useful signal." in response.text
+    assert "<script>alert(1)</script>" not in response.text
+    transcript_tag = response.text.split('id="reader-transcript-details"', 1)[1].split(">", 1)[0]
+    assert "open" not in transcript_tag
+
+    resumed = _client_with_db(_ReaderDB(video, state)).get(
+        f"/read/{video.id}?resume=transcript"
+    )
+    resumed_tag = resumed.text.split('id="reader-transcript-details"', 1)[1].split(">", 1)[0]
+    assert "open" in resumed_tag
 
 
 def test_reader_state_api_updates_progress_without_pipeline_state():
@@ -280,12 +306,17 @@ def test_reader_mvp_has_semantic_blocks_controls_and_static_behavior():
     assert 'id="reader-search"' in template
     assert 'data-reader-status="later"' in template
     assert 'data-reader-status="finished"' in template
-    assert 'type="module" src="/static/js/reader.js?v=20260721"' in template
+    assert 'id="reader-summary-title"' in template
+    assert 'id="reader-transcript-details"' in template
+    assert "{% if not summary_html or resume_transcript %}open{% endif %}" in template
+    assert 'type="module" src="/static/js/reader.js?v=20260731"' in template
     assert "localStorage" in script
     assert "IntersectionObserver" in script
+    assert "openTranscript" in script
     assert 'event.key.toLowerCase() === "j"' in script
     assert '@media (max-width: 699px)' in css
     assert "minmax(0, 1fr)" in css
+    assert 'data-transcript-open="true"' in css
 
 
 def test_outline_is_deterministic_and_time_based():

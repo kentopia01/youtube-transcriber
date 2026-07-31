@@ -563,3 +563,19 @@ Source of truth: `docs/tasks/T063_reader_operations_workspace_epic.md`.
 Completion evidence (2026-07-21): `1349 passed, 12 skipped`, `33/33` live HTTP
 checks, and `30/30` desktop/mobile browser checks. Default release QA remained
 non-mutating.
+
+## Current follow-on: T080 summary-first Tailnet and mobile Reader fixes
+
+The Reader document route now needs to reflect the actual daily-use hierarchy:
+the persisted summary is the default reading surface and the timestamped
+transcript is the explicit deeper-reading option. The same chunk repairs the
+observed Tailscale reverse-proxy same-origin mismatch, the 768px Library filter
+overflow, and small mobile touch targets without changing retrieval or embedding
+architecture.
+
+Source of truth: `docs/tasks/T080_summary_first_tailnet_mobile_reader.md`.
+
+Completion evidence (2026-07-31): `1382 passed, 11 skipped`, `33/33` live HTTP
+checks, `30/30` live Chromium checks through Tailscale HTTPS, and a post-fix
+1440px/768px/390px visual audit. Ask session scope and embedding architecture
+remain an explicit review-and-plan follow-on rather than part of this fix chunk.

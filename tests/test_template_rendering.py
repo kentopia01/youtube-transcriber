@@ -761,7 +761,7 @@ class TestChatPage:
         client = _build_client(self._build_chat_db())
         resp = client.get("/chat")
         assert '/static/js/markdown-lite.js?v=20260721' in resp.text
-        assert '/static/js/chat.js?v=20260721' in resp.text
+        assert '/static/js/chat.js?v=20260731' in resp.text
 
     def test_chat_page_has_mobile_sidebar_toggle(self):
         client = _build_client(self._build_chat_db())
@@ -822,7 +822,8 @@ class TestChatPage:
         assert "chat-msg-avatar" in html
         assert "chat-source-card" in html
         assert "Test Video" in html
-        assert "92%" in html
+        assert "Transcript" in html
+        assert "92%" not in html
         assert "chat-md-content" in html
 
     def test_chat_page_input_disabled_when_no_session(self):
@@ -933,7 +934,7 @@ class TestChatXSSAndEdgeCases:
     def test_dynamic_markdown_is_escaped_and_link_sanitized(self):
         client, sid = self._build_session_with_messages([])
         html = client.get(f"/chat/{sid}").text
-        assert '/static/js/chat.js?v=20260721' in html
+        assert '/static/js/chat.js?v=20260731' in html
         script = (Path(__file__).parents[1] / "app/static/js/chat.js").read_text(encoding="utf-8")
         assert "template.innerHTML = window.marked.parse(escapeHtml(text))" in script
         assert "parsed.protocol === 'http:' || parsed.protocol === 'https:'" in script

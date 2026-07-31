@@ -4,7 +4,7 @@
 {% block main_class %}reader-document-shell{% endblock %}
 {% block workspace_styles %}
 {{ super() }}
-<link rel="stylesheet" href="/static/css/reader-document.css?v=20260721">
+<link rel="stylesheet" href="/static/css/reader-document.css?v=20260731">
 {% endblock %}
 
 {% block content %}
@@ -12,7 +12,9 @@
      data-video-id="{{ video.id }}"
      data-state-url="/api/reader/videos/{{ video.id }}/state"
      data-resume-anchor="{{ reader_state.resume_block_anchor or '' }}"
-     data-progress="{{ reader_state.progress_pct }}">
+     data-progress="{{ reader_state.progress_pct }}"
+     data-has-summary="{{ 'true' if summary_html else 'false' }}"
+     data-transcript-open="{{ 'true' if not summary_html or resume_transcript else 'false' }}">
     <div class="reader-progress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ reader_state.progress_pct|round|int }}"><span id="reader-progress-bar" style="width: {{ reader_state.progress_pct }}%"></span></div>
 
     <header class="reader-document-head">
@@ -23,12 +25,42 @@
         <p class="reader-source">{{ video.channel.name if video.channel else 'Transcript' }}</p>
         <h1>{{ video.title }}</h1>
         <div class="reader-document-meta">
-            <span>{{ transcription.word_count or 0 }} words</span>
-            <span>{{ estimated_reading_minutes }} min read</span>
+            {% if summary_html %}
+            <span>{{ summary_word_count }} summary words</span>
+            <span>{{ summary_reading_minutes }} min summary</span>
+            {% else %}
+            <span>{{ transcription.word_count or 0 }} transcript words</span>
+            <span>{{ estimated_reading_minutes }} min transcript</span>
+            {% endif %}
             <a href="{{ video.url }}" target="_blank" rel="noopener">Watch video</a>
         </div>
     </header>
 
+    {% if summary_html %}
+    <section class="reader-summary" aria-labelledby="reader-summary-title">
+        <div class="reader-summary-kicker">
+            <p class="reader-panel-label">Start with the signal</p>
+            <span>{{ summary_reading_minutes }} min read</span>
+        </div>
+        <h2 id="reader-summary-title">Summary</h2>
+        <div class="reader-summary-prose">{{ summary_html | safe }}</div>
+        <div class="reader-summary-actions">
+            <a class="btn btn-primary" href="/search?video_id={{ video.id }}">Search this video</a>
+            {% if reader_state.resume_block_anchor %}
+            <a class="btn btn-outline" href="?resume=transcript#{{ reader_state.resume_block_anchor }}">Resume transcript at {{ reader_state.progress_pct|round|int }}%</a>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    <details id="reader-transcript-details" class="reader-transcript" {% if not summary_html or resume_transcript %}open{% endif %}>
+        <summary>
+            <span>
+                <strong>Full transcript</strong>
+                <small>{{ transcription.word_count or 0 }} words · {{ estimated_reading_minutes }} min read</small>
+            </span>
+            <span class="reader-transcript-toggle" aria-hidden="true">Open</span>
+        </summary>
     <div class="reader-layout">
         <aside class="reader-outline" aria-label="Transcript outline">
             <p class="reader-panel-label">Outline</p>
@@ -109,6 +141,7 @@
             <div id="reader-annotation-list" class="reader-annotation-list" aria-live="polite"></div>
         </dialog>
     </div>
+    </details>
 
     <div id="reader-selection-tools" class="reader-selection-tools" hidden role="toolbar" aria-label="Selected passage actions">
         <button type="button" data-create-annotation="highlight">Highlight</button>
@@ -135,5 +168,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module" src="/static/js/reader.js?v=20260721"></script>
+<script type="module" src="/static/js/reader.js?v=20260731"></script>
 {% endblock %}

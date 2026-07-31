@@ -23,6 +23,7 @@ from app.services.operations_dashboard import (
     load_channel_video_counts,
 )
 from app.services.reader import build_reader_blocks, build_reader_outline, reader_state_dict
+from app.services.reporting import markdownish_to_safe_html
 
 reader_router = APIRouter(tags=["reader-pages"])
 operations_router = APIRouter(prefix="/ops", tags=["operations-pages"])
@@ -381,6 +382,7 @@ async def reader_document(request: Request, video_id: uuid.UUID, db: AsyncSessio
         .options(
             selectinload(Video.channel),
             selectinload(Video.transcription).selectinload(Transcription.segments),
+            selectinload(Video.summary),
         )
         .where(Video.id == video_id)
     )
@@ -430,6 +432,8 @@ async def reader_document(request: Request, video_id: uuid.UUID, db: AsyncSessio
     video.last_activity_at = now
     await db.commit()
     total_words = sum(block.word_count for block in blocks)
+    summary_text = video.summary.content if video.summary and video.summary.content else ""
+    summary_words = len(summary_text.split())
     return request.app.state.templates.TemplateResponse(
         request,
         "reader_document.html",
@@ -441,6 +445,10 @@ async def reader_document(request: Request, video_id: uuid.UUID, db: AsyncSessio
             "outline": build_reader_outline(blocks),
             "reader_state": reader_state_dict(state, blocks),
             "estimated_reading_minutes": max(1, round(total_words / 225)),
+            "summary_html": markdownish_to_safe_html(summary_text) if summary_text else None,
+            "summary_word_count": summary_words,
+            "summary_reading_minutes": max(1, round(summary_words / 225)) if summary_words else None,
+            "resume_transcript": request.query_params.get("resume") == "transcript",
         },
     )
 

@@ -216,6 +216,16 @@ def test_mobile_navigation_has_state_and_44px_target_contract():
     assert "min-height: 2.75rem" in css
 
 
+def test_mobile_chat_composer_and_tablet_pagination_keep_44px_targets():
+    main_css = Path("app/static/css/main.css").read_text(encoding="utf-8")
+    reader_css = Path("app/static/css/reader.css").read_text(encoding="utf-8")
+
+    assert "#chat-channel-filter:disabled { display: none; }" in main_css
+    assert "grid-template-columns: minmax(0, 1fr) 2.75rem" in main_css
+    assert "height: calc(100dvh - 8.75rem)" in main_css
+    assert ".workspace-reader .page-btn { min-width: 2.75rem; height: 2.75rem; }" in reader_css
+
+
 def test_api_routes_keep_their_existing_paths():
     client = _build_client(MockDB())
     paths = {route.path for route in client.app.routes}

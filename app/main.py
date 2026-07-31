@@ -32,11 +32,13 @@ def _origin_matches_request(origin: str, request: Request) -> bool:
         return False
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return False
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
+    request_scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
     request_host = request.url.hostname
-    request_port = request.url.port or (443 if request.url.scheme == "https" else 80)
+    request_port = request.url.port or (443 if request_scheme == "https" else 80)
     origin_port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return (
-        parsed.scheme == request.url.scheme
+        parsed.scheme == request_scheme
         and parsed.hostname == request_host
         and origin_port == request_port
     )
@@ -142,7 +144,7 @@ def create_app() -> FastAPI:
     if not settings.api_key:
         logger.info(
             "api_auth_disabled",
-            reason="API_KEY not set — using the loopback-only local trust boundary",
+            reason="API_KEY not set — using the loopback or trusted tailnet proxy boundary",
         )
 
     # Static files

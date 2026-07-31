@@ -26,9 +26,7 @@
                         {% if src.start_time is not none %}
                         <span class="chat-source-time">{{ (src.start_time // 60)|int }}:{{ "%02d" % (src.start_time % 60)|int }}</span>
                         {% endif %}
-                        {% if src.similarity is not none %}
-                        <span class="chat-source-similarity">{{ (src.similarity * 100)|round|int }}%</span>
-                        {% endif %}
+                        <span class="chat-source-similarity">{{ "Summary" if src.source_type == "summary" else "Transcript" }}</span>
                     </div>
                     <div class="chat-source-snippet">{{ src.chunk_text or "" }}</div>
                 </div>
