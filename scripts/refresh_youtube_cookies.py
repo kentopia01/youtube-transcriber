@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -113,12 +115,28 @@ def _safe_error(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {str(exc)[:400]}"
 
 
-def refresh_cookie_jar(
+@contextmanager
+def cookie_jar_lock(cookie_file: Path):
+    """Serialize refreshes for one named cookie jar."""
+    lock_file = cookie_file.with_name(f"{cookie_file.name}.refresh.lock")
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(lock_file, os.O_CREAT | os.O_RDWR, 0o600)
+    os.chmod(lock_file, 0o600)
+    with os.fdopen(descriptor, "r+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _refresh_cookie_jar_unlocked(
     *,
     profile_root: Path,
     cookie_file: Path,
     evidence_file: Path,
     probe_url: str,
+    profile_resource: str,
 ) -> dict[str, Any]:
     """Export, validate, probe, and atomically rotate one cookie jar."""
     started_at = datetime.now(UTC)
@@ -126,7 +144,7 @@ def refresh_cookie_jar(
         "status": "failed",
         "started_at": started_at.isoformat(),
         "finished_at": None,
-        "profile_resource": "identity:nora-work",
+        "profile_resource": profile_resource,
         "probe_url": probe_url,
         "cookie_health": None,
         "media_probe": None,
@@ -140,7 +158,7 @@ def refresh_cookie_jar(
 
     try:
         if not profile_root.is_dir():
-            raise CookieRefreshError("Nora browser profile is missing")
+            raise CookieRefreshError("browser profile is missing")
 
         ydl_opts = {
             "cookiesfrombrowser": ("chrome", str(profile_root)),
@@ -203,6 +221,25 @@ def refresh_cookie_jar(
         _write_evidence(evidence_file, evidence)
 
 
+def refresh_cookie_jar(
+    *,
+    profile_root: Path,
+    cookie_file: Path,
+    evidence_file: Path,
+    probe_url: str,
+    profile_resource: str = "identity:nora-work",
+) -> dict[str, Any]:
+    """Export and rotate one named jar under its own process lock."""
+    with cookie_jar_lock(cookie_file):
+        return _refresh_cookie_jar_unlocked(
+            profile_root=profile_root,
+            cookie_file=cookie_file,
+            evidence_file=evidence_file,
+            probe_url=probe_url,
+            profile_resource=profile_resource,
+        )
+
+
 def build_broker_command(args: argparse.Namespace) -> list[str]:
     key = args.idempotency_key or f"yt-cookie-refresh-{datetime.now().astimezone():%Y%m%d}"
     inner = [
@@ -211,6 +248,8 @@ def build_broker_command(args: argparse.Namespace) -> list[str]:
         "--inside-broker",
         "--profile-root",
         str(args.profile_root),
+        "--profile-resource",
+        args.profile_resource,
         "--cookie-file",
         str(args.cookie_file),
         "--evidence-file",
@@ -223,7 +262,7 @@ def build_broker_command(args: argparse.Namespace) -> list[str]:
         str(args.broker),
         "run",
         "--resource",
-        "identity:nora-work",
+        args.profile_resource,
         "--requester",
         "nora",
         "--priority",
@@ -249,6 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser = argparse.ArgumentParser(description="Refresh YouTube cookies through Nora's brokered profile")
     parser.add_argument("--profile-root", type=Path, default=DEFAULT_PROFILE_ROOT)
+    parser.add_argument("--profile-resource", default="identity:nora-work")
     parser.add_argument("--cookie-file", type=Path, default=cookie_default)
     parser.add_argument("--evidence-file", type=Path)
     parser.add_argument("--probe-url", default=DEFAULT_PROBE_URL)
@@ -284,6 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             cookie_file=args.cookie_file,
             evidence_file=args.evidence_file,
             probe_url=args.probe_url,
+            profile_resource=args.profile_resource,
         )
     except Exception as exc:
         print(_safe_error(exc), file=sys.stderr)

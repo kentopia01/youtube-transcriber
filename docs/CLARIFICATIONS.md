@@ -46,6 +46,19 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 - Profile B, automatic login, failed-job retries, proxies, and PO-token services
   are explicitly outside this chunk.
 
+### T085 dormant cookie-profile clarifications
+- The existing configured cookie file is `profile_a` and remains active.
+- Profile B is optional and unconfigured; implementation readiness does not
+  authorize creating a browser identity or authenticating another account.
+- Profile selection is resolved at operation time from protected persisted
+  state, with safe fallback to Profile A when state is absent or invalid.
+- Only an explicit confirmed operator command may change the active profile.
+- Activation requires authenticated-cookie health and a successful live media
+  probe. A failed probe starts a bounded per-profile cooldown.
+- Do not round-robin, automatically fail over, or use two jars concurrently.
+- The activation gate is two consecutive guarded Profile A refresh/probe
+  failures or evidence of an account-specific block.
+
 ### T073-T079 local release clarifications
 - Reader and Operations remain separate workspaces in one FastAPI application and deployment.
 - The local web API, CLI, and OpenClaw do not need user authentication while all published service ports remain loopback-only.

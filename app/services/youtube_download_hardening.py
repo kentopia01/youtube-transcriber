@@ -29,6 +29,7 @@ from app.services.pipeline_recovery import get_retry_block_reason
 from app.services.pipeline_resume import detect_resume_point_sync
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED
 from app.services.runtime_config import resolve_sync_database_url
+from app.services.youtube_cookie_profiles import resolve_active_cookie_file
 from app.tasks.pipeline import run_pipeline_from
 
 AUTH_COOKIE_NAMES = {
@@ -128,7 +129,7 @@ class DownloadRetryDecision:
 
 
 def inspect_cookie_file(path: str | os.PathLike[str] | None = None, *, now: datetime | None = None) -> CookieHealth:
-    cookie_path = str(path or settings.ytdlp_cookies_file or "")
+    cookie_path = str(path or resolve_active_cookie_file() or "")
     if not cookie_path:
         return CookieHealth(path="", exists=False, readable=False, status="not_configured")
 

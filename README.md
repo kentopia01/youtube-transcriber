@@ -197,6 +197,10 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DOWNLOAD_CIRCUIT_FAILURE_THRESHOLD` | `2` | Distinct-video YouTube access failures required to pause autonomous submissions |
 | `DOWNLOAD_CIRCUIT_WINDOW_SECONDS` | `600` | Window for clustered access-degradation failures |
 | `DOWNLOAD_CIRCUIT_COOLDOWN_SECONDS` | `1800` | Self-expiring autonomous-ingest pause after the circuit opens |
+| `YTDLP_COOKIE_PROFILE_B_FILE` | | Optional dormant Profile B cookie jar; leave empty until activation is approved |
+| `YTDLP_COOKIE_PROFILE_STATE_FILE` | derived | Protected active-profile and probe-state JSON beside Profile A's jar |
+| `YTDLP_COOKIE_PROFILE_PROBE_MAX_AGE_SECONDS` | `86400` | Maximum age of a successful probe before a manual activation is rejected |
+| `YTDLP_COOKIE_PROFILE_FAILURE_COOLDOWN_SECONDS` | `1800` | Per-profile cooldown after a failed probe |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
 | `REDIS_URL` | | Redis URL (Celery broker) |
@@ -279,6 +283,25 @@ The default URL is `http://127.0.0.1:8000`. Override it with `--url` or
 `YT_TRANSCRIBER_URL`; configure long cold-start requests with `--timeout` or
 `YT_TRANSCRIBER_TIMEOUT`. Submit/retry/cancel and reconciliation apply commands
 refuse to run without `--confirm`.
+
+### Cookie profile failover readiness
+
+Production remains on `profile_a`, which is the existing
+`YTDLP_COOKIES_FILE`. Profile B is optional and dormant. Source `.env.native`
+before using the local operator command:
+
+```bash
+set -a && source .env.native && set +a
+.venv-native/bin/python scripts/manage_youtube_cookie_profiles.py status
+.venv-native/bin/python scripts/manage_youtube_cookie_profiles.py probe profile_b
+.venv-native/bin/python scripts/manage_youtube_cookie_profiles.py activate profile_b --confirm
+.venv-native/bin/python scripts/manage_youtube_cookie_profiles.py probe profile_a
+.venv-native/bin/python scripts/manage_youtube_cookie_profiles.py failback --confirm
+```
+
+Activation requires a recent successful authenticated media probe. Failed
+probes put only that profile on cooldown. No download error switches profiles
+automatically, and the two jars are never used concurrently.
 
 ### API
 

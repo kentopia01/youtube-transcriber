@@ -46,6 +46,21 @@ focused tests, and the requested video's completed pipeline were verified.
 
 Source of truth: `docs/tasks/T084_brokered_authenticated_cookie_refresh.md`.
 
+### Completed dormant failover-readiness follow-on: T085
+
+T085 prepares a second named cookie slot without creating or enabling Profile B.
+The existing jar remains `profile_a`; an optional `profile_b` can be inspected,
+probed, activated, and failed back only through explicit confirmed operator
+commands. Failed probes impose a bounded cooldown, state changes are locked and
+atomic, and no runtime error may rotate accounts automatically.
+
+Profile B credentials, browser login, automatic failover, concurrent jar use,
+proxies, PO-token services, failed-job retries, and queue changes remain outside
+this chunk. The activation gate opens only after two consecutive guarded Profile
+A failures or evidence of an account-specific block.
+
+Source of truth: `docs/tasks/T085_dormant_cookie_profile_failover.md`.
+
 As of 2026-07-22, the YouTube Transcriber has completed the stabilization,
 delivery-quality, search, Codex routing, throughput, local-security, notification,
 runtime-consolidation roadmap through T058 and the T063 Reader/Operations product

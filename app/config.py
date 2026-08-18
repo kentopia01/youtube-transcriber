@@ -294,6 +294,12 @@ class Settings(BaseSettings):
     ytdlp_cookies_file: str = ""
     # OR pull cookies live from a browser ("chrome", "safari", etc.) — requires keychain access
     ytdlp_cookies_from_browser: str = ""
+    # Optional dormant second jar. Selection remains explicit and manual.
+    ytdlp_cookie_profile_b_file: str = ""
+    # Empty derives a protected state file beside Profile A's jar.
+    ytdlp_cookie_profile_state_file: str = ""
+    ytdlp_cookie_profile_probe_max_age_seconds: int = 86400
+    ytdlp_cookie_profile_failure_cooldown_seconds: int = 1800
 
     # YouTube access-degradation circuit. Distinct-video failures within the
     # window open a self-expiring pause for autonomous subscription ingest.

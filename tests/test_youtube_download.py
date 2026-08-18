@@ -7,6 +7,7 @@ from yt_dlp.utils import DownloadError
 
 from app.config import settings
 from app.services.youtube import download_audio, get_video_info
+from app.services.youtube_cookie_profiles import activate_profile, record_profile_probe
 
 
 class _FakeYoutubeDL:
@@ -115,3 +116,28 @@ def test_get_video_info_allows_metadata_without_selectable_formats(monkeypatch):
     assert _FakeYoutubeDL.calls[0]["skip_download"] is True
     assert _FakeYoutubeDL.calls[0]["ignore_no_formats_error"] is True
     assert _FakeYoutubeDL.calls[0]["remote_components"] == ["ejs:github"]
+
+
+def test_get_video_info_resolves_persisted_active_cookie_profile(monkeypatch, tmp_path):
+    profile_a = tmp_path / "profile-a.txt"
+    profile_b = tmp_path / "profile-b.txt"
+    state_file = tmp_path / "state.json"
+    profile_a.write_text("a")
+    profile_b.write_text("b")
+    monkeypatch.setattr(settings, "ytdlp_cookies_file", str(profile_a))
+    monkeypatch.setattr(settings, "ytdlp_cookie_profile_b_file", str(profile_b))
+    monkeypatch.setattr(settings, "ytdlp_cookie_profile_state_file", str(state_file))
+    monkeypatch.setattr(settings, "ytdlp_cookie_profile_probe_max_age_seconds", 3600)
+    record_profile_probe("profile_b", ok=True)
+    activate_profile("profile_b")
+    _FakeYoutubeDL.outcomes = [
+        {
+            "id": "abc123XYZ09",
+            "title": "Profile B metadata",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123XYZ09",
+        }
+    ]
+
+    get_video_info("https://www.youtube.com/watch?v=abc123XYZ09")
+
+    assert _FakeYoutubeDL.calls[0]["cookiefile"] == str(profile_b)

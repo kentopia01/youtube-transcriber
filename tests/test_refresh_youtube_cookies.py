@@ -121,6 +121,7 @@ def test_broker_command_uses_nora_identity_and_internal_mode(tmp_path):
         broker=tmp_path / "browser-broker",
         idempotency_key="test-key",
         profile_root=tmp_path / "profile",
+        profile_resource="identity:nora-work-b",
         cookie_file=tmp_path / "youtube.txt",
         evidence_file=tmp_path / "status.json",
         probe_url="https://www.youtube.com/watch?v=probe",
@@ -128,6 +129,8 @@ def test_broker_command_uses_nora_identity_and_internal_mode(tmp_path):
 
     command = mod.build_broker_command(args)
 
-    assert command[command.index("--resource") + 1] == "identity:nora-work"
+    assert command[command.index("--resource") + 1] == "identity:nora-work-b"
     assert command[command.index("--idempotency-key") + 1] == "test-key"
     assert "--inside-broker" in command
+    inner_index = command.index("--")
+    assert command[inner_index + 1 :].count("--profile-resource") == 1

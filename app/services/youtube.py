@@ -7,6 +7,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadError
 
 from app.config import settings
+from app.services.youtube_cookie_profiles import resolve_active_cookie_file
 
 logger = structlog.get_logger()
 
@@ -15,8 +16,9 @@ _YTDLP_REMOTE_COMPONENTS = ["ejs:github"]
 
 def _apply_cookie_opts(ydl_opts: dict) -> dict:
     """Inject yt-dlp cookie options from settings."""
-    if settings.ytdlp_cookies_file and os.path.exists(settings.ytdlp_cookies_file):
-        ydl_opts["cookiefile"] = settings.ytdlp_cookies_file
+    cookie_file = resolve_active_cookie_file()
+    if cookie_file and os.path.exists(cookie_file):
+        ydl_opts["cookiefile"] = cookie_file
     elif settings.ytdlp_cookies_from_browser:
         ydl_opts["cookiesfrombrowser"] = (settings.ytdlp_cookies_from_browser,)
     return ydl_opts
