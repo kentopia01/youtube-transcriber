@@ -7,6 +7,7 @@ import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.models.job import Job
 
@@ -93,6 +94,11 @@ def test_dry_run_reports_stale_jobs_without_marking_failures(monkeypatch):
         recorded.append((args, kwargs))
 
     monkeypatch.setattr(mod, "record_pipeline_failure", _record)
+    monkeypatch.setattr(
+        mod,
+        "recover_stale_handoff",
+        lambda *args, **kwargs: SimpleNamespace(recover=False),
+    )
 
     count = mod.reap_stale_jobs(dry_run=True)
 
@@ -130,6 +136,11 @@ def test_non_dry_run_marks_only_stale_jobs_failed(monkeypatch):
         )
 
     monkeypatch.setattr(mod, "record_pipeline_failure", _record)
+    monkeypatch.setattr(
+        mod,
+        "recover_stale_handoff",
+        lambda *args, **kwargs: SimpleNamespace(recover=False),
+    )
 
     count = mod.reap_stale_jobs(dry_run=False)
 
@@ -176,9 +187,44 @@ def test_timeout_override_uses_activity_anchor_without_stage_classifier(monkeypa
         recorded.append(kwargs)
 
     monkeypatch.setattr(mod, "record_pipeline_failure", _record)
+    monkeypatch.setattr(
+        mod,
+        "recover_stale_handoff",
+        lambda *args, **kwargs: SimpleNamespace(recover=False),
+    )
 
     count = mod.reap_stale_jobs(dry_run=False, timeout_hours=1.0)
 
     assert count == 1
     assert len(recorded) == 1
     assert db.commit_calls == 1
+
+
+def test_stale_handoff_recovery_skips_terminal_failure_recording(monkeypatch):
+    stale_job = Job(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        job_type="pipeline",
+        status="running",
+        current_stage="transcribe",
+    )
+    stale_job.last_activity_at = datetime.now(UTC) - timedelta(hours=7)
+    db = _FakeDB([stale_job], videos={stale_job.video_id: object()})
+    monkeypatch.setattr(mod, "Session", _SessionFactory(db))
+    monkeypatch.setattr(mod, "is_pipeline_job_stale", lambda job, now=None: True)
+    monkeypatch.setattr(
+        mod,
+        "recover_stale_handoff",
+        lambda *args, **kwargs: SimpleNamespace(
+            recover=True,
+            start_from="tasks.cleanup_transcript",
+            recovery_count=1,
+        ),
+    )
+    recorded = []
+    monkeypatch.setattr(mod, "record_pipeline_failure", lambda *a, **k: recorded.append(k))
+
+    count = mod.reap_stale_jobs(dry_run=False)
+
+    assert count == 0
+    assert recorded == []

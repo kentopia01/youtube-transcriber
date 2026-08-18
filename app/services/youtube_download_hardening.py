@@ -44,11 +44,30 @@ AUTH_COOKIE_NAMES = {
     "LOGIN_INFO",
 }
 
+YTDLP_REMOTE_COMPONENTS = ["ejs:github"]
+
 DOWNLOAD_FORBIDDEN_SIGNATURE_MARKERS = (
     "download|downloaderror|error: unable to download video data: http error #: forbidden",
     "http error 403",
     "forbidden",
 )
+
+
+def is_download_access_degradation_failure(job: Job) -> bool:
+    """Return true for clustered YouTube access failures, not just final 403s."""
+    from app.services.download_circuit import is_youtube_access_degradation
+
+    if job.job_type != "pipeline" or job.status != "failed":
+        return False
+    if (job.current_stage or "").lower() != "download":
+        return False
+    return is_youtube_access_degradation(
+        " | ".join(
+            value
+            for value in (job.failure_signature, job.error_message)
+            if value
+        )
+    )
 
 
 @dataclass(slots=True)
@@ -131,7 +150,11 @@ def inspect_cookie_file(path: str | os.PathLike[str] | None = None, *, now: date
 
     now_ts = int((now or datetime.now(UTC)).timestamp())
     for line in lines:
-        if not line or line.startswith("#"):
+        if not line:
+            continue
+        if line.startswith("#HttpOnly_"):
+            line = line.removeprefix("#HttpOnly_")
+        elif line.startswith("#"):
             continue
         parts = line.split("\t")
         if len(parts) < 7:
@@ -186,6 +209,7 @@ def get_ytdlp_version_health(*, warn_days: int = 75, now: datetime | None = None
 def _probe_opts(*, cookie_path: str | None, output_dir: Path, test_download: bool) -> dict:
     opts = {
         "format": "bestaudio/best",
+        "remote_components": YTDLP_REMOTE_COMPONENTS,
         "outtmpl": str(output_dir / "%(id)s.%(ext)s"),
         "quiet": True,
         "no_warnings": True,
@@ -273,7 +297,7 @@ def summarize_recent_download_403_failures(
         failed_at = _as_utc(job.completed_at or job.last_activity_at or job.created_at)
         if failed_at is not None and failed_at < since:
             continue
-        if is_download_403_failure(job):
+        if is_download_access_degradation_failure(job):
             matching.append(job)
 
     videos: list[dict] = []
@@ -318,7 +342,10 @@ def find_download_403_retry_candidates(
     if youtube_ids:
         query = query.filter(Video.youtube_video_id.in_(youtube_ids))
     jobs = query.limit(limit).all()
-    return [job for job in jobs if is_download_403_failure(job)]
+    # Keep the legacy helper/script name for operator compatibility, but include
+    # the broader access-degradation signatures used by the live alert and
+    # circuit (for example YouTube's final anti-bot message after a 403 retry).
+    return [job for job in jobs if is_download_access_degradation_failure(job)]
 
 
 def retry_download_403_failures(

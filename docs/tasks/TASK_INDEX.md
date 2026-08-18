@@ -42,7 +42,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T031 | Cookie lint and safe refresh policy | done | SentryClaw | Cookie file lint classifies anonymous-only and auth-like sessions without exposing values |
 | T032 | Batch download failure alerting | done | SentryClaw | Threshold checker and Telegram diagnostic renderer added |
 | T033 | yt-dlp version guardrail | done | SentryClaw | Version freshness checker added |
-| T034 | Authenticated cookie last resort | planned-contingency | SentryClaw | Evidence gate remains closed; T061 public downloads recover without authenticated cookies |
+| T034 | Authenticated cookie last resort | done | SentryClaw | Evidence gate opened on 2026-08-18; dedicated Nora session rollout continues under T084 |
 | T035 | Repo cleanup after download hardening | done | SentryClaw | T026/T027 summary-quality work committed separately; generated OpenClaw workspace files ignored |
 | T036 | Recovered jobs and yt-dlp update | done | SentryClaw | Seven 403 recovery jobs completed; yt-dlp updated to 2026.06.09 in dev/native envs and validated |
 | T037 | Global search source-of-truth docs and task contract | done | SentryClaw | Establish rollout docs for whole-corpus retrieval |
@@ -89,6 +89,10 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T078 | Local runtime hardening and recovery | done | SentryClaw | Production command, origin guard, audit trail, backup, and isolated restore drill validated |
 | T079 | Evidence-driven Reader workflow polish | done | SentryClaw | Mobile reading obstruction and misleading warning fixed; final browser/vision gate passed |
 | T080 | Summary-first Tailnet and mobile Reader fixes | done | SentryClaw | Summary-first Reader and tailnet browser fixes; `1382/11`, `33/33` HTTP, `30/30` Tailscale browser |
+| T081 | YouTube access-degradation circuit and bounded autonomous release | done | SentryClaw | Anti-bot classifier, self-expiring circuit, and poll-wide submission cap validated |
+| T082 | Pipeline outcome watchdog and bounded artifact-aware stale handoff recovery | done | SentryClaw | Read-only completion SLA and one safe same-attempt handoff recovery validated |
+| T083 | Due-poll cadence and split-worker log retention | done | SentryClaw | Hourly due check and deterministic 30-day rotation live-wired and validated |
+| T084 | Brokered authenticated YouTube cookie refresh | done | SentryClaw | Daily 01:45 SGT leased refresh live; authenticated canary, metadata path, completed ingest, and 44 focused tests verified |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

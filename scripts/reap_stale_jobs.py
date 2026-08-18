@@ -30,6 +30,7 @@ from app.services.pipeline_recovery import (
     record_pipeline_failure,
 )
 from app.services.runtime_config import resolve_sync_database_url
+from app.services.stale_handoff_recovery import recover_stale_handoff
 
 
 sync_engine = create_engine(
@@ -40,6 +41,7 @@ sync_engine = create_engine(
 def reap_stale_jobs(dry_run: bool, timeout_hours: float | None = None):
     now = datetime.now(UTC)
     reaped = 0
+    recovered = 0
 
     with Session(sync_engine) as db:
         candidates = (
@@ -84,6 +86,14 @@ def reap_stale_jobs(dry_run: bool, timeout_hours: float | None = None):
                 continue
 
             video = db.get(Video, job.video_id) if job.video_id else None
+            recovery = recover_stale_handoff(db, job, video)
+            if recovery.recover:
+                recovered += 1
+                print(
+                    f"  Recovered job {job.id}: resume={recovery.start_from} "
+                    f"count={recovery.recovery_count}"
+                )
+                continue
             record_pipeline_failure(
                 db,
                 job,
@@ -103,6 +113,9 @@ def reap_stale_jobs(dry_run: bool, timeout_hours: float | None = None):
 
         if not dry_run and reaped:
             db.commit()
+
+        if recovered:
+            print(f"Recovered {recovered} stale handoff(s)")
 
     return reaped
 

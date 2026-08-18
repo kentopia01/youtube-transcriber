@@ -10,6 +10,8 @@ from app.config import settings
 
 logger = structlog.get_logger()
 
+_YTDLP_REMOTE_COMPONENTS = ["ejs:github"]
+
 
 def _apply_cookie_opts(ydl_opts: dict) -> dict:
     """Inject yt-dlp cookie options from settings."""
@@ -95,6 +97,7 @@ def download_audio(video_id: str, audio_dir: str) -> dict:
 
     ydl_opts = {
         "format": "bestaudio/best",
+        "remote_components": _YTDLP_REMOTE_COMPONENTS,
         "outtmpl": os.path.join(audio_dir, f"{video_id}.%(ext)s"),
         "postprocessors": [
             {
@@ -144,7 +147,12 @@ def get_video_info(url: str) -> dict:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "remote_components": _YTDLP_REMOTE_COMPONENTS,
         "skip_download": True,
+        # Metadata submission must not fail just because an authenticated
+        # player response exposes no selectable media formats. The audio
+        # worker performs its own validated format selection later.
+        "ignore_no_formats_error": True,
     }
     _apply_cookie_opts(ydl_opts)
 

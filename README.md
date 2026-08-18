@@ -193,6 +193,10 @@ All configuration is via environment variables. Set them in `.env` (Docker) and 
 | `DIGEST_LLM_FALLBACK_MODEL` | `claude-sonnet-4-5` | Digest fallback model if the OpenAI-compatible route fails |
 | `ANTHROPIC_API_KEY` | | API key for Anthropic fallback/rollback calls |
 | `AUTO_INGEST_MIN_DURATION_SECONDS` | `600` | Minimum duration for subscription auto-ingest; filters Shorts/reels/short clips from followed channels, set `0` to disable |
+| `AUTO_INGEST_MAX_SUBMISSIONS_PER_RUN` | `3` | Global cap across all due subscriptions in one poll invocation |
+| `DOWNLOAD_CIRCUIT_FAILURE_THRESHOLD` | `2` | Distinct-video YouTube access failures required to pause autonomous submissions |
+| `DOWNLOAD_CIRCUIT_WINDOW_SECONDS` | `600` | Window for clustered access-degradation failures |
+| `DOWNLOAD_CIRCUIT_COOLDOWN_SECONDS` | `1800` | Self-expiring autonomous-ingest pause after the circuit opens |
 | `DATABASE_URL` | | Async Postgres URL (for web app) |
 | `DATABASE_URL_SYNC` | | Sync Postgres URL (for Celery worker) |
 | `REDIS_URL` | | Redis URL (Celery broker) |

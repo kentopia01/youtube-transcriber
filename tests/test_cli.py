@@ -4,7 +4,7 @@ import json
 import socket
 import urllib.request
 
-from app.cli import ApiClient, CliError, main
+from app.cli import ApiClient, CliError, build_parser, main
 
 
 class _Client:
@@ -48,6 +48,17 @@ def test_submit_refuses_without_explicit_confirmation(capsys):
     assert code == 2
     assert client.calls == []
     assert "without --confirm" in capsys.readouterr().err
+
+
+def test_submit_keeps_service_url_separate_from_video_url():
+    video_url = "https://youtube.com/watch?v=abcdefghijk"
+    args = build_parser().parse_args(["--url", "http://127.0.0.1:8001", "submit", video_url, "--confirm"])
+    client = _Client([{"status": "queued"}])
+
+    assert args.base_url == "http://127.0.0.1:8001"
+    assert args.video_url == video_url
+    assert main(["submit", video_url, "--confirm"], client=client) == 0
+    assert client.calls[0][3] == {"url": video_url}
 
 
 def test_confirmed_retry_uses_api_mutation():

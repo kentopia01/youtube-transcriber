@@ -131,6 +131,58 @@ class TestProcessOneSubscription:
             assert cap_truncated not in sub.last_seen_video_ids
 
     @pytest.mark.asyncio
+    async def test_poll_wide_submission_limit_bounds_one_subscription(self, monkeypatch):
+        channel = _channel()
+        sub = _sub(channel, max_videos_per_poll=5)
+        entries = [
+            FeedEntry(f"bounded{i}", f"title {i}", f"https://youtube.test/{i}", None)
+            for i in range(5)
+        ]
+        monkeypatch.setattr(poll_module, "fetch_channel_feed", AsyncMock(return_value=entries))
+        monkeypatch.setattr(
+            "app.services.video_classifier.classify_video_url",
+            lambda url: __import__(
+                "app.services.video_classifier", fromlist=["ClassificationResult"]
+            ).ClassificationResult(True, None),
+        )
+        submit = AsyncMock(
+            return_value={"job_id": str(uuid.uuid4()), "video_id": str(uuid.uuid4())}
+        )
+        monkeypatch.setattr(poll_module, "_submit_video", submit)
+        monkeypatch.setattr(poll_module, "_tag_job_as_auto_ingest", AsyncMock())
+
+        result = await poll_module._process_one_subscription(
+            _DbStub(), sub, budget_remaining=10.0, submission_limit=2
+        )
+
+        assert result["ingested"] == 2
+        assert submit.await_count == 2
+        assert set(sub.last_seen_video_ids) == {"bounded0", "bounded1"}
+
+    @pytest.mark.asyncio
+    async def test_open_download_circuit_defers_poll_without_database_access(self, monkeypatch):
+        from app.services.download_circuit import DownloadCircuitState
+
+        monkeypatch.setattr(
+            poll_module,
+            "get_download_circuit_state",
+            lambda: DownloadCircuitState(
+                open=True,
+                retry_after_seconds=900,
+                failure_count=2,
+                reason="clustered_youtube_access_degradation",
+            ),
+        )
+        create_engine = MagicMock(side_effect=AssertionError("database should not be opened"))
+        monkeypatch.setattr(poll_module, "create_async_engine", create_engine)
+
+        result = await poll_module._run_poll()
+
+        assert result["skipped_reason"] == "download_circuit_open"
+        assert result["processed_subscriptions"] == 0
+        create_engine.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_classifier_rejects_shorts_and_live(self, monkeypatch):
         channel = _channel()
         sub = _sub(channel, max_videos_per_poll=5)

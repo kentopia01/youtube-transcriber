@@ -35,6 +35,7 @@ from app.models.lane_subscription import LaneSubscription
 from app.models.lane_video_item import LaneVideoItem
 from app.models.video import Video
 from app.services.cost_tracker import auto_ingest_budget_remaining
+from app.services.download_circuit import circuit_state_payload, get_download_circuit_state
 from app.services.pipeline_observability import ATTEMPT_REASON_AUTO_INGEST
 from app.services.subscriptions import (
     FeedEntry,
@@ -86,7 +87,11 @@ async def _tag_job_as_auto_ingest(db, job_id: str) -> None:
 
 
 async def _process_one_subscription(
-    db, sub: ChannelSubscription, *, budget_remaining: float
+    db,
+    sub: ChannelSubscription,
+    *,
+    budget_remaining: float,
+    submission_limit: int | None = None,
 ) -> dict[str, Any]:
     """Poll a single subscription. Returns a stats dict. Never raises — all
     errors are captured in the subscription's failure state."""
@@ -128,7 +133,14 @@ async def _process_one_subscription(
 
     reset_daily_counter_if_needed(sub)
     remaining_today = max(0, sub.max_videos_per_poll - (sub.videos_ingested_today or 0))
-    to_ingest = new_entries[:remaining_today]
+    allowed = remaining_today
+    if submission_limit is not None:
+        allowed = min(allowed, max(0, submission_limit))
+    to_ingest = new_entries[:allowed]
+
+    if allowed <= 0:
+        result["skipped_reason"] = "global_submission_cap_reached"
+        return result
 
     if budget_remaining <= 0.10:
         # Mark seen anyway so we don't keep re-queuing the same videos next run.
@@ -276,6 +288,8 @@ async def _attach_or_submit_lane_entry(
 async def _process_one_lane_subscription(
     db,
     sub: LaneSubscription,
+    *,
+    submission_limit: int | None = None,
 ) -> dict[str, Any]:
     result = {
         "lane_id": str(sub.lane_id),
@@ -321,6 +335,9 @@ async def _process_one_lane_subscription(
     deferred_count = 0
 
     for entry in to_process:
+        if submission_limit is not None and result["submitted"] >= submission_limit:
+            result["skipped_reason"] = "global_submission_cap_reached"
+            break
         try:
             from app.services.video_classifier import classify_video_url
 
@@ -364,6 +381,21 @@ async def _process_one_lane_subscription(
 
 
 async def _run_poll() -> dict[str, Any]:
+    circuit = get_download_circuit_state()
+    if circuit.open:
+        result = {
+            "processed_subscriptions": 0,
+            "total_ingested": 0,
+            "soft_cap_crossed": False,
+            "details": [],
+            "processed_lane_subscriptions": 0,
+            "lane_details": [],
+            "download_circuit": circuit_state_payload(circuit),
+            "skipped_reason": "download_circuit_open",
+        }
+        logger.warning("poll_subscriptions_deferred", **result["download_circuit"])
+        return result
+
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -372,6 +404,7 @@ async def _run_poll() -> dict[str, Any]:
     lane_stats: list[dict[str, Any]] = []
     soft_cap_crossed = False  # notify once per run when auto-ingest spend
                               # crosses the soft cap. Polling continues.
+    remaining_submission_slots = max(0, settings.auto_ingest_max_submissions_per_run)
 
     try:
         async with SessionLocal() as db:
@@ -386,6 +419,9 @@ async def _run_poll() -> dict[str, Any]:
             for sub in subs:
                 if not is_due_for_poll(sub):
                     continue
+                circuit = get_download_circuit_state()
+                if circuit.open or remaining_submission_slots <= 0:
+                    break
 
                 remaining = auto_ingest_budget_remaining()
                 if remaining <= 0 and not soft_cap_crossed:
@@ -398,9 +434,15 @@ async def _run_poll() -> dict[str, Any]:
                 # Soft cap: pass a large budget to the per-sub handler so it
                 # never gates on autonomous spend. The global daily_llm_budget_usd
                 # inside check_budget() remains the hard ceiling.
-                s = await _process_one_subscription(db, sub, budget_remaining=1e9)
+                s = await _process_one_subscription(
+                    db,
+                    sub,
+                    budget_remaining=1e9,
+                    submission_limit=remaining_submission_slots,
+                )
                 stats.append(s)
                 total_ingested += int(s.get("ingested") or 0)
+                remaining_submission_slots -= int(s.get("ingested") or 0)
 
             lane_subscriptions = (
                 await db.execute(
@@ -412,9 +454,16 @@ async def _run_poll() -> dict[str, Any]:
             for lane_subscription in lane_subscriptions:
                 if not is_due_for_poll(lane_subscription):
                     continue
-                lane_stats.append(
-                    await _process_one_lane_subscription(db, lane_subscription)
+                circuit = get_download_circuit_state()
+                if circuit.open or remaining_submission_slots <= 0:
+                    break
+                lane_result = await _process_one_lane_subscription(
+                    db,
+                    lane_subscription,
+                    submission_limit=remaining_submission_slots,
                 )
+                lane_stats.append(lane_result)
+                remaining_submission_slots -= int(lane_result.get("submitted") or 0)
     finally:
         await engine.dispose()
 
@@ -425,6 +474,9 @@ async def _run_poll() -> dict[str, Any]:
         "details": stats,
         "processed_lane_subscriptions": len(lane_stats),
         "lane_details": lane_stats,
+        "download_circuit": circuit_state_payload(get_download_circuit_state()),
+        "submission_cap": settings.auto_ingest_max_submissions_per_run,
+        "submission_slots_remaining": remaining_submission_slots,
     }
     logger.info("poll_subscriptions_done", **{k: v for k, v in result.items() if k != "details"})
 

@@ -140,6 +140,19 @@ class TestIsDue:
         sub = _sub(last_polled_at=datetime.now(UTC) - timedelta(hours=22))
         assert not is_due_for_poll(sub)
 
+    def test_hourly_due_checks_recover_from_manual_poll_schedule_offset(self):
+        manual_poll = datetime(2026, 8, 5, 5, 13, tzinfo=UTC)
+        sub = _sub(last_polled_at=manual_poll, poll_frequency_hours=24)
+
+        # A fixed 02:00 daily run is too early and would skip a whole day.
+        assert not is_due_for_poll(
+            sub, now=datetime(2026, 8, 6, 2, 0, tzinfo=UTC)
+        )
+        # An hourly due-check picks it up near its actual 24-hour boundary.
+        assert is_due_for_poll(
+            sub, now=datetime(2026, 8, 6, 5, 0, tzinfo=UTC)
+        )
+
 
 class TestDailyCounterReset:
     def test_resets_on_new_day(self):

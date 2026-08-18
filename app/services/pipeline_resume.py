@@ -50,13 +50,19 @@ def _build_resume_result(video: Video, *, has_embeddings: bool, has_summary: boo
     has_audio = bool(audio_path and os.path.exists(audio_path))
 
     diarization_requires_audio = settings.inline_diarization_enabled
-    selected_stage = select_resume_stage(
-        has_embeddings=has_embeddings,
-        has_summary=has_summary,
-        has_transcription=has_transcription,
-        has_audio=has_audio,
-        diarization_requires_audio=diarization_requires_audio,
-    )
+    # Cleanup mutates the persisted transcript in place, so the structured
+    # Video.status is the durable proof that cleanup completed. Without this
+    # branch, artifact-aware retries repeat cleanup instead of advancing.
+    if has_transcription and video.status == "cleaned":
+        selected_stage = "tasks.summarize_transcription"
+    else:
+        selected_stage = select_resume_stage(
+            has_embeddings=has_embeddings,
+            has_summary=has_summary,
+            has_transcription=has_transcription,
+            has_audio=has_audio,
+            diarization_requires_audio=diarization_requires_audio,
+        )
     artifact_check_result = build_artifact_check_result(
         has_embeddings=has_embeddings,
         has_summary=has_summary,

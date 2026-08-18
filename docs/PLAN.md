@@ -2,6 +2,50 @@
 
 ## Current status
 
+### Completed reliability follow-on: T081-T083
+
+The 2026-08-06 failure audit found two concentrated false-green incidents rather
+than a broad transcription-quality regression: a four-video YouTube access-
+challenge cluster and a five-video Celery handoff-loss cluster with durable
+artifacts already present. T081-T083 harden the execution workflow around that
+evidence:
+
+1. T081 classifies YouTube access degradation consistently, opens a bounded
+   circuit after repeated distinct-video failures, and limits autonomous release
+   size so one transient challenge cannot poison a large poll.
+2. T082 adds a post-ingest outcome watchdog and lets the stale reaper perform one
+   bounded, artifact-aware same-attempt handoff recovery before terminal failure.
+3. T083 makes due polling resilient to manual-run schedule drift and repairs
+   worker-log rotation/retention for the actual split-worker files.
+
+The code, focused tests, full default suite, worker reload, and live cron wiring
+were validated on 2026-08-06. Guardrails: no production failed-job retries were
+performed; no heavy-stage concurrency increase; no authenticated-cookie rollout;
+no UI redesign. The latest default validation is green at `1400 passed, 11
+skipped`.
+
+### Completed authenticated-download follow-on: T084
+
+The 2026-08-18 access incident met T034's evidence gate: three autonomous
+downloads were challenged by YouTube, the configured jar was `anonymous_only`,
+and a dedicated Nora service-profile export plus the official yt-dlp EJS solver
+successfully moved a requested video through download into transcription.
+
+T084 turns that live recovery into a bounded unattended contract: profile access
+is broker-leased, a candidate export must contain authenticated cookies and pass
+a real media probe, replacement is atomic with one protected rollback jar, and a
+daily command cron refreshes the jar before the overnight window. Profile B,
+automatic login, proxies, PO-token services, backlog retries, and concurrency
+changes remain out of scope.
+
+The guarded refresh was activated on 2026-08-18 at 01:45 Asia/Singapore. Its
+live canary exported 42 scoped cookies (12 authenticated, 13 YouTube, none
+expired), passed a real media probe, and atomically installed the jar. The web
+runtime reload, supported API metadata check, all required worker queues, 44
+focused tests, and the requested video's completed pipeline were verified.
+
+Source of truth: `docs/tasks/T084_brokered_authenticated_cookie_refresh.md`.
+
 As of 2026-07-22, the YouTube Transcriber has completed the stabilization,
 delivery-quality, search, Codex routing, throughput, local-security, notification,
 runtime-consolidation roadmap through T058 and the T063 Reader/Operations product

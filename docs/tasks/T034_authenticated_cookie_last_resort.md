@@ -1,7 +1,7 @@
 # T034 - Authenticated Cookie Last Resort
 
 ## Status
-Planned contingency — evidence gate not met
+Done — evidence gate opened and implementation moved to T084 on 2026-08-18
 
 ## Objective
 Define the fallback path for videos that truly require authenticated YouTube access.
@@ -21,7 +21,11 @@ Define the fallback path for videos that truly require authenticated YouTube acc
 - Cookie health probe validates the session before production use.
 
 ## Validation
-- Manual runbook only; implementation deferred until evidence requires it.
+- The dedicated Nora service profile was used; no password or 2FA was handled
+  by the transcriber or placed in chat.
+- The exported jar passed authenticated-cookie lint and a real media probe for
+  `DFImJfJGXl0`; that production ingest then passed the download stage.
+- The guarded scheduled refresh and runtime rollout are tracked in T084.
 - 2026-07-21 T061 recovery validation passed every attempted public-video
   download; where cookie-backed requests returned 403, the existing one-time
   cookie-free fallback succeeded. There is no current evidence requiring

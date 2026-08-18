@@ -266,6 +266,9 @@ class Settings(BaseSettings):
     pipeline_stale_timeout_cleanup_minutes: int = 60
     pipeline_stale_timeout_summarize_minutes: int = 60
     pipeline_stale_timeout_embed_minutes: int = 60
+    # A stale attempt may be re-enqueued once when durable artifacts prove the
+    # previous stage committed but the next Celery handoff was lost.
+    pipeline_stale_handoff_recovery_limit: int = 1
 
     # Daily LLM budget cap (USD). Set to 0 to disable.
     daily_llm_budget_usd: float = 0.0
@@ -274,6 +277,9 @@ class Settings(BaseSettings):
     auto_ingest_daily_cost_cap_usd: float = 4.0
     auto_ingest_poll_hours_default: int = 24
     auto_ingest_max_videos_per_poll_default: int = 3
+    # Bound each poll invocation across all subscriptions. Hourly due checks
+    # drain larger backlogs gradually without flooding the audio queue.
+    auto_ingest_max_submissions_per_run: int = 3
     # Subscription auto-ingest is for long-form signal, not Shorts/reels/clips.
     # Set to 0 to disable the long-form duration floor.
     auto_ingest_min_duration_seconds: int = 600
@@ -288,6 +294,13 @@ class Settings(BaseSettings):
     ytdlp_cookies_file: str = ""
     # OR pull cookies live from a browser ("chrome", "safari", etc.) — requires keychain access
     ytdlp_cookies_from_browser: str = ""
+
+    # YouTube access-degradation circuit. Distinct-video failures within the
+    # window open a self-expiring pause for autonomous subscription ingest.
+    download_circuit_enabled: bool = True
+    download_circuit_failure_threshold: int = 2
+    download_circuit_window_seconds: int = 600
+    download_circuit_cooldown_seconds: int = 1800
 
     # App
     app_env: str = "development"

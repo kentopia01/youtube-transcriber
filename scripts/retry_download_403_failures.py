@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retry failed download-stage YouTube 403 jobs with normal attempt guardrails."""
+"""Retry failed YouTube access-degradation jobs with normal attempt guardrails."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def _youtube_ids(values: list[str]) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Retry failed YouTube download 403 jobs")
+    parser = argparse.ArgumentParser(description="Retry failed YouTube access-degradation jobs")
     parser.add_argument("--youtube-id", action="append", default=[], help="YouTube id, repeatable or comma-separated")
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--max-jobs", type=int, default=None)
@@ -51,7 +51,7 @@ def main() -> int:
         )
 
     if not decisions:
-        print("No matching failed download 403 jobs found")
+        print("No matching failed YouTube access-degradation jobs found")
         return 0
 
     counts = Counter(decision.status for decision in decisions)

@@ -86,7 +86,11 @@ def _add_page_args(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ytctl", description="Local YouTube Transcriber control client")
-    parser.add_argument("--url", default=os.getenv("YT_TRANSCRIBER_URL", DEFAULT_BASE_URL))
+    parser.add_argument(
+        "--url",
+        dest="base_url",
+        default=os.getenv("YT_TRANSCRIBER_URL", DEFAULT_BASE_URL),
+    )
     parser.add_argument("--api-key", default=os.getenv("YT_TRANSCRIBER_API_KEY"))
     parser.add_argument("--actor", default=os.getenv("YT_TRANSCRIBER_ACTOR", "cli"))
     parser.add_argument(
@@ -144,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("subscriptions", help="List channel subscriptions")
 
     submit = commands.add_parser("submit", help="Submit one video")
-    submit.add_argument("url")
+    submit.add_argument("video_url")
     submit.add_argument("--confirm", action="store_true")
     retry = commands.add_parser("retry", help="Retry a failed job")
     retry.add_argument("job_id")
@@ -243,7 +247,7 @@ def _dispatch(client: ApiClient, args: argparse.Namespace) -> Any:
         return client.request("GET", "/api/subscriptions")
     if command == "submit":
         _require_confirm(args, "submit a video")
-        return client.request("POST", "/api/videos", body={"url": args.url})
+        return client.request("POST", "/api/videos", body={"url": args.video_url})
     if command == "retry":
         _require_confirm(args, "retry a job")
         return client.request("POST", f"/api/jobs/{args.job_id}/retry")
@@ -295,7 +299,7 @@ def main(argv: Sequence[str] | None = None, *, client: ApiClient | None = None) 
     parser = build_parser()
     args = parser.parse_args(argv)
     resolved_client = client or ApiClient(
-        args.url,
+        args.base_url,
         actor=args.actor,
         api_key=args.api_key,
         timeout=args.timeout,

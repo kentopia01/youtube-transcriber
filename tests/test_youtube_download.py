@@ -6,7 +6,7 @@ import pytest
 from yt_dlp.utils import DownloadError
 
 from app.config import settings
-from app.services.youtube import download_audio
+from app.services.youtube import download_audio, get_video_info
 
 
 class _FakeYoutubeDL:
@@ -64,6 +64,7 @@ def test_download_audio_retries_without_cookies_after_cookie_backed_403(
 
     assert result["title"] == "Recovered video"
     assert len(_FakeYoutubeDL.calls) == 2
+    assert _FakeYoutubeDL.calls[0]["remote_components"] == ["ejs:github"]
     assert _FakeYoutubeDL.calls[0]["cookiefile"] == str(cookies)
     assert "cookiefile" not in _FakeYoutubeDL.calls[1]
     assert "cookiesfrombrowser" not in _FakeYoutubeDL.calls[1]
@@ -95,3 +96,22 @@ def test_download_audio_does_not_retry_403_when_cookies_are_not_enabled(
         download_audio("abc123XYZ09", str(tmp_path))
 
     assert len(_FakeYoutubeDL.calls) == 1
+
+
+def test_get_video_info_allows_metadata_without_selectable_formats(monkeypatch):
+    monkeypatch.setattr(settings, "ytdlp_cookies_file", "")
+    monkeypatch.setattr(settings, "ytdlp_cookies_from_browser", "")
+    _FakeYoutubeDL.outcomes = [
+        {
+            "id": "abc123XYZ09",
+            "title": "Metadata-only video",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123XYZ09",
+        }
+    ]
+
+    result = get_video_info("https://www.youtube.com/watch?v=abc123XYZ09")
+
+    assert result["video_id"] == "abc123XYZ09"
+    assert _FakeYoutubeDL.calls[0]["skip_download"] is True
+    assert _FakeYoutubeDL.calls[0]["ignore_no_formats_error"] is True
+    assert _FakeYoutubeDL.calls[0]["remote_components"] == ["ejs:github"]

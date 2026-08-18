@@ -5,6 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.video import Video
+from app.services.download_circuit import (
+    record_download_access_failure,
+    record_download_access_success,
+)
 from app.services.pipeline_recovery import get_stage_retry_limit, record_pipeline_failure
 from app.services.pipeline_state import PIPELINE_STAGE_DOWNLOAD
 from app.services.youtube import download_audio
@@ -46,6 +50,7 @@ def download_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] |
 
         try:
             result = download_audio(video.youtube_video_id, settings.audio_dir)
+            record_download_access_success()
 
             duration = result.get("duration")
             max_duration = settings.max_video_duration_minutes * 60
@@ -77,6 +82,7 @@ def download_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] |
             return payload
 
         except Exception as exc:
+            record_download_access_failure(video.youtube_video_id, exc)
             if self.request.retries < self.max_retries:
                 video.status = "downloading"
                 video.error_message = f"Retrying download after error: {exc}"

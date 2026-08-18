@@ -206,7 +206,7 @@ def _render_ops_youtube_download_degraded(payload: dict) -> dict:
     ]
     lines = [
         "⚠️ *YouTube download degraded*",
-        f"{count} download-stage 403 failures (threshold {threshold})",
+        f"{count} download access failures (threshold {threshold})",
         f"cookies: `{cookie.get('status', 'unknown')}`",
         f"yt-dlp: `{yt_dlp.get('version', 'unknown')}` ({yt_dlp.get('status', 'unknown')})",
     ]

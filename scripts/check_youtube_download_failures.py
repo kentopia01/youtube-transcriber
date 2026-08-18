@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Alert when a recent batch has repeated YouTube download-stage 403s."""
+"""Alert when a recent batch has repeated YouTube access degradation."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from app.services.youtube_download_hardening import (
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check recent YouTube download 403 failures")
+    parser = argparse.ArgumentParser(description="Check recent YouTube access-degradation failures")
     parser.add_argument("--hours", type=float, default=4.0)
     parser.add_argument("--threshold", type=int, default=3)
     parser.add_argument("--limit", type=int, default=25)
@@ -61,7 +61,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"download_403_failures={summary.count} threshold={args.threshold}")
+        print(f"youtube_access_degradation_failures={summary.count} threshold={args.threshold}")
         for video in summary.videos:
             print(f"- {video.get('youtube_video_id')}: {video.get('title')}")
         print(f"cookie_status={cookie.status} yt_dlp={version.version} yt_dlp_status={version.status}")

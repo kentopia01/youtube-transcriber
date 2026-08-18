@@ -12,6 +12,40 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 
 ## Current clarifications
 
+### T081-T083 incident-hardening clarifications
+- Treat cookie-backed 403, HTTP 429, YouTube `Sign in to confirm you're not a bot`,
+  and equivalent login/challenge text as one download-access degradation class.
+- A circuit opens only after repeated failures across distinct videos in a short
+  window; one isolated video must not stop autonomous ingest.
+- Circuit state must be bounded and self-expiring. A successful canary/download
+  may close it; authenticated cookies remain an evidence-gated last resort.
+- Autonomous subscription release must be globally bounded per poll invocation.
+  Do not increase worker concurrency to compensate.
+- Stale recovery may requeue the same active attempt once when durable artifacts
+  prove a missing stage handoff. Repeated recovery must converge to the existing
+  failed/manual-review path, not loop indefinitely.
+- The outcome watchdog is read-only. It reports terminal/active/overdue/failure-
+  cluster state and must not retry, cancel, or reconcile jobs.
+- Hourly cron frequency is only a due-check cadence; each subscription retains its
+  configured poll frequency and is processed only when due.
+- Worker-log rotation must cover the audio, post, and diarize launchd log files,
+  retain 30 compressed days, and use a deterministic command cron.
+- These tasks do not mutate the nine currently failed production jobs.
+
+### T084 authenticated-cookie refresh clarifications
+- The dedicated Nora browser profile is the authentication source; unattended
+  pollers and workers consume only the validated exported jar.
+- Never read the persistent profile outside a Browser Job Broker lease.
+- Refresh once daily rather than extracting from Chrome for every download.
+- Candidate jars must contain auth-like YouTube cookies and pass a bounded real
+  media probe before atomic replacement of the production jar.
+- Any export, lint, or probe failure preserves the last-known-good production
+  jar and returns a failing cron result.
+- Evidence may include timestamps, counts, health labels, and the probe video ID,
+  but never cookie values or lease tokens.
+- Profile B, automatic login, failed-job retries, proxies, and PO-token services
+  are explicitly outside this chunk.
+
 ### T073-T079 local release clarifications
 - Reader and Operations remain separate workspaces in one FastAPI application and deployment.
 - The local web API, CLI, and OpenClaw do not need user authentication while all published service ports remain loopback-only.

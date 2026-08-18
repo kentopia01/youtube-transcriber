@@ -43,6 +43,24 @@ def test_cookie_lint_detects_auth_like_youtube_cookie(tmp_path):
     assert health.status == "ok"
 
 
+def test_cookie_lint_counts_httponly_auth_cookie(tmp_path):
+    cookie_file = tmp_path / "youtube.txt"
+    cookie_file.write_text(
+        "#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t4102444800\t__Secure-3PSID\tsecret\n"
+    )
+
+    health = mod.inspect_cookie_file(cookie_file)
+
+    assert health.auth_cookie_count == 1
+    assert health.status == "ok"
+
+
+def test_media_probe_enables_official_ejs_solver(tmp_path):
+    opts = mod._probe_opts(cookie_path=None, output_dir=tmp_path, test_download=True)
+
+    assert opts["remote_components"] == ["ejs:github"]
+
+
 def test_download_403_failure_classifier_matches_signature():
     job = Job(
         id=uuid.uuid4(),
@@ -68,6 +86,20 @@ def test_download_403_failure_classifier_rejects_other_stages():
     )
 
     assert mod.is_download_403_failure(job) is False
+
+
+def test_download_access_classifier_matches_final_antibot_message():
+    job = Job(
+        id=uuid.uuid4(),
+        video_id=uuid.uuid4(),
+        job_type="pipeline",
+        status="failed",
+        current_stage="download",
+        failure_signature="download|DownloadError|sign in to confirm you’re not a bot",
+        error_message="ERROR: [youtube] abc: Sign in to confirm you’re not a bot",
+    )
+
+    assert mod.is_download_access_degradation_failure(job) is True
 
 
 def test_ytdlp_version_health_flags_old_versions(monkeypatch):

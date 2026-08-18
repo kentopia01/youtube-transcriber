@@ -138,7 +138,7 @@ The speaker argues GPT-5.5 is best used as an execution model when another model
             "videos": [{"title": "How GitHub Deals With 17 Million Pull Requests a Month"}],
         })
         assert "YouTube download degraded" in out["text"]
-        assert "7 download-stage 403" in out["text"]
+        assert "7 download access failures" in out["text"]
         assert "anonymous_only" in out["text"]
         assert out["reply_markup"] is None
 

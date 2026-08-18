@@ -1,37 +1,48 @@
 #!/usr/bin/env bash
-# Rotate worker logs. Keep last 7 days of logs.
+# Rotate split worker logs. Keep the last 30 days by default.
 # Run daily via cron or manually.
 set -euo pipefail
 
-LOG_DIR="/tmp/yt-worker"
-LOG_FILE="$LOG_DIR/yt-worker.log"
-KEEP_DAYS=7
+LOG_DIR="${YT_WORKER_LOG_DIR:-/tmp/yt-worker}"
+KEEP_DAYS="${YT_WORKER_LOG_KEEP_DAYS:-30}"
 
-if [[ ! -f "$LOG_FILE" ]]; then
-  echo "No log file found at $LOG_FILE"
+shopt -s nullglob
+LOG_FILES=()
+for CANDIDATE in "$LOG_DIR"/yt-worker-*.log; do
+  # Exclude dated backups from the set of live launchd files.
+  if [[ "$(basename "$CANDIDATE")" =~ \.20[0-9]{2}-[0-9]{2}-[0-9]{2}\.log$ ]]; then
+    continue
+  fi
+  LOG_FILES+=("$CANDIDATE")
+done
+
+if [[ ${#LOG_FILES[@]} -eq 0 ]]; then
+  echo "No split worker log files found at $LOG_DIR/yt-worker-*.log"
   exit 0
 fi
 
-# Rotate using copytruncate pattern.
-# launchd holds the file descriptor — mv would orphan it.
-# Instead: copy contents to backup, then truncate the original in-place.
 DATE=$(date +%Y-%m-%d)
-BACKUP="$LOG_DIR/yt-worker.${DATE}.log"
+ROTATED=0
 
-if [[ -f "$BACKUP" ]]; then
-  # Already rotated today, append
-  cat "$LOG_FILE" >> "$BACKUP"
-else
-  cp "$LOG_FILE" "$BACKUP"
-fi
+for LOG_FILE in "${LOG_FILES[@]}"; do
+  STEM="${LOG_FILE%.log}"
+  BACKUP="${STEM}.${DATE}.log"
 
-# Truncate in-place so launchd's fd keeps writing to the same file
-: > "$LOG_FILE"
+  # launchd holds the file descriptor, so use copytruncate semantics. The
+  # source is truncated only after the backup operation succeeds.
+  if [[ -f "$BACKUP" ]]; then
+    cat "$LOG_FILE" >> "$BACKUP"
+  else
+    cp "$LOG_FILE" "$BACKUP"
+  fi
+  : > "$LOG_FILE"
+  ROTATED=$((ROTATED + 1))
+done
 
-# Clean old logs
-find "$LOG_DIR" -name "yt-worker.*.log" -mtime "+${KEEP_DAYS}" -delete 2>/dev/null
+# Clean only dated split-worker backups; never match current worker logs.
+find "$LOG_DIR" -type f -name "yt-worker-*.20??-??-??.log*" -mtime "+${KEEP_DAYS}" -delete 2>/dev/null
 
 # Compress logs older than 1 day
-find "$LOG_DIR" -name "yt-worker.*.log" -mtime +1 -not -name "*.gz" -exec gzip {} \; 2>/dev/null
+find "$LOG_DIR" -type f -name "yt-worker-*.20??-??-??.log" -mtime +1 -exec gzip {} \; 2>/dev/null
 
-echo "Rotated: $(du -sh "$BACKUP" | cut -f1) → $BACKUP"
+echo "Rotated $ROTATED split worker log(s); retention=${KEEP_DAYS}d"
