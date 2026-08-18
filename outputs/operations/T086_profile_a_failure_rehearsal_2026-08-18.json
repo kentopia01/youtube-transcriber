@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "active_profile_remained_a": true,
+    "failed_evidence_recorded": true,
+    "last_good_preserved": true,
+    "production_active_profile_unchanged": true,
+    "production_cookie_unchanged": true,
+    "production_not_replaced": true,
+    "production_state_unchanged": true,
+    "profile_a_activation_blocked": true,
+    "profile_a_cooldown_recorded": true,
+    "profile_b_unconfigured": true,
+    "refresh_failed": true
+  },
+  "finished_at": "2026-08-18T09:10:38.252006+00:00",
+  "schema_version": 1,
+  "status": "pass"
+}

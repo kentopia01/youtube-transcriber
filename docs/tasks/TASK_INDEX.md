@@ -94,6 +94,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T083 | Due-poll cadence and split-worker log retention | done | SentryClaw | Hourly due check and deterministic 30-day rotation live-wired and validated |
 | T084 | Brokered authenticated YouTube cookie refresh | done | SentryClaw | Daily 01:45 SGT leased refresh live; authenticated canary, metadata path, completed ingest, and 44 focused tests verified |
 | T085 | Dormant cookie profile failover readiness | done | SentryClaw | Profile A active; dormant B slot, locked refresh, guarded manual probe/switch/failback, and runtime evidence verified |
+| T086 | Profile A guarded failure rehearsal | done | SentryClaw | All safeguards passed; production cookie/state unchanged and Profile B remains unconfigured |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

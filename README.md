@@ -303,6 +303,21 @@ Activation requires a recent successful authenticated media probe. Failed
 probes put only that profile on cooldown. No download error switches profiles
 automatically, and the two jars are never used concurrently.
 
+Run the guarded failure rehearsal after changing cookie refresh or profile
+selection logic:
+
+```bash
+.venv-native/bin/python scripts/rehearse_youtube_cookie_failure.py \
+  --output outputs/operations/profile-a-failure-rehearsal.json
+```
+
+The rehearsal uses only disposable cookie, state, evidence, lock, and backup
+paths. It fails unless Profile A remains active, Profile B remains
+unconfigured, the last-known-good fixture is preserved, cooldown and activation
+guards fire, and production cookie and state hashes remain unchanged. It does
+not open a browser, use the network, replace production cookies, or restart a
+worker.
+
 ### API
 
 ```bash
