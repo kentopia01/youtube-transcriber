@@ -95,7 +95,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T084 | Brokered authenticated YouTube cookie refresh | done | SentryClaw | Daily 01:45 SGT leased refresh live; authenticated canary, metadata path, completed ingest, and 44 focused tests verified |
 | T085 | Dormant cookie profile failover readiness | done | SentryClaw | Profile A active; dormant B slot, locked refresh, guarded manual probe/switch/failback, and runtime evidence verified |
 | T086 | Profile A guarded failure rehearsal | done | SentryClaw | All safeguards passed; production cookie/state unchanged and Profile B remains unconfigured |
-| T087 | Post-refresh recovery closeout | ready | SentryClaw / OpsClaw | First 01:45 refresh and 02:00 verifier pending; three guarded retries already completed |
+| T087 | Post-refresh recovery closeout | done | SentryClaw / OpsClaw | 01:45 refresh healthy, three guarded retries completed, manual-review 403 preserved, and historical report-delivery warnings cleared |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

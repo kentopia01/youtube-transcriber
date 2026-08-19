@@ -2,7 +2,7 @@
 
 ## Status
 
-Ready; scheduled verification is pending for 2026-08-19 02:00 SGT.
+Done as of the 2026-08-19 02:00 SGT verifier run.
 
 ## Objective
 
@@ -51,3 +51,27 @@ preserved manual-review boundary.
 - The Aug 16 HTTP 403 job remains failed with two identical signatures,
   `manual_review_required=true`, and `recovery_status=manual_review`.
 - `.venv/bin/ytctl` is present and its help command passes.
+
+## Closeout evidence
+
+- Daily refresh cron `fc33488a-037c-4ad7-8707-61c5f6dd8a93` ran at
+  `2026-08-19T01:45:00.043+08:00` and finished `status=ok`.
+- `data/cookies/youtube-cookie-refresh-status.json` shows `status=ok`,
+  `production_replaced=true`, `cookie_health.status=ok` with 19 auth-like
+  cookies, `media_probe.ok=true`, and `finished_at=2026-08-18T17:45:11.258575+00:00`.
+- Guarded retry jobs `6adc3d7e-088d-4272-98f6-7da628c19db9`,
+  `2bbe0b26-6df1-4048-8079-1c0846999fea`, and
+  `00052376-08a1-4fba-82b4-855861c0c4cb` are terminal `completed` at 100%.
+- Manual-review job `23e01459-fdc7-4114-ab18-e488f59aa5ba` remains terminal
+  `failed` with `manual_review_required=true`, `recovery_status=manual_review`,
+  and no retry or bypass performed.
+- Historical report warnings for videos `5bfa269c-30a0-4bee-8dec-f2154629ba1b`
+  and `28a9607c-bce8-4fa5-821c-2842fb3c12f1` had valid artifacts and
+  configured Telegram recipients, were redelivered once through
+  `app.services.telegram_notify.notify("video.report_ready", ...)`, and now have
+  `delivery_status=sent` with no `delivery_error`.
+- `.venv/bin/ytctl --json status` reports service `ok`, queue `idle`, three
+  workers covering `audio`, `celery`, `diarize`, and `post`,
+  `report_delivery_warnings=0`, and no active, pending, or in-flight jobs.
+- `.venv/bin/ytctl --json warnings` now reports one warning only: the preserved
+  Aug 16 manual-review HTTP 403 job.
