@@ -2,7 +2,7 @@
 
 ## Current status
 
-### Active archival closeout: T098
+### Completed archival closeout: T098
 
 T098 closes the remediation by making watchdog process status match its
 execution outcome, restoring the GitHub Actions test dependency contract, and

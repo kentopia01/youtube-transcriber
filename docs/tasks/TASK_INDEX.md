@@ -106,7 +106,7 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T095 | Proof-gated PO-token support | done | SentryClaw | Authenticated extraction is disabled by default and fails closed without an explicitly configured discovered provider |
 | T096 | YouTube remediation release QA | done | SentryClaw | 1,447/11 final suite, static/config/runtime/live gates, five anonymous probes, cookie immutability all passed |
 | T097 | Bounded production recovery | done | SentryClaw | Five exact attempts completed; AI Engineer reset/enabled; healthy idle service, 0 warnings, truthful 6/0/0 watchdog |
-| T098 | Watchdog exit semantics and GitHub archive | in-progress | SentryClaw | Separate observed degradation from command failure, restore CI dependency contract, and archive T088-T098 on origin/main |
+| T098 | Watchdog exit semantics and GitHub archive | done | SentryClaw | Alert mode exit semantics fixed; public diff audited; T088-T098 archived with green annotation-free GitHub Actions |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.
