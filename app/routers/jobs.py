@@ -1,4 +1,5 @@
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -128,7 +129,15 @@ async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{job_id}/retry")
-async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)):
+async def retry_job(
+    job_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    manual_review_override: Annotated[
+        bool,
+        Query(description="Explicit operator override for one audited manual-review attempt."),
+    ] = False,
+):
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
@@ -140,7 +149,7 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     if job.job_type != "pipeline" or not job.video_id:
         raise HTTPException(status_code=400, detail="Only failed pipeline jobs can be retried")
 
-    retry_block_reason = get_retry_block_reason(job)
+    retry_block_reason = None if manual_review_override else get_retry_block_reason(job)
     if retry_block_reason:
         raise HTTPException(status_code=409, detail=retry_block_reason)
 
@@ -156,7 +165,11 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
     video.dismissed_reason = None
 
     video_uuid = video.id
-    allocation = await allocate_pipeline_attempt_async(db, video_uuid)
+    allocation = await allocate_pipeline_attempt_async(
+        db,
+        video_uuid,
+        block_manual_review=not manual_review_override,
+    )
     if allocation.status == ATTEMPT_RESULT_ALREADY_ACTIVE and allocation.active_job is not None:
         return {
             "status": allocation.active_job.status,
@@ -225,6 +238,8 @@ async def retry_job(job_id: uuid.UUID, request: Request, db: AsyncSession = Depe
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     payload = {"status": "queued", "job_id": retry_job_id_str, "video_id": video_id_str}
+    if manual_review_override:
+        payload["manual_review_override"] = True
     if request.headers.get("HX-Request"):
         response = JSONResponse(payload)
         response.headers["HX-Redirect"] = f"/jobs/{retry.id}"

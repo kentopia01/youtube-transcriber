@@ -2,6 +2,57 @@
 
 ## Current status
 
+### Active archival closeout: T098
+
+T098 closes the remediation by making watchdog process status match its
+execution outcome, restoring the GitHub Actions test dependency contract, and
+archiving the reviewed T088-T098 implementation on `origin/main`. Stateful
+alert mode exits successfully after it renders an observed incident; direct
+operator health mode retains a non-zero degraded result.
+
+Source of truth: `docs/tasks/T098_watchdog_exit_and_github_archive.md`.
+
+### Completed incident-remediation sequence: T089-T097
+
+The 2026-08-21 authenticated-download audit found a policy inversion rather
+than a general YouTube outage: public extraction works anonymously, while the
+globally attached exported cookie jar can route yt-dlp into an authenticated
+player path that returns `UNPLAYABLE`. T089-T097 restore anonymous-first access,
+bound retries and circuit behavior, repair outcome/subscription state, make
+cookie consumption immutable and narrowly scoped, align runtimes, proof-gate
+PO-token support, complete release QA, and only then recover the five blocked
+videos plus the auto-disabled AI Engineer subscription.
+
+Execution order is mandatory:
+
+1. T089 anonymous-first access and guarded authenticated/public fallback.
+2. T090 error-class retry containment and full-episode cap.
+3. T091 latest-attempt outcome-watchdog semantics.
+4. T092 manual-review submission handling for subscriptions.
+5. T093 immutable/narrow cookie architecture and multi-canary refresh evidence.
+6. T094 yt-dlp and JavaScript-runtime parity.
+7. T095 proof-gated PO-token provider support for authenticated-only content.
+8. T096 focused, full-suite, static, and live non-mutating release QA.
+9. T097 bounded production recovery and subscription re-enablement.
+
+Source of truth begins with `docs/tasks/T089_anonymous_first_youtube_access.md`.
+
+### Completed alerting follow-on: T088
+
+The pipeline outcome watchdog detects real degraded outcomes but OpenClaw's
+generic command-failure alert can replace the captured diagnostic output.
+T088 kept the checker read-only while adding bounded
+affected-job details, incident-change/reminder suppression, and one recovery
+notification. The existing command cron will deliver deterministic output to
+the current Telegram recipient without adding a model run every 30 minutes.
+
+The focused tests, full default suite, production healthy check, and forced live
+cron run passed on 2026-08-21. Healthy checks are silent and unchanged incidents
+remind after two hours. T098 supersedes T088's non-zero alert-mode exit contract
+after the 15:01 live run still generated a redundant generic notification.
+
+Source of truth: `docs/tasks/T088_actionable_pipeline_outcome_alerts.md`.
+
 ### Completed reliability follow-on: T081-T083
 
 The 2026-08-06 failure audit found two concentrated false-green incidents rather

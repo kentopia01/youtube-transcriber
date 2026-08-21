@@ -41,6 +41,7 @@ def test_filter_cookie_jar_removes_unrelated_domains_and_keeps_httponly(tmp_path
     jar.write_text(
         "# Netscape HTTP Cookie File\n"
         "#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t4102444800\tSID\tsecret\n"
+        ".accounts.google.com\tTRUE\t/\tTRUE\t4102444800\tSID\taccount-secret\n"
         ".example.com\tTRUE\t/\tTRUE\t4102444800\tSID\tother-secret\n"
     )
 
@@ -48,6 +49,7 @@ def test_filter_cookie_jar_removes_unrelated_domains_and_keeps_httponly(tmp_path
 
     content = jar.read_text()
     assert "youtube.com" in content
+    assert "accounts.google.com" not in content
     assert "example.com" not in content
     assert oct(jar.stat().st_mode & 0o777) == "0o600"
 
@@ -79,6 +81,73 @@ def test_refresh_replaces_only_after_auth_lint_and_media_probe(monkeypatch, tmp_
     assert "example.com" not in cookie_file.read_text()
     assert cookie_file.with_name("youtube.txt.previous").read_text() == "old-cookie-jar\n"
     assert json.loads(evidence_file.read_text())["media_probe"]["ok"] is True
+
+
+def test_refresh_requires_every_configured_canary_to_pass(monkeypatch, tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    cookie_file = tmp_path / "youtube.txt"
+    cookie_file.write_text("last-known-good\n")
+    evidence_file = tmp_path / "status.json"
+    monkeypatch.setattr(mod.yt_dlp, "YoutubeDL", _FakeYoutubeDL)
+    probes = iter(
+        [
+            ProbeResult(label="with_cookies", ok=True, title="First", duration=60),
+            ProbeResult(label="with_cookies", ok=False, error="second canary failed"),
+        ]
+    )
+    monkeypatch.setattr(
+        mod,
+        "probe_youtube_media_download",
+        lambda *args, **kwargs: next(probes),
+    )
+
+    with pytest.raises(mod.CookieRefreshError, match="one canary"):
+        mod.refresh_cookie_jar(
+            profile_root=profile,
+            cookie_file=cookie_file,
+            evidence_file=evidence_file,
+            probe_urls=[
+                "https://www.youtube.com/watch?v=first",
+                "https://www.youtube.com/watch?v=second",
+            ],
+        )
+
+    assert cookie_file.read_text() == "last-known-good\n"
+    evidence = json.loads(evidence_file.read_text())
+    assert len(evidence["media_probes"]) == 2
+    assert evidence["production_replaced"] is False
+
+
+def test_successful_refresh_synchronizes_configured_profile_state(monkeypatch, tmp_path):
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    cookie_file = tmp_path / "youtube.txt"
+    cookie_file.write_text("old-cookie-jar\n")
+    state_file = tmp_path / "profiles.json"
+    evidence_file = tmp_path / "status.json"
+    monkeypatch.setattr(mod.settings, "ytdlp_cookies_file", str(cookie_file))
+    monkeypatch.setattr(mod.settings, "ytdlp_cookie_profile_state_file", str(state_file))
+    monkeypatch.setattr(mod.yt_dlp, "YoutubeDL", _FakeYoutubeDL)
+    monkeypatch.setattr(
+        mod,
+        "probe_youtube_media_download",
+        lambda *args, **kwargs: ProbeResult(label="with_cookies", ok=True),
+    )
+
+    mod.refresh_cookie_jar(
+        profile_root=profile,
+        cookie_file=cookie_file,
+        evidence_file=evidence_file,
+        probe_urls=[
+            "https://www.youtube.com/watch?v=first",
+            "https://www.youtube.com/watch?v=second",
+        ],
+    )
+
+    state = json.loads(state_file.read_text())
+    assert state["profiles"]["profile_a"]["last_probe_ok"] is True
+    assert state["profiles"]["profile_a"]["last_error"] is None
 
 
 def test_anonymous_candidate_preserves_production_jar(monkeypatch, tmp_path):

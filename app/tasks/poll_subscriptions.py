@@ -52,6 +52,19 @@ from app.tasks.celery_app import celery
 logger = structlog.get_logger()
 
 
+class VideoSubmissionError(RuntimeError):
+    """Structured failure returned by the local video-submission API."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"submit failed ({status_code}): {detail}")
+
+
+class ManualReviewSubmissionBlocked(VideoSubmissionError):
+    """The video is already contained and requires explicit operator review."""
+
+
 async def _submit_video(
     url: str, *, api_key: str | None = None
 ) -> dict[str, Any]:
@@ -72,7 +85,10 @@ async def _submit_video(
             detail = resp.json().get("detail") or resp.text
         except Exception:
             detail = resp.text
-        raise RuntimeError(f"submit failed ({resp.status_code}): {detail}")
+        detail = str(detail)
+        if resp.status_code == 409 and "manual review" in detail.lower():
+            raise ManualReviewSubmissionBlocked(resp.status_code, detail)
+        raise VideoSubmissionError(resp.status_code, detail)
     return resp.json()
 
 
@@ -151,6 +167,7 @@ async def _process_one_subscription(
 
     ingested_ids: list[str] = []
     rejected_filter_ids: list[str] = []
+    manual_review_ids: list[str] = []
     rejected_count = 0
     deferred_count = 0
     for entry in to_ingest:
@@ -190,6 +207,14 @@ async def _process_one_subscription(
                 await _tag_job_as_auto_ingest(db, job_id)
             ingested_ids.append(entry.video_id)
             sub.videos_ingested_today = (sub.videos_ingested_today or 0) + 1
+        except ManualReviewSubmissionBlocked as exc:
+            manual_review_ids.append(entry.video_id)
+            logger.info(
+                "auto_ingest_manual_review_preserved",
+                video_id=entry.video_id,
+                status_code=exc.status_code,
+                outcome="marked_seen_without_subscription_failure",
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("auto_ingest_submit_failed", video_id=entry.video_id, error=str(exc))
             mark_poll_failure(sub, reason=f"submit failed for {entry.video_id}: {exc}")
@@ -199,12 +224,16 @@ async def _process_one_subscription(
 
     result["rejected_by_filter"] = rejected_count
     result["deferred_for_retry"] = deferred_count
+    result["manual_review_blocked"] = len(manual_review_ids)
 
     # Only mark as seen: videos we actually ingested + ones the classifier
     # deliberately rejected. Entries truncated by the per-poll cap stay in the
     # diff pool so the next poll run can pick them up. This prevents the
     # "saw but never ingested" orphaning that happens on first-poll backlogs.
-    mark_poll_success(sub, new_ids=ingested_ids + rejected_filter_ids)
+    mark_poll_success(
+        sub,
+        new_ids=ingested_ids + rejected_filter_ids + manual_review_ids,
+    )
     await db.commit()
     result["ingested"] = len(ingested_ids)
     return result
@@ -299,6 +328,7 @@ async def _process_one_lane_subscription(
         "submitted": 0,
         "attached_existing": 0,
         "already_attached": 0,
+        "manual_review_blocked": 0,
         "skipped_reason": None,
     }
     channel = sub.channel or await db.get(Channel, sub.channel_id)
@@ -362,6 +392,17 @@ async def _process_one_lane_subscription(
 
         try:
             disposition = await _attach_or_submit_lane_entry(db, sub, entry)
+        except ManualReviewSubmissionBlocked as exc:
+            processed_ids.append(entry.video_id)
+            result["manual_review_blocked"] += 1
+            logger.info(
+                "lane_ingest_manual_review_preserved",
+                lane_id=str(sub.lane_id),
+                video_id=entry.video_id,
+                status_code=exc.status_code,
+                outcome="marked_seen_without_subscription_failure",
+            )
+            continue
         except Exception as exc:  # noqa: BLE001
             mark_poll_failure(
                 sub,

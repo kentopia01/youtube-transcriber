@@ -79,6 +79,39 @@ def test_record_pipeline_failure_sets_manual_review_after_repeated_identical_fai
     assert "Manual review required" in message
     assert "Manual review required" in video.error_message
 
+
+def test_download_manual_review_uses_total_stage_episode_not_signature(monkeypatch):
+    job = Job(job_type="pipeline", status="running")
+    job.video_id = "video-1"
+    video = type("VideoStub", (), {"status": "running", "error_message": None})()
+    monkeypatch.setattr(
+        pipeline_recovery,
+        "count_prior_identical_failures",
+        lambda db, job, signature: 0,
+    )
+    monkeypatch.setattr(
+        pipeline_recovery,
+        "count_prior_stage_failures",
+        lambda db, job, stage: 1,
+    )
+
+    message = record_pipeline_failure(
+        db=object(),
+        job=job,
+        video=video,
+        stage="download",
+        error=RuntimeError("different player response"),
+        default_message="Download failed",
+    )
+
+    assert job.failure_signature_count == 1
+    assert job.recovery_status == MANUAL_REVIEW_RECOVERY_STATUS
+    assert "2 download failures" in message
+
+
+def test_download_stage_has_one_bounded_task_retry():
+    assert pipeline_recovery.get_stage_retry_limit("download") == 1
+
 def test_record_pipeline_failure_logs_notify_failure_and_continues(monkeypatch):
     job = SimpleNamespace(
         id="job-1",

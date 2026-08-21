@@ -20,7 +20,7 @@ MANUAL_REVIEW_RECOVERY_STATUS = "manual_review"
 STALE_REAP_RECOVERY_STATUS = "stale_reaped"
 
 RETRY_LIMITS_BY_STAGE = {
-    "download": 3,
+    "download": 1,
     "transcribe": 0,
     "diarize": 0,
     "cleanup": 0,
@@ -106,6 +106,24 @@ def count_prior_identical_failures(db: Session, job: Job, signature: str) -> int
     )
 
 
+def count_prior_stage_failures(db: Session, job: Job, stage: str | None) -> int:
+    """Count the full per-video stage episode, independent of error strings."""
+    if not job.video_id:
+        return 0
+    return (
+        db.query(func.count(Job.id))
+        .filter(
+            Job.video_id == job.video_id,
+            Job.job_type == "pipeline",
+            Job.status == "failed",
+            Job.current_stage == stage,
+            Job.id != job.id,
+        )
+        .scalar()
+        or 0
+    )
+
+
 def get_retry_block_reason(job: Job | None) -> str | None:
     if not job:
         return None
@@ -130,18 +148,30 @@ def record_pipeline_failure(
     if job:
         signature = build_failure_signature(stage, error)
         signature_count = count_prior_identical_failures(db, job, signature) + 1
+        stage_failure_count = (
+            count_prior_stage_failures(db, job, stage) + 1
+            if stage == "download"
+            else signature_count
+        )
         job.failure_signature = signature
         job.failure_signature_count = signature_count
         job.recovery_status = STALE_REAP_RECOVERY_STATUS if stale_reap else None
         job.recovery_reason = default_message if stale_reap else None
 
-        if signature_count >= settings.pipeline_manual_review_after_failures:
+        if stage_failure_count >= settings.pipeline_manual_review_after_failures:
             job.recovery_status = MANUAL_REVIEW_RECOVERY_STATUS
+            if stage == "download" and stage_failure_count != signature_count:
+                failure_description = f"{stage_failure_count} download failures"
+            else:
+                failure_description = f"{signature_count} identical failures"
             job.recovery_reason = (
-                f"Manual review required after {signature_count} identical failures "
+                f"Manual review required after {failure_description} "
                 f"in stage '{stage or 'unknown'}'."
             )
-            final_message = f"{default_message} Manual review required after {signature_count} identical failures."
+            final_message = (
+                f"{default_message} Manual review required after "
+                f"{failure_description}."
+            )
 
         worker_hostname = worker_task_id = None
         if task is not None:

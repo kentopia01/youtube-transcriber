@@ -12,6 +12,54 @@ BuildClaw should implement against these files, not a chat brief alone. QAClaw s
 
 ## Current clarifications
 
+### T098 watchdog/archive clarifications
+- Alert-output mode reports pipeline state, not checker process health. After a
+  successful database query and decision, degraded, suppressed, and recovered
+  outcomes exit `0` so OpenClaw can deliver the rendered message.
+- Direct JSON/operator health mode retains exit `1` when the observed pipeline
+  is degraded. An execution exception in alert mode retains exit `2`.
+- The GitHub repository is public. Runtime data, cookies, environment files,
+  credentials, and generated alert state must not enter the commit.
+- Archive the reviewed remediation on `origin/main`; do not create a release,
+  tag, pull request, or history rewrite in this task.
+
+### T089-T097 authenticated-download remediation clarifications
+- Preserve the existing uncommitted T088 alerting work; improve its collector
+  semantics without discarding its stateful renderer or production wiring.
+- Public discovery, metadata, classification, and media extraction are
+  anonymous by default. Authentication is an explicit fallback for a classified
+  login/age/member/private requirement, never a global default.
+- A cookie-backed 403/reload/unavailable result may fall back anonymously once
+  only when an exact-video public probe succeeds. Genuine private/deleted/geo/
+  age/live outcomes remain terminal and must not be masked.
+- Retry decisions are error-class based and the full video failure episode is
+  capped across changing error strings and pipeline attempts.
+- Outcome monitoring groups by video and evaluates the actual latest attempt,
+  regardless of attempt reason, queue visibility, or supersession.
+- A manual-review 409 is a terminal per-video disposition for polling. It must
+  not increment a channel subscription's failure counter or disable the channel.
+- Routine extraction consumes immutable cookie snapshots and cannot write to
+  the canonical jar. The web mount is read-only and refresh exports only
+  YouTube-required domains.
+- Runtime parity means one pinned yt-dlp version and an available supported
+  JavaScript runtime wherever extraction occurs.
+- PO-token support is disabled unless a maintained provider passes a non-secret
+  readiness check. Browser-service is not a media downloader; Cloak remains out
+  of scope.
+- Production retries and AI Engineer re-enablement happen only after T089-T096
+  pass and runtime deployment is verified. Recovery remains bounded and
+  operator-audited.
+
+### T088 actionable outcome-alert clarifications
+- Keep the collector read-only. T098 supersedes the old requirement for a
+  non-zero degraded exit in stateful alert-output mode.
+- Use deterministic command output and OpenClaw delivery; do not schedule an
+  agent/model turn for every watchdog check.
+- Alert on a new incident, changed affected-job set, and bounded reminder
+  interval; remain silent on unchanged checks between reminders.
+- Send one recovery notice when a previously alerted incident clears.
+- Do not change retry, manual-review, queue, or global OpenClaw alert behavior.
+
 ### T081-T083 incident-hardening clarifications
 - Treat cookie-backed 403, HTTP 429, YouTube `Sign in to confirm you're not a bot`,
   and equivalent login/challenge text as one download-access degradation class.

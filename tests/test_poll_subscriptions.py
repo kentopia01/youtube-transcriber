@@ -325,6 +325,73 @@ class TestProcessOneSubscription:
         assert sub.enabled is False
         assert "Auto-disabled" in (sub.disabled_reason or "")
 
+    @pytest.mark.asyncio
+    async def test_manual_review_409_is_terminal_for_video_not_channel(self, monkeypatch):
+        channel = _channel()
+        sub = _sub(channel, consecutive_failure_count=2)
+        entry = FeedEntry("manual00001", "Contained", "https://youtube.test/manual", None)
+        monkeypatch.setattr(
+            poll_module,
+            "fetch_channel_feed",
+            AsyncMock(return_value=[entry]),
+        )
+        monkeypatch.setattr(
+            "app.services.video_classifier.classify_video_url",
+            lambda url: __import__(
+                "app.services.video_classifier", fromlist=["ClassificationResult"]
+            ).ClassificationResult(True, None),
+        )
+        monkeypatch.setattr(
+            poll_module,
+            "_submit_video",
+            AsyncMock(
+                side_effect=poll_module.ManualReviewSubmissionBlocked(
+                    409,
+                    "Manual review required after repeated download failures",
+                )
+            ),
+        )
+
+        result = await poll_module._process_one_subscription(
+            _DbStub(), sub, budget_remaining=10.0
+        )
+
+        assert result["manual_review_blocked"] == 1
+        assert result["ingested"] == 0
+        assert "manual00001" in sub.last_seen_video_ids
+        assert sub.enabled is True
+        assert sub.consecutive_failure_count == 0
+        assert sub.last_error is None
+
+
+@pytest.mark.asyncio
+async def test_submit_video_classifies_manual_review_409(monkeypatch):
+    class _Response:
+        status_code = 409
+        text = "manual review"
+
+        @staticmethod
+        def json():
+            return {"detail": "Manual review required before another retry"}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return _Response()
+
+    monkeypatch.setattr(poll_module.httpx, "AsyncClient", lambda **kwargs: _Client())
+
+    with pytest.raises(poll_module.ManualReviewSubmissionBlocked) as exc_info:
+        await poll_module._submit_video("https://youtube.test/manual")
+
+    assert exc_info.value.status_code == 409
+    assert "Manual review required" in exc_info.value.detail
+
 
 class TestLaneSharedProcessingAttach:
     def _lane_sub(self):
@@ -332,6 +399,62 @@ class TestLaneSharedProcessingAttach:
             id=uuid.uuid4(),
             lane_id=uuid.uuid4(),
         )
+
+    @pytest.mark.asyncio
+    async def test_lane_manual_review_409_does_not_disable_subscription(self, monkeypatch):
+        channel = _channel()
+        sub = SimpleNamespace(
+            id=uuid.uuid4(),
+            lane_id=uuid.uuid4(),
+            channel_id=channel.id,
+            channel=channel,
+            enabled=True,
+            max_videos_per_poll=3,
+            last_seen_video_ids=[],
+            videos_ingested_today=0,
+            daily_counter_reset_at=None,
+            consecutive_failure_count=2,
+            last_error="prior failure",
+            disabled_reason=None,
+        )
+        monkeypatch.setattr(
+            poll_module,
+            "fetch_channel_feed",
+            AsyncMock(
+                return_value=[
+                    FeedEntry(
+                        "laneManual1",
+                        "Contained",
+                        "https://youtube.test/lane-manual",
+                        None,
+                    )
+                ]
+            ),
+        )
+        monkeypatch.setattr(
+            "app.services.video_classifier.classify_video_url",
+            lambda url: __import__(
+                "app.services.video_classifier", fromlist=["ClassificationResult"]
+            ).ClassificationResult(True, None),
+        )
+        monkeypatch.setattr(
+            poll_module,
+            "_attach_or_submit_lane_entry",
+            AsyncMock(
+                side_effect=poll_module.ManualReviewSubmissionBlocked(
+                    409,
+                    "Manual review required",
+                )
+            ),
+        )
+
+        result = await poll_module._process_one_lane_subscription(_DbStub(), sub)
+
+        assert result["manual_review_blocked"] == 1
+        assert "laneManual1" in sub.last_seen_video_ids
+        assert sub.enabled is True
+        assert sub.consecutive_failure_count == 0
+        assert sub.last_error is None
 
     @pytest.mark.asyncio
     async def test_completed_global_video_attaches_without_submit(self, monkeypatch):

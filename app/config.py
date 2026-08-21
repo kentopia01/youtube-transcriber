@@ -300,6 +300,11 @@ class Settings(BaseSettings):
     ytdlp_cookie_profile_state_file: str = ""
     ytdlp_cookie_profile_probe_max_age_seconds: int = 86400
     ytdlp_cookie_profile_failure_cooldown_seconds: int = 1800
+    # Authenticated extraction is disabled until a maintained PO-token provider
+    # is explicitly configured and discovered by yt-dlp's plugin registry.
+    ytdlp_authenticated_access_enabled: bool = False
+    ytdlp_po_token_provider_name: str = ""
+    ytdlp_po_token_client: str = "mweb"
 
     # YouTube access-degradation circuit. Distinct-video failures within the
     # window open a self-expiring pause for autonomous subscription ingest.

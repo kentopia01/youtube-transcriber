@@ -33,6 +33,10 @@ from app.services.youtube_download_hardening import (
     inspect_cookie_file,
     probe_youtube_media_download,
 )
+from app.services.youtube_cookie_profiles import (
+    configured_cookie_files,
+    record_profile_probe,
+)
 
 DEFAULT_PROFILE_ROOT = Path(
     os.environ.get(
@@ -40,9 +44,18 @@ DEFAULT_PROFILE_ROOT = Path(
         "~/.openclaw/browser/nora-work/user-data",
     )
 ).expanduser()
-DEFAULT_PROBE_URL = os.environ.get(
-    "YTDLP_COOKIE_REFRESH_PROBE_URL",
-    "https://www.youtube.com/watch?v=DFImJfJGXl0",
+_DEFAULT_PROBE_URL_TEXT = os.environ.get(
+    "YTDLP_COOKIE_REFRESH_PROBE_URLS",
+    os.environ.get(
+        "YTDLP_COOKIE_REFRESH_PROBE_URL",
+        (
+            "https://www.youtube.com/watch?v=DFImJfJGXl0,"
+            "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        ),
+    ),
+)
+DEFAULT_PROBE_URLS = tuple(
+    value.strip() for value in _DEFAULT_PROBE_URL_TEXT.split(",") if value.strip()
 )
 DEFAULT_BROKER = Path(
     os.environ.get(
@@ -52,7 +65,6 @@ DEFAULT_BROKER = Path(
 ).expanduser()
 REMOTE_COMPONENTS = ["ejs:github"]
 ALLOWED_COOKIE_DOMAINS = (
-    "google.com",
     "googlevideo.com",
     "youtu.be",
     "youtube.com",
@@ -115,6 +127,28 @@ def _safe_error(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {str(exc)[:400]}"
 
 
+def _normalize_probe_urls(
+    *,
+    probe_url: str | None = None,
+    probe_urls: list[str] | tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    values = probe_urls or ((probe_url,) if probe_url else DEFAULT_PROBE_URLS)
+    normalized = tuple(dict.fromkeys(value.strip() for value in values if value.strip()))
+    if len(normalized) < 2 and probe_urls is None and probe_url is None:
+        raise CookieRefreshError("at least two default cookie-refresh canaries are required")
+    if not normalized:
+        raise CookieRefreshError("at least one cookie-refresh canary is required")
+    return normalized
+
+
+def _configured_profile_for_cookie_file(cookie_file: Path) -> str | None:
+    target = cookie_file.expanduser().resolve()
+    for name, configured in configured_cookie_files().items():
+        if configured is not None and configured.expanduser().resolve() == target:
+            return name
+    return None
+
+
 @contextmanager
 def cookie_jar_lock(cookie_file: Path):
     """Serialize refreshes for one named cookie jar."""
@@ -135,7 +169,7 @@ def _refresh_cookie_jar_unlocked(
     profile_root: Path,
     cookie_file: Path,
     evidence_file: Path,
-    probe_url: str,
+    probe_urls: tuple[str, ...],
     profile_resource: str,
 ) -> dict[str, Any]:
     """Export, validate, probe, and atomically rotate one cookie jar."""
@@ -145,9 +179,11 @@ def _refresh_cookie_jar_unlocked(
         "started_at": started_at.isoformat(),
         "finished_at": None,
         "profile_resource": profile_resource,
-        "probe_url": probe_url,
+        "probe_url": probe_urls[0],
+        "probe_urls": list(probe_urls),
         "cookie_health": None,
         "media_probe": None,
+        "media_probes": [],
         "production_replaced": False,
         "error": None,
     }
@@ -171,7 +207,7 @@ def _refresh_cookie_jar_unlocked(
             "noplaylist": True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(probe_url, download=False)
+            ydl.extract_info(probe_urls[0], download=False)
 
         if not candidate.exists():
             raise CookieRefreshError("yt-dlp did not produce a cookie jar")
@@ -182,15 +218,23 @@ def _refresh_cookie_jar_unlocked(
         if health.status != "ok" or not health.has_auth_cookies:
             raise CookieRefreshError(f"candidate cookie health is {health.status}")
 
-        probe: ProbeResult = probe_youtube_media_download(
-            probe_url,
-            use_cookies=True,
-            test_download=True,
-            cookie_path=str(candidate),
-        )
-        evidence["media_probe"] = asdict(probe)
-        if not probe.ok:
-            raise CookieRefreshError(f"authenticated media probe failed: {probe.error or 'unknown error'}")
+        for current_probe_url in probe_urls:
+            probe: ProbeResult = probe_youtube_media_download(
+                current_probe_url,
+                use_cookies=True,
+                test_download=True,
+                cookie_path=str(candidate),
+            )
+            probe_payload = asdict(probe)
+            probe_payload["url"] = current_probe_url
+            evidence["media_probes"].append(probe_payload)
+            if evidence["media_probe"] is None:
+                evidence["media_probe"] = probe_payload
+            if not probe.ok:
+                raise CookieRefreshError(
+                    "authenticated media probe failed for one canary: "
+                    f"{probe.error or 'unknown error'}"
+                )
 
         if cookie_file.exists():
             fd, raw_backup = tempfile.mkstemp(
@@ -209,11 +253,20 @@ def _refresh_cookie_jar_unlocked(
 
         candidate.chmod(0o600)
         os.replace(candidate, cookie_file)
+        profile_name = _configured_profile_for_cookie_file(cookie_file)
+        if profile_name is not None:
+            record_profile_probe(profile_name, ok=True)
         evidence["production_replaced"] = True
         evidence["status"] = "ok"
         return evidence
     except Exception as exc:
         evidence["error"] = _safe_error(exc)
+        profile_name = _configured_profile_for_cookie_file(cookie_file)
+        if profile_name is not None:
+            try:
+                record_profile_probe(profile_name, ok=False, error=evidence["error"])
+            except Exception:
+                pass
         raise
     finally:
         candidate.unlink(missing_ok=True)
@@ -226,16 +279,21 @@ def refresh_cookie_jar(
     profile_root: Path,
     cookie_file: Path,
     evidence_file: Path,
-    probe_url: str,
+    probe_url: str | None = None,
+    probe_urls: list[str] | tuple[str, ...] | None = None,
     profile_resource: str = "identity:nora-work",
 ) -> dict[str, Any]:
     """Export and rotate one named jar under its own process lock."""
+    normalized_probe_urls = _normalize_probe_urls(
+        probe_url=probe_url,
+        probe_urls=probe_urls,
+    )
     with cookie_jar_lock(cookie_file):
         return _refresh_cookie_jar_unlocked(
             profile_root=profile_root,
             cookie_file=cookie_file,
             evidence_file=evidence_file,
-            probe_url=probe_url,
+            probe_urls=normalized_probe_urls,
             profile_resource=profile_resource,
         )
 
@@ -254,10 +312,13 @@ def build_broker_command(args: argparse.Namespace) -> list[str]:
         str(args.cookie_file),
         "--evidence-file",
         str(args.evidence_file),
-        "--probe-url",
-        args.probe_url,
         "--json",
     ]
+    for probe_url in _normalize_probe_urls(
+        probe_url=getattr(args, "probe_url", None),
+        probe_urls=getattr(args, "probe_urls", None),
+    ):
+        inner.extend(["--probe-url", probe_url])
     return [
         str(args.broker),
         "run",
@@ -291,7 +352,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--profile-resource", default="identity:nora-work")
     parser.add_argument("--cookie-file", type=Path, default=cookie_default)
     parser.add_argument("--evidence-file", type=Path)
-    parser.add_argument("--probe-url", default=DEFAULT_PROBE_URL)
+    parser.add_argument(
+        "--probe-url",
+        dest="probe_urls",
+        action="append",
+        help="Repeat for each authenticated media canary (default: two stable public videos)",
+    )
     parser.add_argument("--broker", type=Path, default=DEFAULT_BROKER)
     parser.add_argument("--idempotency-key")
     parser.add_argument("--inside-broker", action="store_true", help=argparse.SUPPRESS)
@@ -323,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
             profile_root=args.profile_root,
             cookie_file=args.cookie_file,
             evidence_file=args.evidence_file,
-            probe_url=args.probe_url,
+            probe_urls=args.probe_urls,
             profile_resource=args.profile_resource,
         )
     except Exception as exc:

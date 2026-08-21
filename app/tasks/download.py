@@ -6,10 +6,15 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.video import Video
 from app.services.download_circuit import (
+    is_retryable_download_error,
     record_download_access_failure,
     record_download_access_success,
 )
-from app.services.pipeline_recovery import get_stage_retry_limit, record_pipeline_failure
+from app.services.pipeline_recovery import (
+    count_prior_stage_failures,
+    get_stage_retry_limit,
+    record_pipeline_failure,
+)
 from app.services.pipeline_state import PIPELINE_STAGE_DOWNLOAD
 from app.services.youtube import download_audio
 from app.tasks.batch_progress import update_batch_progress_and_maybe_advance
@@ -17,6 +22,23 @@ from app.tasks.celery_app import celery
 from app.tasks.helpers import get_pipeline_job_context, update_pipeline_job
 
 sync_engine = create_engine(settings.database_url_sync)
+
+
+def should_retry_download_task(
+    error: Exception,
+    *,
+    task_retry_count: int,
+    task_retry_limit: int,
+    prior_failed_jobs: int,
+) -> bool:
+    """Bound transport retries across both this task and prior pipeline attempts."""
+    episode_limit = max(1, settings.pipeline_manual_review_after_failures)
+    episode_execution = prior_failed_jobs + task_retry_count + 1
+    return (
+        is_retryable_download_error(error)
+        and task_retry_count < task_retry_limit
+        and episode_execution < episode_limit
+    )
 
 
 @celery.task(
@@ -50,7 +72,7 @@ def download_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] |
 
         try:
             result = download_audio(video.youtube_video_id, settings.audio_dir)
-            record_download_access_success()
+            record_download_access_success(video.youtube_video_id)
 
             duration = result.get("duration")
             max_duration = settings.max_video_duration_minutes * 60
@@ -83,7 +105,17 @@ def download_audio_task(self, payload: dict[str, str] | str) -> dict[str, str] |
 
         except Exception as exc:
             record_download_access_failure(video.youtube_video_id, exc)
-            if self.request.retries < self.max_retries:
+            prior_failed_jobs = count_prior_stage_failures(
+                db,
+                job,
+                PIPELINE_STAGE_DOWNLOAD,
+            )
+            if should_retry_download_task(
+                exc,
+                task_retry_count=self.request.retries,
+                task_retry_limit=self.max_retries,
+                prior_failed_jobs=prior_failed_jobs,
+            ):
                 video.status = "downloading"
                 video.error_message = f"Retrying download after error: {exc}"
                 update_pipeline_job(

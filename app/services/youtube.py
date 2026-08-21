@@ -1,43 +1,120 @@
 import os
 import re
+from contextlib import contextmanager
 from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 import yt_dlp
 from yt_dlp.utils import DownloadError
 
-from app.config import settings
-from app.services.youtube_cookie_profiles import resolve_active_cookie_file
+from app.services.youtube_cookie_snapshot import immutable_cookie_snapshot
+from app.services.youtube_po_token import require_authenticated_access_ready
 
 logger = structlog.get_logger()
 
 _YTDLP_REMOTE_COMPONENTS = ["ejs:github"]
 
+_AUTHENTICATION_REQUIRED_MARKERS = (
+    "sign in to confirm your age",
+    "sign in to confirm you're not a bot",
+    "sign in to confirm you’re not a bot",
+    "login required",
+    "authentication required",
+    "members-only",
+    "members only",
+    "this video is private",
+    "private video",
+    "age-restricted",
+    "age restricted",
+)
 
-def _apply_cookie_opts(ydl_opts: dict) -> dict:
-    """Inject yt-dlp cookie options from settings."""
-    cookie_file = resolve_active_cookie_file()
-    if cookie_file and os.path.exists(cookie_file):
-        ydl_opts["cookiefile"] = cookie_file
-    elif settings.ytdlp_cookies_from_browser:
-        ydl_opts["cookiesfrombrowser"] = (settings.ytdlp_cookies_from_browser,)
-    return ydl_opts
+_AUTHENTICATED_SESSION_DEGRADATION_MARKERS = (
+    "http error 403",
+    "forbidden",
+    "the page needs to be reloaded",
+    "video unavailable",
+    "unplayable",
+)
+
+
+@contextmanager
+def _authenticated_opts(ydl_opts: dict):
+    """Yield authenticated options backed only by a disposable cookie copy."""
+    readiness = require_authenticated_access_ready()
+    with immutable_cookie_snapshot() as snapshot:
+        authenticated = dict(ydl_opts)
+        if snapshot:
+            authenticated["cookiefile"] = snapshot
+            authenticated["extractor_args"] = {
+                "youtube": {"player_client": [readiness.client]}
+            }
+        yield authenticated
 
 
 def _cookies_enabled(ydl_opts: dict) -> bool:
     return "cookiefile" in ydl_opts or "cookiesfrombrowser" in ydl_opts
 
 
-def _without_cookie_opts(ydl_opts: dict) -> dict:
-    fallback_opts = dict(ydl_opts)
-    fallback_opts.pop("cookiefile", None)
-    fallback_opts.pop("cookiesfrombrowser", None)
-    return fallback_opts
-
-
-def _is_media_forbidden_error(exc: Exception) -> bool:
+def _is_authentication_required_error(exc: Exception) -> bool:
     message = str(exc).lower()
-    return "http error 403" in message or "forbidden" in message
+    return any(marker in message for marker in _AUTHENTICATION_REQUIRED_MARKERS)
+
+
+def _is_authenticated_session_degradation(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _AUTHENTICATED_SESSION_DEGRADATION_MARKERS)
+
+
+def _extract_info_anonymous_first(
+    url: str,
+    ydl_opts: dict,
+    *,
+    download: bool,
+    video_id: str | None,
+    purpose: str,
+) -> dict:
+    """Extract anonymously unless YouTube explicitly requires authentication.
+
+    Public YouTube traffic must not inherit the configured account session. If
+    an explicit content/login restriction requires authentication, retry once
+    with the configured cookie source. A degraded authenticated player response
+    then gets one final exact-URL anonymous attempt; success proves the content
+    is public and avoids turning session breakage into a terminal video error.
+    """
+    anonymous_opts = dict(ydl_opts)
+    try:
+        with yt_dlp.YoutubeDL(anonymous_opts) as ydl:
+            return ydl.extract_info(url, download=download)
+    except DownloadError as anonymous_exc:
+        if not _is_authentication_required_error(anonymous_exc):
+            raise
+
+        with _authenticated_opts(ydl_opts) as authenticated_opts:
+            if not _cookies_enabled(authenticated_opts):
+                raise
+
+            logger.info(
+                "youtube_authenticated_fallback",
+                video_id=video_id,
+                purpose=purpose,
+                reason="anonymous_authentication_required",
+            )
+            try:
+                with yt_dlp.YoutubeDL(authenticated_opts) as ydl:
+                    return ydl.extract_info(url, download=download)
+            except DownloadError as authenticated_exc:
+                if not _is_authenticated_session_degradation(authenticated_exc):
+                    raise
+
+                logger.warning(
+                    "youtube_authenticated_session_degraded",
+                    video_id=video_id,
+                    purpose=purpose,
+                    reason="exact_url_anonymous_retry",
+                    error=str(authenticated_exc),
+                )
+                with yt_dlp.YoutubeDL(anonymous_opts) as ydl:
+                    return ydl.extract_info(url, download=download)
 
 
 def extract_video_id(url: str) -> str | None:
@@ -111,26 +188,14 @@ def download_audio(video_id: str, audio_dir: str) -> dict:
         "quiet": True,
         "no_warnings": True,
     }
-    _apply_cookie_opts(ydl_opts)
-
     url = f"https://www.youtube.com/watch?v={video_id}"
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-    except DownloadError as exc:
-        if not _cookies_enabled(ydl_opts) or not _is_media_forbidden_error(exc):
-            raise
-
-        logger.warning(
-            "audio_download_retry_without_cookies",
-            video_id=video_id,
-            reason="cookie_backed_download_403",
-            error=str(exc),
-        )
-        fallback_opts = _without_cookie_opts(ydl_opts)
-        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+    info = _extract_info_anonymous_first(
+        url,
+        ydl_opts,
+        download=True,
+        video_id=video_id,
+        purpose="media_download",
+    )
 
     logger.info("audio_downloaded", video_id=video_id, path=output_path)
 
@@ -156,10 +221,13 @@ def get_video_info(url: str) -> dict:
         # worker performs its own validated format selection later.
         "ignore_no_formats_error": True,
     }
-    _apply_cookie_opts(ydl_opts)
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    info = _extract_info_anonymous_first(
+        url,
+        ydl_opts,
+        download=False,
+        video_id=extract_video_id(url),
+        purpose="metadata",
+    )
 
     return {
         "video_id": info.get("id"),
@@ -196,8 +264,6 @@ def discover_channel_videos(
         "extract_flat": True,
         "skip_download": True,
     }
-    _apply_cookie_opts(ydl_opts)
-
     if limit is not None:
         ydl_opts["playlistend"] = limit
 
@@ -221,8 +287,13 @@ def discover_channel_videos(
 
     discovery_url = _channel_videos_url(channel_url)
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(discovery_url, download=False)
+    info = _extract_info_anonymous_first(
+        discovery_url,
+        ydl_opts,
+        download=False,
+        video_id=None,
+        purpose="channel_discovery",
+    )
 
     videos = []
     for entry in info.get("entries", []):

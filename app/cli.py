@@ -152,6 +152,11 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--confirm", action="store_true")
     retry = commands.add_parser("retry", help="Retry a failed job")
     retry.add_argument("job_id")
+    retry.add_argument(
+        "--override-manual-review",
+        action="store_true",
+        help="Explicitly release this audited job from manual review.",
+    )
     retry.add_argument("--confirm", action="store_true")
     cancel = commands.add_parser("cancel", help="Cancel a pending job")
     cancel.add_argument("job_id")
@@ -250,7 +255,15 @@ def _dispatch(client: ApiClient, args: argparse.Namespace) -> Any:
         return client.request("POST", "/api/videos", body={"url": args.video_url})
     if command == "retry":
         _require_confirm(args, "retry a job")
-        return client.request("POST", f"/api/jobs/{args.job_id}/retry")
+        return client.request(
+            "POST",
+            f"/api/jobs/{args.job_id}/retry",
+            query={
+                "manual_review_override": (
+                    "true" if args.override_manual_review else None
+                )
+            },
+        )
     if command == "cancel":
         _require_confirm(args, "cancel a job")
         return client.request("POST", f"/api/jobs/{args.job_id}/cancel")

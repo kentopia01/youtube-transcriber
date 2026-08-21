@@ -30,6 +30,7 @@ from app.services.pipeline_resume import detect_resume_point_sync
 from app.services.pipeline_state import PIPELINE_STAGE_QUEUED
 from app.services.runtime_config import resolve_sync_database_url
 from app.services.youtube_cookie_profiles import resolve_active_cookie_file
+from app.services.youtube_cookie_snapshot import immutable_cookie_snapshot
 from app.tasks.pipeline import run_pipeline_from
 
 AUTH_COOKIE_NAMES = {
@@ -233,13 +234,21 @@ def probe_youtube_media_download(
     label = "with_cookies" if use_cookies else "without_cookies"
     tmp = Path(tempfile.mkdtemp(prefix=f"yt-probe-{label}-"))
     try:
-        opts = _probe_opts(
-            cookie_path=(cookie_path or settings.ytdlp_cookies_file) if use_cookies else None,
-            output_dir=tmp,
-            test_download=test_download,
+        source_cookie_path = (
+            cookie_path or resolve_active_cookie_file()
+            if use_cookies
+            else None
         )
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        with immutable_cookie_snapshot(source_cookie_path) as snapshot:
+            if use_cookies and not snapshot:
+                raise FileNotFoundError("configured YouTube cookie jar is unavailable")
+            opts = _probe_opts(
+                cookie_path=snapshot,
+                output_dir=tmp,
+                test_download=test_download,
+            )
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
         downloaded_bytes = sum(p.stat().st_size for p in tmp.glob("*") if p.is_file())
         return ProbeResult(
             label=label,

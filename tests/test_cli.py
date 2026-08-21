@@ -69,6 +69,18 @@ def test_confirmed_retry_uses_api_mutation():
     assert client.calls[0][0:2] == ("POST", "/api/jobs/job-id/retry")
 
 
+def test_manual_review_retry_override_is_explicit_and_confirmed():
+    client = _Client([{"status": "queued", "manual_review_override": True}])
+
+    code = main(
+        ["retry", "job-id", "--override-manual-review", "--confirm"],
+        client=client,
+    )
+
+    assert code == 0
+    assert client.calls[0][2] == {"manual_review_override": "true"}
+
+
 def test_reconcile_is_dry_run_by_default_and_apply_is_guarded(capsys):
     preview = _Client([{"mode": "dry_run", "items": [], "changed": 0}])
     assert main(["reconcile"], client=preview) == 0

@@ -33,6 +33,40 @@ ACCESS_DEGRADATION_MARKERS = (
     "authentication required",
     "po token",
     "sabr",
+    "the page needs to be reloaded",
+)
+
+RETRYABLE_DOWNLOAD_MARKERS = (
+    "timed out",
+    "timeout",
+    "connection reset",
+    "connection aborted",
+    "connection refused",
+    "temporary failure",
+    "temporarily unavailable",
+    "remote end closed connection",
+    "http error 429",
+    "too many requests",
+    "http error 500",
+    "http error 502",
+    "http error 503",
+    "http error 504",
+)
+
+DETERMINISTIC_DOWNLOAD_MARKERS = (
+    "video unavailable",
+    "the page needs to be reloaded",
+    "unplayable",
+    "private video",
+    "this video is private",
+    "members-only",
+    "members only",
+    "geo-restricted",
+    "not available in your country",
+    "unsupported url",
+    "requested format is not available",
+    "http error 403",
+    "forbidden",
 )
 
 
@@ -47,7 +81,26 @@ class DownloadCircuitState:
 
 def is_youtube_access_degradation(value: str | BaseException | None) -> bool:
     text = str(value or "").lower()
-    return any(marker in text for marker in ACCESS_DEGRADATION_MARKERS)
+    if any(marker in text for marker in ACCESS_DEGRADATION_MARKERS):
+        return True
+    return (
+        "video unavailable" in text
+        and "authenticated_session_degraded" in text
+        and "public_probe" in text
+    )
+
+
+def is_retryable_download_error(value: str | BaseException | None) -> bool:
+    """Return true only for bounded transport/server failures.
+
+    Player/content/session decisions are deterministic at the task level. The
+    access selector already performs its one allowed alternate-path attempt, so
+    Celery must not multiply those failures.
+    """
+    text = str(value or "").lower()
+    if any(marker in text for marker in DETERMINISTIC_DOWNLOAD_MARKERS):
+        return False
+    return any(marker in text for marker in RETRYABLE_DOWNLOAD_MARKERS)
 
 
 def _redis_client():
@@ -148,11 +201,17 @@ def record_download_access_failure(
         return _closed(available=False)
 
 
-def record_download_access_success(*, client=None) -> None:
+def record_download_access_success(video_id: str | None = None, *, client=None) -> None:
     if not settings.download_circuit_enabled:
         return
     try:
-        (client or _redis_client()).delete(_FAILURE_SET_KEY, _OPEN_KEY)
+        redis_client = client or _redis_client()
+        if not video_id:
+            return
+        redis_client.srem(_FAILURE_SET_KEY, str(video_id))
+        remaining = int(redis_client.scard(_FAILURE_SET_KEY))
+        if remaining < settings.download_circuit_failure_threshold:
+            redis_client.delete(_OPEN_KEY)
     except Exception as exc:  # noqa: BLE001 - fail-open side effect
         logger.warning(
             "download_circuit_close_failed",

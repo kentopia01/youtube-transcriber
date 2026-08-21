@@ -96,6 +96,17 @@ Use this index for serious implementation work. Each execution chunk gets its ow
 | T085 | Dormant cookie profile failover readiness | done | SentryClaw | Profile A active; dormant B slot, locked refresh, guarded manual probe/switch/failback, and runtime evidence verified |
 | T086 | Profile A guarded failure rehearsal | done | SentryClaw | All safeguards passed; production cookie/state unchanged and Profile B remains unconfigured |
 | T087 | Post-refresh recovery closeout | done | SentryClaw / OpsClaw | 01:45 refresh healthy, three guarded retries completed, manual-review 403 preserved, and historical report-delivery warnings cleared |
+| T088 | Actionable pipeline outcome alerts | done | SentryClaw | Stateful affected-job, changed-incident, reminder, and recovery alerts live-wired and validated |
+| T089 | Anonymous-first YouTube access | done | SentryClaw | Public extraction anonymous by default; one exact-video guarded auth/public fallback; 46 focused tests passed |
+| T090 | Download retry and circuit containment | done | SentryClaw | Transport-only single retry, total episode cap, and circuit success containment; 35 focused tests passed |
+| T091 | Latest-attempt pipeline outcome watchdog | done | SentryClaw | Latest lineage across reasons/visibility; live 24h truth is 2 completed and 4 failed |
+| T092 | Manual-review subscription handling | done | SentryClaw | Global/lane 409 handling preserves channel health; 41 focused tests passed |
+| T093 | Immutable scoped YouTube cookies | done | SentryClaw | Snapshot-only use, narrow scope, state sync, two canaries, read-only mount; 32 tests passed |
+| T094 | YouTube extraction runtime parity | done | SentryClaw | Exact yt-dlp 2026.08.19 and Deno parity live across native/web/CLI/cron; cookie mount read-only |
+| T095 | Proof-gated PO-token support | done | SentryClaw | Authenticated extraction is disabled by default and fails closed without an explicitly configured discovered provider |
+| T096 | YouTube remediation release QA | done | SentryClaw | 1,447/11 final suite, static/config/runtime/live gates, five anonymous probes, cookie immutability all passed |
+| T097 | Bounded production recovery | done | SentryClaw | Five exact attempts completed; AI Engineer reset/enabled; healthy idle service, 0 warnings, truthful 6/0/0 watchdog |
+| T098 | Watchdog exit semantics and GitHub archive | in-progress | SentryClaw | Separate observed degradation from command failure, restore CI dependency contract, and archive T088-T098 on origin/main |
 
 ## Conventions
 - Keep tasks narrowly scoped and testable.

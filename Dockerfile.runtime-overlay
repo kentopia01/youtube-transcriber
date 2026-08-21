@@ -1,0 +1,37 @@
+ARG LOCAL_BASE_IMAGE=youtube-transcriber-web:local-base
+FROM ${LOCAL_BASE_IMAGE}
+
+# Offline deployment fallback for hosts whose trusted application image is
+# already local but whose base-image registry is temporarily unavailable.
+# Dockerfile remains the canonical clean-build path.
+ARG DENO_VERSION=2.7.11
+
+RUN pip install --no-cache-dir "yt-dlp==2026.8.19" \
+    && python - <<'PY'
+import os
+import platform
+import stat
+import urllib.request
+import zipfile
+
+targets = {
+    "aarch64": "aarch64-unknown-linux-gnu",
+    "x86_64": "x86_64-unknown-linux-gnu",
+}
+target = targets.get(platform.machine())
+if not target:
+    raise SystemExit(f"Unsupported Deno architecture: {platform.machine()}")
+
+version = os.environ.get("DENO_VERSION", "2.7.11")
+archive = "/tmp/deno.zip"
+url = f"https://github.com/denoland/deno/releases/download/v{version}/deno-{target}.zip"
+urllib.request.urlretrieve(url, archive)
+with zipfile.ZipFile(archive) as bundle:
+    bundle.extract("deno", "/usr/local/bin")
+binary = "/usr/local/bin/deno"
+os.chmod(binary, os.stat(binary).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+os.unlink(archive)
+PY
+
+RUN deno --version \
+    && python -c 'import yt_dlp; print(yt_dlp.version.__version__)'

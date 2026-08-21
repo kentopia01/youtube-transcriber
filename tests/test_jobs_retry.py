@@ -68,7 +68,7 @@ class _FakeDB:
 
 
 @pytest.mark.asyncio
-async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(monkeypatch):
+async def test_retry_job_manual_review_override_creates_new_pipeline_job_and_hides_superseded_failures(monkeypatch):
     job = Job(
         id=uuid.uuid4(),
         video_id=uuid.uuid4(),
@@ -77,6 +77,8 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
         status="failed",
         attempt_number=2,
         progress_pct=60.0,
+        recovery_status=MANUAL_REVIEW_RECOVERY_STATUS,
+        recovery_reason="Manual review required after repeated failures.",
     )
     older_failed = Job(
         id=uuid.uuid4(),
@@ -106,11 +108,17 @@ async def test_retry_job_creates_new_pipeline_job_and_hides_superseded_failures(
 
     monkeypatch.setattr(jobs_router, "run_pipeline_from", _publish)
 
-    response = await jobs_router.retry_job(job.id, SimpleNamespace(headers={}), db)
+    response = await jobs_router.retry_job(
+        job.id,
+        SimpleNamespace(headers={}),
+        manual_review_override=True,
+        db=db,
+    )
 
     assert response["status"] == "queued"
     assert response["video_id"] == str(video.id)
     assert response["job_id"]
+    assert response["manual_review_override"] is True
     assert db.committed is True
 
     assert video.status == "pending"

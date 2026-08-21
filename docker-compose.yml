@@ -29,6 +29,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: youtube-transcriber-web:runtime-parity-20260821
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,7 +42,7 @@ services:
       - audio_data:/data/audio
       - model_cache:/data/models
       - ./app:/app/app:ro
-      - ./data/cookies:/data/cookies
+      - ./data/cookies:/data/cookies:ro
       - audit_data:/data/audit
     depends_on:
       postgres:
