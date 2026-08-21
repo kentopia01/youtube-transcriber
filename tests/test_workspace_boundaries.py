@@ -228,7 +228,11 @@ def test_mobile_chat_composer_and_tablet_pagination_keep_44px_targets():
 
 def test_api_routes_keep_their_existing_paths():
     client = _build_client(MockDB())
-    paths = {route.path for route in client.app.routes}
+    paths = {
+        getattr(route, "path", None)
+        for route in client.app.routes
+        if getattr(route, "path", None) is not None
+    }
 
     assert "/api/videos" in paths
     assert "/api/jobs/{job_id}" in paths

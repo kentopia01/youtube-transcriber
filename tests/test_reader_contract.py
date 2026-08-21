@@ -369,8 +369,12 @@ def test_annotation_schema_and_reader_ui_contract():
 
 def test_reader_routes_expose_annotation_crud_export_and_highlights():
     paths = {
-        (route.path, tuple(sorted(getattr(route, "methods", None) or [])))
+        (
+            getattr(route, "path", None),
+            tuple(sorted(getattr(route, "methods", None) or [])),
+        )
         for route in create_app().routes
+        if getattr(route, "path", None) is not None
     }
     assert ("/api/reader/videos/{video_id}/annotations", ("GET",)) in paths
     assert ("/api/reader/videos/{video_id}/annotations", ("POST",)) in paths
@@ -478,9 +482,13 @@ def test_chapter_model_and_explicit_generation_ui_contract():
     template = open("app/templates/reader_document.html", encoding="utf-8").read()
     script = open("app/static/js/reader.js", encoding="utf-8").read()
     chapter_routes = [
-        (route.path, tuple(sorted(route.methods or [])))
+        (
+            getattr(route, "path", None),
+            tuple(sorted(getattr(route, "methods", None) or [])),
+        )
         for route in create_app().routes
-        if route.path == "/api/reader/videos/{video_id}/chapters"
+        if getattr(route, "path", None)
+        == "/api/reader/videos/{video_id}/chapters"
     ]
 
     assert "uq_reader_chapter_sets_video" in unique_names
